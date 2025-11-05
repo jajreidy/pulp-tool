@@ -1,0 +1,151 @@
+[build-system]
+requires = ["setuptools>=45", "wheel", "setuptools_scm[toml]>=6.2"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pulp-tool"
+dynamic = ["version"]
+description = "A Python client for Pulp API operations including RPM, log, and SBOM file management"
+readme = "README.md"
+license = {text = "Apache-2.0"}
+authors = [
+    {name = "Konflux Team", email = "konflux@redhat.com"}
+]
+maintainers = [
+    {name = "Konflux Team", email = "konflux@redhat.com"}
+]
+keywords = ["pulp", "rpm", "package-management", "konflux", "redhat"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: Apache Software License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: System :: Archiving :: Packaging",
+]
+requires-python = ">=3.8"
+dependencies = [
+    "requests>=2.25.0",
+    "tomli>=2.0.0; python_version < '3.11'",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=6.0",
+    "pytest-cov>=2.0",
+    "black>=21.0",
+    "flake8>=3.8",
+    "mypy>=0.800",
+    "pylint>=2.8",
+]
+
+[project.scripts]
+pulp-tool = "pulp_tool.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/konflux/pulp-tool"
+Repository = "https://github.com/konflux/pulp-tool"
+Issues = "https://github.com/konflux/pulp-tool/issues"
+Documentation = "https://github.com/konflux/pulp-tool#readme"
+
+[tool.setuptools]
+packages = ["pulp_tool", "pulp_tool.api", "pulp_tool.models", "pulp_tool.utils"]
+
+[tool.setuptools.package-data]
+pulp_tool = ["*.toml", "*.cfg"]
+
+[tool.setuptools_scm]
+write_to = "pulp_tool/_version.py"
+
+[tool.black]
+line-length = 120
+target-version = ['py38']
+include = '\.pyi?$'
+extend-exclude = '''
+/(
+  # directories
+  \.eggs
+  | \.git
+  | \.hg
+  | \.mypy_cache
+  | \.tox
+  | \.venv
+  | build
+  | dist
+)/
+'''
+
+[tool.pylint.messages_control]
+disable = ["import-error", "cyclic-import"]
+
+[tool.pylint.format]
+max-line-length = 120
+
+[tool.pylint.design]
+max-args = 10
+max-locals = 20
+max-returns = 6
+max-branches = 20
+max-statements = 50
+max-parents = 7
+max-attributes = 7
+min-public-methods = 1
+max-public-methods = 20
+
+[tool.mypy]
+python_version = "3.8"
+warn_return_any = false
+warn_unused_configs = true
+disallow_untyped_defs = false
+disallow_incomplete_defs = false
+check_untyped_defs = true
+disallow_untyped_decorators = false
+no_implicit_optional = false
+warn_redundant_casts = true
+warn_unused_ignores = false
+warn_no_return = true
+warn_unreachable = false
+strict_equality = true
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "pulp_tool.api.pulp_client"
+disable_error_code = ["override", "misc"]
+
+[[tool.mypy.overrides]]
+module = "pulp_tool.utils.validation"
+disable_error_code = ["unreachable"]
+
+[[tool.mypy.overrides]]
+module = "pulp_tool.api.content_manager"
+disable_error_code = ["attr-defined"]
+
+[[tool.mypy.overrides]]
+module = "pulp_tool.api.task_manager"
+disable_error_code = ["attr-defined"]
+
+[[tool.mypy.overrides]]
+module = "pulp_tool.api.content_query"
+disable_error_code = ["attr-defined"]
+
+[[tool.mypy.overrides]]
+module = "pulp_tool.api.repository_manager"
+disable_error_code = ["attr-defined"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py", "*_test.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = "-v --tb=short --cov=pulp_tool --cov-report=term-missing --cov-report=html --cov-report=xml --cov-fail-under=80"
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "integration: marks tests as integration tests",
+    "unit: marks tests as unit tests"
+]
