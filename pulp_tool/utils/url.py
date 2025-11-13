@@ -9,12 +9,7 @@ import logging
 from pathlib import Path
 from typing import Optional
 
-# Optional imports with fallback
-try:
-    import tomllib  # type: ignore[import-not-found]
-except ImportError:
-    # Fallback for Python < 3.11
-    import tomli as tomllib  # type: ignore[import-not-found]
+import tomllib
 
 
 def get_pulp_content_base_url(cert_config_path: Optional[str] = None) -> str:

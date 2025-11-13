@@ -143,8 +143,9 @@ class TestRPMUtilities:
         )
         results_model = PulpResultsModel(build_id="test-build", repositories=repositories)
 
-        with patch("glob.glob", return_value=[temp_rpm_file]), patch(
-            "pulp_tool.utils.uploads.upload_rpms_parallel", return_value=[]
+        with (
+            patch("glob.glob", return_value=[temp_rpm_file]),
+            patch("pulp_tool.utils.uploads.upload_rpms_parallel", return_value=[]),
         ):
 
             result = upload_rpms_logs(

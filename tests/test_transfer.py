@@ -20,6 +20,7 @@ from pulp_tool.transfer import (
     _log_transfer_summary,
     _format_file_size,
     load_and_validate_artifacts,
+    _extract_artifact_info,
 )
 
 # CLI imports removed - Click testing done in test_cli.py
@@ -62,9 +63,11 @@ class TestDistributionClient:
             return_value=httpx.Response(200, content=b"file content", headers={"content-length": "12"})
         )
 
-        with patch("os.makedirs"), patch(
-            "builtins.open", mock_open(read_data=b"file content")
-        ) as mock_open_func, patch("pulp_tool.api.distribution_client.logging") as mock_logging:
+        with (
+            patch("os.makedirs"),
+            patch("builtins.open", mock_open(read_data=b"file content")) as mock_open_func,
+            patch("pulp_tool.api.distribution_client.logging") as mock_logging,
+        ):
 
             client = DistributionClient("cert.pem", "key.pem")
             result = client.pull_data("file.rpm", "https://example.com/file.rpm", "x86_64")
@@ -178,9 +181,11 @@ class TestRepositoryManagement:
         args.config = temp_config_file
         args.build_id = "test-build"
 
-        with patch("pulp_tool.api.PulpClient.create_from_config_file") as mock_create, patch(
-            "pulp_tool.transfer.determine_build_id", return_value="test-build"
-        ), patch("pulp_tool.transfer.PulpHelper") as mock_helper:
+        with (
+            patch("pulp_tool.api.PulpClient.create_from_config_file") as mock_create,
+            patch("pulp_tool.transfer.determine_build_id", return_value="test-build"),
+            patch("pulp_tool.transfer.PulpHelper") as mock_helper,
+        ):
 
             mock_client = Mock()
             mock_create.return_value = mock_client
@@ -295,8 +300,9 @@ class TestUploadFunctionality:
             )
         )
 
-        with patch("pulp_tool.api.content_manager.validate_file_path") as mock_validate, patch(
-            "builtins.open", mock_open(read_data=b"fake rpm content")
+        with (
+            patch("pulp_tool.api.content_manager.validate_file_path") as mock_validate,
+            patch("builtins.open", mock_open(read_data=b"fake rpm content")),
         ):
             mock_validate.return_value = None  # No exception
 
@@ -329,9 +335,11 @@ class TestUploadFunctionality:
         # Mock the upload endpoint to raise an exception
         httpx_mock.post(re.compile(r".*/content/rpm/packages/upload/")).mock(side_effect=HTTPError("Upload error"))
 
-        with patch("pulp_tool.api.content_manager.validate_file_path") as mock_validate, patch(
-            "builtins.open", mock_open(read_data=b"fake rpm content")
-        ), patch("pulp_tool.utils.rpm_operations.logging") as mock_logging:
+        with (
+            patch("pulp_tool.api.content_manager.validate_file_path") as mock_validate,
+            patch("builtins.open", mock_open(read_data=b"fake rpm content")),
+            patch("pulp_tool.utils.rpm_operations.logging") as mock_logging,
+        ):
             mock_validate.return_value = None  # No exception
 
             # Function should handle exceptions gracefully and continue
@@ -515,14 +523,12 @@ class TestUploadFunctionality:
                 artifacts_prn="/pulp/api/v3/repositories/artifacts/12345/",
             )
 
-            with patch("pulp_tool.utils.determine_build_id", return_value="test"), patch(
-                "pulp_tool.transfer._upload_sboms_and_logs"
-            ) as mock_upload_sboms, patch(
-                "pulp_tool.transfer._upload_rpms_to_repository"
-            ) as mock_upload_rpms, patch.object(
-                mock_pulp_client, "wait_for_finished_task"
-            ) as mock_wait, patch(
-                "pulp_tool.utils.PulpHelper.setup_repositories", return_value=mock_repositories
+            with (
+                patch("pulp_tool.utils.determine_build_id", return_value="test"),
+                patch("pulp_tool.transfer._upload_sboms_and_logs") as mock_upload_sboms,
+                patch("pulp_tool.transfer._upload_rpms_to_repository") as mock_upload_rpms,
+                patch.object(mock_pulp_client, "wait_for_finished_task") as mock_wait,
+                patch("pulp_tool.utils.PulpHelper.setup_repositories", return_value=mock_repositories),
             ):
 
                 mock_wait.return_value = Mock(json=lambda: {"state": "completed"})
@@ -792,3 +798,64 @@ class TestTransferHelpers:
         assert _format_file_size(1024) == "1.0 KB"
         assert _format_file_size(1024 * 1024) == "1.0 MB"
         assert _format_file_size(1024 * 1024 * 1024) == "1.0 GB"
+
+
+class TestExtractArtifactInfo:
+    """Test _extract_artifact_info function."""
+
+    def test_extract_artifact_info_with_dict(self):
+        """Test _extract_artifact_info with dict input."""
+        artifact_data = {
+            "file": "/path/to/file.rpm",
+            "labels": {"build_id": "test-build", "arch": "x86_64"},
+        }
+
+        file_path, labels = _extract_artifact_info(artifact_data)
+
+        assert file_path == "/path/to/file.rpm"
+        assert labels == {"build_id": "test-build", "arch": "x86_64"}
+
+    def test_extract_artifact_info_with_dict_no_labels(self):
+        """Test _extract_artifact_info with dict input without labels."""
+        artifact_data = {"file": "/path/to/file.rpm"}
+
+        file_path, labels = _extract_artifact_info(artifact_data)
+
+        assert file_path == "/path/to/file.rpm"
+        assert labels == {}
+
+    def test_extract_artifact_info_with_model(self):
+        """Test _extract_artifact_info with model object."""
+        from pulp_tool.models.artifacts import ArtifactFile
+
+        artifact_data = ArtifactFile(
+            file="/path/to/file.rpm",
+            labels={"build_id": "test-build", "arch": "x86_64"},
+        )
+
+        file_path, labels = _extract_artifact_info(artifact_data)
+
+        assert file_path == "/path/to/file.rpm"
+        assert labels == {"build_id": "test-build", "arch": "x86_64"}
+
+    def test_extract_artifact_info_with_model_no_labels(self):
+        """Test _extract_artifact_info with model object without labels."""
+
+        # Create a mock object that has file but no labels
+        class MockArtifact:
+            file = "/path/to/file.rpm"
+
+        artifact_data = MockArtifact()
+
+        file_path, labels = _extract_artifact_info(artifact_data)
+
+        assert file_path == "/path/to/file.rpm"
+        assert labels == {}
+
+    def test_extract_artifact_info_unexpected_type(self):
+        """Test _extract_artifact_info raises ValueError for unexpected type."""
+        # Create an object that doesn't have file attribute and isn't a dict
+        artifact_data = 123  # int type
+
+        with pytest.raises(ValueError, match="Unexpected artifact_data type"):
+            _extract_artifact_info(artifact_data)

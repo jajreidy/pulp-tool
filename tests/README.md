@@ -13,7 +13,7 @@ def test_with_temp_files(tmp_path):
     """pytest's tmp_path automatically cleans up."""
     config_file = tmp_path / "config.toml"
     config_file.write_text('[cli]\nbase_url = "https://pulp.example.com"')
-    
+
     # File is automatically cleaned up after test
 ```
 
@@ -53,7 +53,7 @@ def test_manual_cleanup():
     with tempfile.NamedTemporaryFile(mode='w', delete=False) as f:
         f.write('test content')
         temp_path = f.name
-    
+
     try:
         # Your test code here
         assert Path(temp_path).exists()
@@ -70,13 +70,13 @@ For multiple temp files, track them in a list:
 def test_multiple_files():
     """Cleanup multiple temp files."""
     temp_files = []
-    
+
     try:
         for i in range(3):
             with tempfile.NamedTemporaryFile(delete=False) as f:
                 temp_files.append(f.name)
                 f.write(f'file {i}'.encode())
-        
+
         # Your test code here
     finally:
         for path in temp_files:
@@ -95,7 +95,7 @@ from tests.conftest import register_temp_file, unregister_temp_file
 def test_with_registration():
     temp_path = tempfile.mktemp()
     register_temp_file(temp_path)  # Safety net
-    
+
     try:
         # Test code
         pass
@@ -115,10 +115,10 @@ from pulp_tool.cli import cli
 def test_cli_command(tmp_path):
     """Test CLI with automatic cleanup."""
     runner = CliRunner()
-    
+
     config_file = tmp_path / "config.toml"
     config_file.write_text('[cli]\nbase_url = "https://pulp.example.com"')
-    
+
     result = runner.invoke(cli, ["upload", "--config", str(config_file), ...])
     assert result.exit_code == 0
     # tmp_path automatically cleaned up
@@ -176,4 +176,3 @@ pytest tests/ -vv
 # Show print statements
 pytest tests/ -s
 ```
-

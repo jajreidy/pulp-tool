@@ -25,7 +25,7 @@ import os
 import sys
 import traceback
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 # Third-party imports
 import httpx
@@ -44,6 +44,7 @@ from .models.artifacts import (
     DownloadTask,
     PulledArtifacts,
     ArtifactData,
+    ArtifactFile,
     ArtifactMetadata,
     ArtifactJsonResponse,
 )
@@ -407,7 +408,9 @@ def _log_transfer_summary(completed: int, failed: int, args: TransferContext) ->
     logging.debug("Max workers: %d", args.max_workers)
 
 
-def _extract_artifact_info(artifact_data) -> Tuple[str, Dict[str, str]]:
+def _extract_artifact_info(
+    artifact_data: Union[ArtifactFile, ArtifactMetadata, Dict[str, Any]],
+) -> Tuple[str, Dict[str, str]]:
     """
     Extract file path and labels from artifact data.
 
@@ -417,12 +420,14 @@ def _extract_artifact_info(artifact_data) -> Tuple[str, Dict[str, str]]:
     Returns:
         Tuple of (file_path, labels)
     """
-    if hasattr(artifact_data, "file"):
+    if isinstance(artifact_data, dict):
+        file_path = artifact_data["file"]
+        labels = artifact_data.get("labels", {})
+    elif hasattr(artifact_data, "file"):
         file_path = artifact_data.file
         labels = artifact_data.labels if hasattr(artifact_data, "labels") else {}
     else:
-        file_path = artifact_data["file"]
-        labels = artifact_data.get("labels", {})
+        raise ValueError(f"Unexpected artifact_data type: {type(artifact_data)}")
 
     return file_path, labels
 
@@ -445,7 +450,9 @@ def _get_file_size_safe(file_path: str) -> Tuple[int, str]:
         return 0, "Unknown size"
 
 
-def _log_single_artifact(artifact_name: str, artifact_data) -> int:
+def _log_single_artifact(
+    artifact_name: str, artifact_data: Union[ArtifactFile, ArtifactMetadata, Dict[str, Any]]
+) -> int:
     """
     Log information for a single artifact and return file size.
 

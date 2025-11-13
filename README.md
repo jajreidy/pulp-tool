@@ -91,7 +91,7 @@ try:
     # Use the helper for high-level operations
     helper = PulpHelper(client)
     repositories: RepositoryRefs = helper.setup_repositories("my-build-123")
-    
+
     # Upload content - client handles authentication automatically
     artifact_href = client.upload_content(
         "/path/to/package.rpm",
@@ -99,7 +99,7 @@ try:
         file_type="rpm",
         arch="x86_64"
     )
-    
+
     # Add to repository using Pydantic-validated data
     client.add_content(repositories.rpms_href, [artifact_href])
 finally:
@@ -161,9 +161,9 @@ from pulp_tool import cli_main
 
 # Call with custom arguments (uses Click command parsing)
 import sys
-sys.argv = ['pulp-tool', 'upload', 
-            '--build-id', 'test', 
-            '--namespace', 'ns', 
+sys.argv = ['pulp-tool', 'upload',
+            '--build-id', 'test',
+            '--namespace', 'ns',
             '--parent-package', 'pkg',
             '--rpm-path', '/path',
             '--sbom-path', '/path/sbom.json']
@@ -580,7 +580,6 @@ pip install -e .
 - `httpx>=0.24.0` - Modern HTTP client
 - `pydantic>=2.0.0` - Data validation
 - `click>=8.0.0` - CLI framework
-- `tomli>=2.0.0` - TOML parsing (Python < 3.11)
 
 **Development:**
 - `pytest>=6.0` - Testing framework

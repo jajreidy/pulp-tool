@@ -51,9 +51,12 @@ class TestUploadSbom:
         )
         results_model = PulpResultsModel(build_id="test-build", repositories=repositories)
 
-        with patch("os.path.exists", return_value=True), patch("pulp_tool.upload.validate_file_path"), patch(
-            "pulp_tool.upload.create_labels", return_value={"build_id": "test-build"}
-        ), patch("builtins.open", mock_open(read_data="test sbom content")):
+        with (
+            patch("os.path.exists", return_value=True),
+            patch("pulp_tool.upload.validate_file_path"),
+            patch("pulp_tool.upload.create_labels", return_value={"build_id": "test-build"}),
+            patch("builtins.open", mock_open(read_data="test sbom content")),
+        ):
 
             upload_sbom(mock_pulp_client, args, "test-repo", "2024-01-01", results_model)
 
@@ -106,9 +109,12 @@ class TestUploadSbom:
         )
         results_model = PulpResultsModel(build_id="test-build", repositories=repositories)
 
-        with patch("os.path.exists", return_value=True), patch("pulp_tool.upload.validate_file_path"), patch(
-            "pulp_tool.upload.create_labels", return_value={"build_id": "test-build"}
-        ), patch("builtins.open", mock_open(read_data="test sbom content")):
+        with (
+            patch("os.path.exists", return_value=True),
+            patch("pulp_tool.upload.validate_file_path"),
+            patch("pulp_tool.upload.create_labels", return_value={"build_id": "test-build"}),
+            patch("builtins.open", mock_open(read_data="test sbom content")),
+        ):
 
             with pytest.raises(HTTPError):
                 upload_sbom(mock_pulp_client, args, "test-repo", "2024-01-01", results_model)

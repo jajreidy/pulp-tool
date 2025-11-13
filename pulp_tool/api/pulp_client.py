@@ -44,12 +44,7 @@ from .content_query import ContentQueryMixin
 from .repository_manager import RepositoryManagerMixin
 from .task_manager import TaskManagerMixin
 
-# Optional imports with fallback
-try:
-    import tomllib  # type: ignore[import-not-found]
-except ImportError:
-    # Fallback for Python < 3.11
-    import tomli as tomllib  # type: ignore[import-not-found]
+import tomllib
 
 # ============================================================================
 # Constants
@@ -71,24 +66,24 @@ CACHE_TTL = 300  # 5 minutes
 class PerformanceMetrics:
     """Track API performance metrics."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize metrics tracker."""
         self.total_requests = 0
         self.cached_requests = 0
         self.chunked_requests = 0
         self.task_polls = 0
 
-    def log_request(self, cached: bool = False):
+    def log_request(self, cached: bool = False) -> None:
         """Log an API request."""
         self.total_requests += 1
         if cached:
             self.cached_requests += 1
 
-    def log_chunked_request(self, parallel: bool = True):
+    def log_chunked_request(self, parallel: bool = True) -> None:
         """Log a chunked request (always parallel)."""
         self.chunked_requests += 1
 
-    def log_task_poll(self):
+    def log_task_poll(self) -> None:
         """Log a task poll."""
         self.task_polls += 1
 
@@ -108,7 +103,7 @@ class PerformanceMetrics:
             "task_polls": self.task_polls,
         }
 
-    def log_summary(self):
+    def log_summary(self) -> None:
         """Log metrics summary."""
         summary = self.get_summary()
         logging.info("=== API Performance Metrics ===")
@@ -182,7 +177,7 @@ def cached_get(method: Callable) -> Callable:
     """
 
     @wraps(method)
-    def wrapper(self, *args, **kwargs):
+    def wrapper(self: Any, *args: Any, **kwargs: Any) -> Any:
         # Only cache if first argument is a URL string
         if not args or not isinstance(args[0], str):
             return method(self, *args, **kwargs)
@@ -242,7 +237,7 @@ class PulpClient(ContentManagerMixin, TaskManagerMixin, ContentQueryMixin, Repos
 
     def __init__(
         self, config: Dict[str, Union[str, int]], domain: Optional[str] = None, config_path: Optional[Path] = None
-    ):
+    ) -> None:
         """Initialize the Pulp client.
 
         Args:
@@ -348,11 +343,11 @@ class PulpClient(ContentManagerMixin, TaskManagerMixin, ContentQueryMixin, Repos
             await self._async_session.aclose()
             logging.debug("PulpClient async session closed and connections released")
 
-    def __enter__(self):
+    def __enter__(self) -> "PulpClient":
         """Context manager entry."""
         return self
 
-    def __exit__(self, exc_type, exc_val, exc_tb):
+    def __exit__(self, exc_type: Optional[type], exc_val: Optional[BaseException], exc_tb: Optional[Any]) -> None:
         """Context manager exit - ensures session is closed."""
         self.close()
 
@@ -467,8 +462,8 @@ class PulpClient(ContentManagerMixin, TaskManagerMixin, ContentQueryMixin, Repos
         """
         Synchronous wrapper for _chunked_get_async.
 
-        This provides backward compatibility for synchronous callers while
-        using async underneath for better performance.
+        Provides a synchronous interface while using async implementation
+        underneath for better performance.
         """
         import asyncio  # pylint: disable=import-outside-toplevel
 
@@ -532,7 +527,10 @@ class PulpClient(ContentManagerMixin, TaskManagerMixin, ContentQueryMixin, Repos
         """
         if not self._auth:
             # Set up OAuth2 authentication with correct Red Hat SSO token URL
-            token_url = "https://sso.redhat.com/auth/realms/redhat-external/" "protocol/openid-connect/token"
+            token_url = (
+                "https://sso.redhat.com/auth/realms/redhat-external/"
+                "protocol/openid-connect/token"  # nosec B105
+            )
 
             self._auth = OAuth2ClientCredentialsAuth(  # type: ignore[assignment]
                 client_id=str(self.config["client_id"]),

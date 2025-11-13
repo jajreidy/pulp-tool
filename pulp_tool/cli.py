@@ -11,14 +11,12 @@ import sys
 import traceback
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional
-
-try:
-    import tomllib  # Python 3.11+
-except ImportError:
-    import tomli as tomllib  # type: ignore[import-not-found]
+from typing import Any, Callable, Optional, TypeVar
 
 import click
+
+import tomllib
+
 import httpx
 
 from .api import PulpClient, DistributionClient
@@ -33,13 +31,15 @@ from .transfer import (
 from .models.context import UploadContext, TransferContext
 from ._version import __version__
 
+F = TypeVar("F", bound=Callable[..., Any])
+
 
 # ============================================================================
 # Common Click Options - Reusable decorators for shared options
 # ============================================================================
 
 
-def config_option(required=False):
+def config_option(required: bool = False) -> Callable[[F], F]:
     """Shared --config option for commands."""
     default_help = " (default: ~/.config/pulp/cli.toml)" if not required else ""
     return click.option(
@@ -50,7 +50,7 @@ def config_option(required=False):
     )
 
 
-def debug_option():
+def debug_option() -> Callable[[F], F]:
     """Shared --debug option for verbosity control."""
     return click.option(
         "-d",
@@ -60,10 +60,10 @@ def debug_option():
     )
 
 
-def cert_auth_options():
+def cert_auth_options() -> Callable[[F], F]:
     """Shared certificate authentication options."""
 
-    def decorator(func):
+    def decorator(func: F) -> F:
         func = click.option(
             "--cert_path",
             type=click.Path(exists=True),
@@ -74,7 +74,7 @@ def cert_auth_options():
             type=click.Path(exists=True),
             help="Path to SSL private key file for authentication (optional)",
         )(func)
-        return func
+        return func  # type: ignore[return-value]
 
     return decorator
 
@@ -122,7 +122,16 @@ def cert_auth_options():
     help="Maximum number of concurrent workers (default: 4)",
 )
 @click.pass_context
-def cli(ctx, config, cert_path, key_path, build_id, namespace, debug, max_workers):
+def cli(
+    ctx: click.Context,
+    config: Optional[str],
+    cert_path: Optional[str],
+    key_path: Optional[str],
+    build_id: Optional[str],
+    namespace: Optional[str],
+    debug: int,
+    max_workers: int,
+) -> None:
     """Pulp Tool - Upload and transfer artifacts to/from Pulp repositories."""
     # Store shared options in context for subcommands to access
     ctx.ensure_object(dict)
@@ -156,14 +165,14 @@ def cli(ctx, config, cert_path, key_path, build_id, namespace, debug, max_worker
 @click.option("--sbom-results", type=click.Path(), help="Path to write SBOM results")
 @click.pass_context
 def upload(  # pylint: disable=too-many-arguments,too-many-positional-arguments
-    ctx,
+    ctx: click.Context,
     parent_package: str,
     rpm_path: str,
     sbom_path: str,
     cert_config: Optional[str],
     artifact_results: Optional[str],
     sbom_results: Optional[str],
-):
+) -> None:
     """Upload RPMs, logs, and SBOM files to Pulp repositories."""
     # Get shared options from context
     build_id = ctx.obj["build_id"]
@@ -271,11 +280,11 @@ def upload(  # pylint: disable=too-many-arguments,too-many-positional-arguments
 )
 @click.pass_context
 def transfer(  # pylint: disable=too-many-positional-arguments
-    ctx,
+    ctx: click.Context,
     artifact_location: Optional[str],
     content_types: Optional[str],
     archs: Optional[str],
-):
+) -> None:
     """Download artifacts and optionally re-upload to Pulp repositories."""
     # Get shared options from context
     namespace = ctx.obj["namespace"]
@@ -438,10 +447,10 @@ def transfer(  # pylint: disable=too-many-positional-arguments
 )
 @click.pass_context
 def get_repo_md(  # pylint: disable=too-many-arguments,too-many-positional-arguments
-    ctx,
+    ctx: click.Context,
     base_url: Optional[str],
     output: Optional[str],
-):
+) -> None:
     """Download .repo configuration file(s) from Pulp RPM distributions.
 
     Supports downloading multiple .repo files by providing comma-separated
@@ -645,7 +654,7 @@ def get_repo_md(  # pylint: disable=too-many-arguments,too-many-positional-argum
 # ============================================================================
 
 
-def main():
+def main() -> None:
     """Main entry point for the CLI."""
     try:
         cli()  # pylint: disable=no-value-for-parameter  # Click handles parameters

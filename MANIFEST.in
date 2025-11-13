@@ -1,8 +1,6 @@
 # Include additional files in the package distribution
 include README.md
 include LICENSE
-include requirements.txt
-include requirements-dev.txt
 include pyproject.toml
 include pylintrc
 

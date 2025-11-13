@@ -24,9 +24,12 @@ All functions follow clean code principles with guard clauses and early returns.
 
 import logging
 import os
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, TYPE_CHECKING, Union
 
 from ..models.artifacts import ArtifactJsonResponse, ArtifactMetadata
+
+if TYPE_CHECKING:
+    from ..models.artifacts import PulledArtifacts
 
 # ============================================================================
 # Validation Constants
@@ -133,7 +136,7 @@ def validate_build_id(build_id: str) -> bool:
 
 
 def extract_metadata_from_artifact_json(
-    artifact_json, field_name: str, fallback: Optional[str] = None
+    artifact_json: Union[Dict[str, Any], ArtifactJsonResponse], field_name: str, fallback: Optional[str] = None
 ) -> Optional[str]:
     """
     Extract any metadata field from artifact JSON.
@@ -179,7 +182,9 @@ def extract_metadata_from_artifact_json(
     return fallback
 
 
-def _extract_field_from_artifact(artifact_info, field_name: str) -> Optional[str]:
+def _extract_field_from_artifact(
+    artifact_info: Union[ArtifactMetadata, Dict[str, Any]], field_name: str
+) -> Optional[str]:
     """
     Extract field value from a single artifact.
 
@@ -201,7 +206,9 @@ def _extract_field_from_artifact(artifact_info, field_name: str) -> Optional[str
     return None
 
 
-def extract_metadata_from_artifacts(pulled_artifacts, field_name: str, fallback: Optional[str] = None) -> Optional[str]:
+def extract_metadata_from_artifacts(
+    pulled_artifacts: "PulledArtifacts", field_name: str, fallback: Optional[str] = None
+) -> Optional[str]:
     """
     Extract any metadata field from artifact labels.
 
@@ -239,27 +246,41 @@ def extract_metadata_from_artifacts(pulled_artifacts, field_name: str, fallback:
     return fallback
 
 
-def extract_build_id_from_artifact_json(artifact_json) -> str:
+def extract_build_id_from_artifact_json(artifact_json: Union[Dict[str, Any], ArtifactJsonResponse]) -> str:
     """
     Extract build_id from artifact_json metadata.
 
-    Deprecated: Use extract_metadata_from_artifact_json(artifact_json, "build_id", fallback="rok-storage") instead.
-    This is a compatibility wrapper.
+    Convenience wrapper around extract_metadata_from_artifact_json for build_id extraction.
+
+    Args:
+        artifact_json: Artifact metadata from distribution client
+
+    Returns:
+        Build ID string, or "rok-storage" as default if not found
     """
     return extract_metadata_from_artifact_json(artifact_json, "build_id", fallback="rok-storage") or "rok-storage"
 
 
-def extract_build_id_from_artifacts(pulled_artifacts) -> str:
+def extract_build_id_from_artifacts(pulled_artifacts: "PulledArtifacts") -> str:
     """
     Extract build_id from the first available artifact's labels.
 
-    Deprecated: Use extract_metadata_from_artifacts(pulled_artifacts, "build_id", fallback="rok-storage") instead.
-    This is a compatibility wrapper.
+    Convenience wrapper around extract_metadata_from_artifacts for build_id extraction.
+
+    Args:
+        pulled_artifacts: PulledArtifacts model containing downloaded artifacts
+
+    Returns:
+        Build ID string, or "rok-storage" as default if not found
     """
     return extract_metadata_from_artifacts(pulled_artifacts, "build_id", fallback="rok-storage") or "rok-storage"
 
 
-def determine_build_id(args, artifact_json=None, pulled_artifacts=None) -> str:
+def determine_build_id(
+    args: Any,
+    artifact_json: Optional[Union[Dict[str, Any], ArtifactJsonResponse]] = None,
+    pulled_artifacts: Optional["PulledArtifacts"] = None,
+) -> str:
     """
     Determine build ID from command line arguments, artifact metadata, or pulled artifacts.
 
@@ -397,8 +418,8 @@ __all__ = [
     "validate_build_id",
     "extract_metadata_from_artifact_json",
     "extract_metadata_from_artifacts",
-    "extract_build_id_from_artifact_json",  # Deprecated wrapper
-    "extract_build_id_from_artifacts",  # Deprecated wrapper
+    "extract_build_id_from_artifact_json",
+    "extract_build_id_from_artifacts",
     "determine_build_id",
     "validate_file_path",
     "validate_repository_setup",

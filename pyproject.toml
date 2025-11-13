@@ -21,28 +21,39 @@ classifiers = [
     "License :: OSI Approved :: Apache Software License",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.8",
-    "Programming Language :: Python :: 3.9",
-    "Programming Language :: Python :: 3.10",
-    "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Topic :: Software Development :: Libraries :: Python Modules",
     "Topic :: System :: Archiving :: Packaging",
 ]
-requires-python = ">=3.8"
+requires-python = ">=3.12"
 dependencies = [
-    "requests>=2.25.0",
-    "tomli>=2.0.0; python_version < '3.11'",
+    "httpx>=0.24.0",
+    "pydantic>=2.0.0",
+    "click>=8.0.0",
 ]
 
 [project.optional-dependencies]
 dev = [
+    # Testing
     "pytest>=6.0",
     "pytest-cov>=2.0",
-    "black>=21.0",
+    "pytest-mock>=3.6",
+    "respx>=0.20.0",
+    "diff-cover>=7.0",
+    # Code formatting and linting
+    "black>=25.0",
     "flake8>=3.8",
     "mypy>=0.800",
     "pylint>=2.8",
+    # Pre-commit hooks
+    "pre-commit>=3.0.0",
+    # Build tools
+    "setuptools>=45",
+    "wheel",
+    "setuptools-scm[toml]>=6.2",
+    # Documentation
+    "sphinx>=4.0",
+    "sphinx-rtd-theme>=1.0",
 ]
 
 [project.scripts]
@@ -65,7 +76,7 @@ write_to = "pulp_tool/_version.py"
 
 [tool.black]
 line-length = 120
-target-version = ['py38']
+target-version = ['py312']
 include = '\.pyi?$'
 extend-exclude = '''
 /(
@@ -99,7 +110,7 @@ min-public-methods = 1
 max-public-methods = 20
 
 [tool.mypy]
-python_version = "3.8"
+python_version = "3.12"
 warn_return_any = false
 warn_unused_configs = true
 disallow_untyped_defs = false

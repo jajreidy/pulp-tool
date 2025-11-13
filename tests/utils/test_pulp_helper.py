@@ -66,8 +66,9 @@ class TestPulpHelperRepositorySetup:
             artifacts_prn=mock_repositories.get("artifacts_prn", ""),
         )
 
-        with patch.object(helper, "_setup_repositories_impl", return_value=mock_repositories), patch(
-            "pulp_tool.utils.validate_repository_setup", return_value=(True, [])
+        with (
+            patch.object(helper, "_setup_repositories_impl", return_value=mock_repositories),
+            patch("pulp_tool.utils.validate_repository_setup", return_value=(True, [])),
         ):
 
             result = helper.setup_repositories("test-build-123")
@@ -78,8 +79,9 @@ class TestPulpHelperRepositorySetup:
         """Test setup_repositories method with validation error."""
         helper = PulpHelper(mock_pulp_client)
 
-        with patch.object(helper, "_setup_repositories_impl", return_value={}), patch(
-            "pulp_tool.utils.validate_repository_setup", return_value=(False, ["Missing repo"])
+        with (
+            patch.object(helper, "_setup_repositories_impl", return_value={}),
+            patch("pulp_tool.utils.validate_repository_setup", return_value=(False, ["Missing repo"])),
         ):
 
             with pytest.raises(RuntimeError, match="Repository setup validation failed"):
@@ -101,8 +103,9 @@ class TestPulpHelperRepositorySetup:
             artifacts_prn=mock_repositories.get("artifacts_prn", ""),
         )
 
-        with patch.object(helper, "_setup_repositories_impl", return_value=mock_repositories), patch(
-            "pulp_tool.utils.validate_repository_setup", return_value=(True, [])
+        with (
+            patch.object(helper, "_setup_repositories_impl", return_value=mock_repositories),
+            patch("pulp_tool.utils.validate_repository_setup", return_value=(True, [])),
         ):
 
             result = helper.setup_repositories("test/build:123")
@@ -462,10 +465,13 @@ class TestPulpHelperDistributionOperations:
 
         mock_pulp_client.get_domain = Mock(return_value="test-domain")
 
-        with patch(
-            "pulp_tool.utils.pulp_helper.get_pulp_content_base_url",
-            return_value="https://pulp.example.com/pulp-content",
-        ), patch.object(helper, "_get_single_distribution_url") as mock_get_url:
+        with (
+            patch(
+                "pulp_tool.utils.pulp_helper.get_pulp_content_base_url",
+                return_value="https://pulp.example.com/pulp-content",
+            ),
+            patch.object(helper, "_get_single_distribution_url") as mock_get_url,
+        ):
             mock_get_url.return_value = "https://pulp.example.com/pulp-content/test-domain/test-build/rpms/"
 
             result = helper._get_distribution_urls_impl("test-build")
@@ -481,12 +487,12 @@ class TestPulpHelperRepositoryImplementation:
         """Test PulpHelper _create_or_get_repository_impl with new repository."""
         helper = PulpHelper(mock_pulp_client)
 
-        with patch.object(helper, "get_repository_methods") as mock_get_methods, patch.object(
-            helper, "_get_existing_repository", return_value=None
-        ), patch.object(helper, "_create_new_repository", return_value=("test-prn", "test-href")), patch.object(
-            helper, "_create_distribution_task", return_value="task-123"
-        ), patch.object(
-            helper, "_wait_for_distribution_task"
+        with (
+            patch.object(helper, "get_repository_methods") as mock_get_methods,
+            patch.object(helper, "_get_existing_repository", return_value=None),
+            patch.object(helper, "_create_new_repository", return_value=("test-prn", "test-href")),
+            patch.object(helper, "_create_distribution_task", return_value="task-123"),
+            patch.object(helper, "_wait_for_distribution_task"),
         ):
 
             mock_get_methods.return_value = {}
@@ -500,10 +506,11 @@ class TestPulpHelperRepositoryImplementation:
         """Test PulpHelper _create_or_get_repository_impl with existing repository."""
         helper = PulpHelper(mock_pulp_client)
 
-        with patch.object(helper, "get_repository_methods") as mock_get_methods, patch.object(
-            helper, "_get_existing_repository", return_value=("test-prn", "test-href")
-        ), patch.object(helper, "_create_distribution_task", return_value="task-123"), patch.object(
-            helper, "_wait_for_distribution_task"
+        with (
+            patch.object(helper, "get_repository_methods") as mock_get_methods,
+            patch.object(helper, "_get_existing_repository", return_value=("test-prn", "test-href")),
+            patch.object(helper, "_create_distribution_task", return_value="task-123"),
+            patch.object(helper, "_wait_for_distribution_task"),
         ):
 
             mock_get_methods.return_value = {}
@@ -517,9 +524,11 @@ class TestPulpHelperRepositoryImplementation:
         """Test PulpHelper _create_or_get_repository_impl with no distribution task."""
         helper = PulpHelper(mock_pulp_client)
 
-        with patch.object(helper, "get_repository_methods") as mock_get_methods, patch.object(
-            helper, "_get_existing_repository", return_value=("test-prn", "test-href")
-        ), patch.object(helper, "_create_distribution_task", return_value=None):
+        with (
+            patch.object(helper, "get_repository_methods") as mock_get_methods,
+            patch.object(helper, "_get_existing_repository", return_value=("test-prn", "test-href")),
+            patch.object(helper, "_create_distribution_task", return_value=None),
+        ):
 
             mock_get_methods.return_value = {}
 

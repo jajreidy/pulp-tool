@@ -7,7 +7,7 @@ from unittest.mock import Mock, patch
 from click.testing import CliRunner
 import httpx
 
-from pulp_tool.cli import cli, main
+from pulp_tool.cli import cli, main, cert_auth_options
 
 
 class TestCLIEntryPoint:
@@ -963,3 +963,40 @@ class TestGetRepoMdCommand:
             # Partial success should exit with code 2
             assert result.exit_code == 2
             assert "1 succeeded, 1 failed" in result.output
+
+
+class TestCertAuthOptions:
+    """Test cert_auth_options decorator."""
+
+    def test_cert_auth_options_decorator(self, tmp_path):
+        """Test that cert_auth_options decorator adds cert_path and key_path options."""
+        import click
+
+        # Create temporary cert and key files
+        cert_file = tmp_path / "cert.pem"
+        key_file = tmp_path / "key.pem"
+        cert_file.write_text("cert content")
+        key_file.write_text("key content")
+
+        # Create a test command function
+        @click.command()
+        @cert_auth_options()
+        def test_command(cert_path, key_path):
+            """Test command with cert auth options."""
+            click.echo(f"cert_path={cert_path}, key_path={key_path}")
+
+        # Test that the decorator added the options
+        runner = CliRunner()
+        result = runner.invoke(
+            test_command,
+            [
+                "--cert_path",
+                str(cert_file),
+                "--key_path",
+                str(key_file),
+            ],
+        )
+
+        assert result.exit_code == 0
+        assert f"cert_path={cert_file}" in result.output
+        assert f"key_path={key_file}" in result.output

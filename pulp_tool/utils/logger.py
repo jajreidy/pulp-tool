@@ -6,6 +6,7 @@ to ensure consistent and readable logging across the package.
 """
 
 import logging
+from typing import Optional
 
 # ============================================================================
 # Logging Configuration Constants
@@ -27,7 +28,9 @@ class WrappingFormatter(logging.Formatter):
     long messages by wrapping them at a specified width.
     """
 
-    def __init__(self, fmt=None, datefmt=None, width=DEFAULT_LOG_WIDTH):
+    def __init__(
+        self, fmt: Optional[str] = None, datefmt: Optional[str] = None, width: int = DEFAULT_LOG_WIDTH
+    ) -> None:
         """
         Initialize the wrapping formatter.
 
@@ -39,7 +42,7 @@ class WrappingFormatter(logging.Formatter):
         super().__init__(fmt, datefmt)
         self.width = width
 
-    def format(self, record):
+    def format(self, record: logging.LogRecord) -> str:
         """
         Format the log record with line wrapping.
 

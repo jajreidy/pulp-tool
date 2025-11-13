@@ -10,12 +10,16 @@ import logging
 import os
 import traceback
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple, TYPE_CHECKING
 
 import httpx
 
 from ..models.repository import RepositoryRefs
 from ..models.results import PulpResultsModel
+from ..models.context import UploadContext
+
+if TYPE_CHECKING:
+    from ..api.pulp_client import PulpClient
 from .validation import (
     strip_namespace_from_build_id,
     sanitize_build_id_for_repository,
@@ -40,7 +44,9 @@ class PulpHelper:
     delegating API calls to the PulpClient instance.
     """
 
-    def __init__(self, pulp_client, cert_config_path: Optional[str] = None, parent_package: Optional[str] = None):
+    def __init__(
+        self, pulp_client: "PulpClient", cert_config_path: Optional[str] = None, parent_package: Optional[str] = None
+    ) -> None:
         """
         Initialize the helper with a PulpClient instance.
 
@@ -247,7 +253,7 @@ class PulpHelper:
 
         return distribution_urls
 
-    def _parse_repository_response(self, response, repo_type: str, operation: str) -> Dict[str, Any]:
+    def _parse_repository_response(self, response: httpx.Response, repo_type: str, operation: str) -> Dict[str, Any]:
         """Parse repository response JSON with error handling."""
         try:
             return response.json()
@@ -542,8 +548,8 @@ class PulpHelper:
 
     def process_architecture_uploads(
         self,
-        client,
-        args,
+        client: "PulpClient",
+        args: UploadContext,
         repositories: RepositoryRefs,
         *,
         date_str: str,
@@ -627,7 +633,7 @@ class PulpHelper:
             logging.debug("Processed architectures: %s", ", ".join(processed_archs.keys()))
         return processed_archs
 
-    def process_uploads(self, client, args, repositories: RepositoryRefs) -> Optional[str]:
+    def process_uploads(self, client: "PulpClient", args: UploadContext, repositories: RepositoryRefs) -> Optional[str]:
         """
         Process all upload operations.
 

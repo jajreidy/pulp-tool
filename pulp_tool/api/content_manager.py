@@ -19,7 +19,9 @@ from ..utils import validate_file_path
 class ContentManagerMixin:
     """Mixin that provides content upload and creation operations for Pulp."""
 
-    def upload_content(self, file_path: str, labels: Dict[str, str], *, file_type: str, arch: str = None) -> str:
+    def upload_content(
+        self, file_path: str, labels: Dict[str, str], *, file_type: str, arch: Optional[str] = None
+    ) -> str:
         """
         Generic file upload function with validation and error handling.
 

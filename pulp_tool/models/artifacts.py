@@ -24,7 +24,7 @@ class DownloadTask(KonfluxBaseModel):
     artifact_type: str
 
     def to_tuple(self) -> tuple:
-        """Convert to tuple format for backward compatibility."""
+        """Convert to tuple format (artifact_name, file_url, arch, artifact_type)."""
         return (self.artifact_name, self.file_url, self.arch, self.artifact_type)
 
 

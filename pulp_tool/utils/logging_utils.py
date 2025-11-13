@@ -6,10 +6,10 @@ code duplication and ensure consistent log formatting.
 """
 
 import logging
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 
-def log_operation_start(operation: str, **details) -> None:
+def log_operation_start(operation: str, **details: Any) -> None:
     """
     Log the start of an operation with standardized format.
 
@@ -24,7 +24,7 @@ def log_operation_start(operation: str, **details) -> None:
         logging.info("Starting %s", operation)
 
 
-def log_operation_complete(operation: str, **details) -> None:
+def log_operation_complete(operation: str, **details: Any) -> None:
     """
     Log the completion of an operation with standardized format.
 

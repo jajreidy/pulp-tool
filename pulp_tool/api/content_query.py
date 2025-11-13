@@ -9,7 +9,7 @@ import json
 import logging
 import traceback
 from functools import lru_cache
-from typing import Any, Callable, Dict, List, Protocol, runtime_checkable
+from typing import Any, Callable, Dict, List, Optional, Protocol, runtime_checkable
 
 # Third-party imports
 import httpx
@@ -122,7 +122,7 @@ class ContentQueryMixin(Protocol):
         # Use async_get for async HTTP request
         return await self.async_get(url, params=params)
 
-    def gather_content_data(self, build_id: str, extra_artifacts: List[Dict[str, str]] = None) -> ContentData:
+    def gather_content_data(self, build_id: str, extra_artifacts: Optional[List[Dict[str, str]]] = None) -> ContentData:
         """
         Gather content data and artifacts for a build ID.
 

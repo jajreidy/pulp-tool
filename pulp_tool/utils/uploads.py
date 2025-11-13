@@ -9,7 +9,7 @@ import glob
 import logging
 import os
 import traceback
-from typing import Dict, List, Tuple
+from typing import TYPE_CHECKING, Any, Dict, List, Tuple
 
 import httpx
 
@@ -17,6 +17,9 @@ from ..models.results import RpmUploadResult, PulpResultsModel
 from ..models.context import UploadContext
 from .validation import validate_file_path
 from .rpm_operations import upload_rpms_parallel
+
+if TYPE_CHECKING:
+    from ..api.pulp_client import PulpClient
 
 # Constants used in this module
 RPM_FILE_PATTERN = "*.rpm"
@@ -49,7 +52,13 @@ def create_labels(build_id: str, arch: str, namespace: str, parent_package: str,
 
 
 def upload_log(
-    client, file_repository_prn: str, log_path: str, *, build_id: str, labels: Dict[str, str], arch: str
+    client: "PulpClient",
+    file_repository_prn: str,
+    log_path: str,
+    *,
+    build_id: str,
+    labels: Dict[str, str],
+    arch: str,
 ) -> None:
     """
     Upload a log file to the specified file repository.
@@ -74,7 +83,13 @@ def upload_log(
 
 
 def _upload_logs_sequential(
-    client, logs: List[str], *, file_repository_prn: str, build_id: str, labels: Dict[str, str], arch: str
+    client: "PulpClient",
+    logs: List[str],
+    *,
+    file_repository_prn: str,
+    build_id: str,
+    labels: Dict[str, str],
+    arch: str,
 ) -> None:
     """
     Upload logs sequentially.
@@ -97,7 +112,7 @@ def _upload_logs_sequential(
 
 
 def upload_artifacts_to_repository(
-    client, artifacts: Dict, repository_prn: str, file_type: str
+    client: "PulpClient", artifacts: Dict[str, Any], repository_prn: str, file_type: str
 ) -> Tuple[int, List[str]]:
     """
     Upload artifacts to a specific repository.
@@ -159,7 +174,7 @@ def upload_artifacts_to_repository(
 def upload_rpms_logs(
     rpm_path: str,
     context: UploadContext,
-    client,
+    client: "PulpClient",
     arch: str,
     *,
     rpm_repository_href: str,

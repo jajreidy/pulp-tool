@@ -107,7 +107,7 @@ EXIT_USER_INTERRUPT = 130  # User pressed Ctrl+C
 # ============================================================================
 
 # Red Hat SSO token URL for OAuth2 authentication
-RED_HAT_SSO_TOKEN_URL = "https://sso.redhat.com/auth/realms/redhat-external/protocol/openid-connect/token"
+RED_HAT_SSO_TOKEN_URL = "https://sso.redhat.com/auth/realms/redhat-external/protocol/openid-connect/token"  # nosec B105
 
 # ============================================================================
 # Default Paths

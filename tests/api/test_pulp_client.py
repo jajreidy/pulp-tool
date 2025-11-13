@@ -85,9 +85,11 @@ class TestPulpClient:
 
     def test_create_from_config_file_default_path(self):
         """Test create_from_config_file with default path."""
-        with patch("pulp_tool.api.pulp_client.Path.expanduser") as mock_expanduser, patch(
-            "builtins.open", mock_open(read_data='{"cli": {"base_url": "https://test.com"}}')
-        ), patch("pulp_tool.api.pulp_client.tomllib.load") as mock_load:
+        with (
+            patch("pulp_tool.api.pulp_client.Path.expanduser") as mock_expanduser,
+            patch("builtins.open", mock_open(read_data='{"cli": {"base_url": "https://test.com"}}')),
+            patch("pulp_tool.api.pulp_client.tomllib.load") as mock_load,
+        ):
 
             mock_expanduser.return_value = Path("/home/user/.config/pulp/cli.toml")
             mock_load.return_value = {"cli": {"base_url": "https://test.com"}}
@@ -119,6 +121,195 @@ class TestPulpClient:
         cert_tuple = mock_pulp_client.cert
 
         assert cert_tuple == ("/path/to/cert.pem", "/path/to/key.pem")
+
+    def test_cert_property_with_relative_paths(self, mock_config, tmp_path):
+        """Test cert property with relative paths resolved from config_path."""
+        # Create a config file and cert/key files relative to it
+        config_file = tmp_path / "config.toml"
+        config_dir = config_file.parent
+
+        # Create cert and key files in the config directory
+        cert_file = config_dir / "cert.pem"
+        key_file = config_dir / "key.pem"
+        cert_file.write_text("cert content")
+        key_file.write_text("key content")
+
+        # Update config with relative paths
+        config_with_relative = mock_config.copy()
+        config_with_relative["cert"] = "cert.pem"
+        config_with_relative["key"] = "key.pem"
+
+        # Create client with config_path, mocking session creation to avoid SSL errors
+        with patch("pulp_tool.api.pulp_client.create_session_with_retry") as mock_create_session:
+            mock_session = Mock()
+            mock_create_session.return_value = mock_session
+
+            client = PulpClient(config_with_relative, config_path=config_file)
+
+            # Cert property should resolve relative paths
+            cert_tuple = client.cert
+
+            assert cert_tuple == (str(cert_file), str(key_file))
+
+    def test_cert_property_with_absolute_paths(self, mock_config, tmp_path):
+        """Test cert property with absolute paths (should not resolve relative to config)."""
+        # Create cert and key files in a different location
+        other_dir = tmp_path / "other"
+        other_dir.mkdir()
+        cert_file = other_dir / "cert.pem"
+        key_file = other_dir / "key.pem"
+        cert_file.write_text("cert content")
+        key_file.write_text("key content")
+
+        config_file = tmp_path / "config.toml"
+
+        # Update config with absolute paths
+        config_with_absolute = mock_config.copy()
+        config_with_absolute["cert"] = str(cert_file)
+        config_with_absolute["key"] = str(key_file)
+
+        # Create client with config_path, mocking session creation to avoid SSL errors
+        with patch("pulp_tool.api.pulp_client.create_session_with_retry") as mock_create_session:
+            mock_session = Mock()
+            mock_create_session.return_value = mock_session
+
+            client = PulpClient(config_with_absolute, config_path=config_file)
+
+            # Cert property should return absolute paths as-is
+            cert_tuple = client.cert
+
+            assert cert_tuple == (str(cert_file), str(key_file))
+
+    def test_cert_property_with_existing_relative_paths(self, mock_config, tmp_path):
+        """Test cert property when relative paths exist in current directory."""
+        # Create cert and key files in current directory (not relative to config)
+        import os
+
+        original_cwd = os.getcwd()
+        try:
+            os.chdir(str(tmp_path))
+            cert_file = tmp_path / "cert.pem"
+            key_file = tmp_path / "key.pem"
+            cert_file.write_text("cert content")
+            key_file.write_text("key content")
+
+            config_file = tmp_path / "config.toml"
+
+            # Update config with relative paths
+            config_with_relative = mock_config.copy()
+            config_with_relative["cert"] = "cert.pem"
+            config_with_relative["key"] = "key.pem"
+
+            # Create client with config_path, mocking session creation to avoid SSL errors
+            with patch("pulp_tool.api.pulp_client.create_session_with_retry") as mock_create_session:
+                mock_session = Mock()
+                mock_create_session.return_value = mock_session
+
+                client = PulpClient(config_with_relative, config_path=config_file)
+
+                # Cert property should return paths as-is since they exist in current directory
+                cert_tuple = client.cert
+
+                assert cert_tuple == ("cert.pem", "key.pem")
+        finally:
+            os.chdir(original_cwd)
+
+    def test_cert_property_without_config_path(self, mock_config):
+        """Test cert property when config_path is None (should not resolve relative paths)."""
+        # Update config with relative paths
+        config_with_relative = mock_config.copy()
+        config_with_relative["cert"] = "cert.pem"
+        config_with_relative["key"] = "key.pem"
+
+        # Create client without config_path, mocking session creation to avoid SSL errors
+        with patch("pulp_tool.api.pulp_client.create_session_with_retry") as mock_create_session:
+            mock_session = Mock()
+            mock_create_session.return_value = mock_session
+
+            client = PulpClient(config_with_relative, config_path=None)
+
+            # Cert property should return paths as-is
+            cert_tuple = client.cert
+
+            assert cert_tuple == ("cert.pem", "key.pem")
+
+    def test_cert_property_with_config_path_no_parent(self, mock_config):
+        """Test cert property when config_path has no parent (root path)."""
+        # Update config with relative paths
+        config_with_relative = mock_config.copy()
+        config_with_relative["cert"] = "cert.pem"
+        config_with_relative["key"] = "key.pem"
+
+        # Create client with config_path that has no parent, mocking session creation
+        with patch("pulp_tool.api.pulp_client.create_session_with_retry") as mock_create_session:
+            mock_session = Mock()
+            mock_create_session.return_value = mock_session
+
+            # Mock config_path to have no parent (like root path "/")
+            from pathlib import Path
+
+            mock_config_path = Mock(spec=Path)
+            mock_config_path.parent = None
+
+            client = PulpClient(config_with_relative, config_path=mock_config_path)
+
+            # Cert property should return paths as-is when parent is None
+            cert_tuple = client.cert
+
+            assert cert_tuple == ("cert.pem", "key.pem")
+
+    def test_cert_property_relative_path_not_found(self, mock_config, tmp_path):
+        """Test cert property when relative paths don't exist in config dir or current dir."""
+        # Create a config file but don't create cert/key files
+        config_file = tmp_path / "config.toml"
+
+        # Update config with relative paths that don't exist anywhere
+        config_with_relative = mock_config.copy()
+        config_with_relative["cert"] = "nonexistent_cert.pem"
+        config_with_relative["key"] = "nonexistent_key.pem"
+
+        # Create client with config_path, mocking session creation to avoid SSL errors
+        with patch("pulp_tool.api.pulp_client.create_session_with_retry") as mock_create_session:
+            mock_session = Mock()
+            mock_create_session.return_value = mock_session
+
+            client = PulpClient(config_with_relative, config_path=config_file)
+
+            # Cert property should return original paths when files don't exist
+            cert_tuple = client.cert
+
+            assert cert_tuple == ("nonexistent_cert.pem", "nonexistent_key.pem")
+
+    def test_cert_property_mixed_absolute_and_relative(self, mock_config, tmp_path):
+        """Test cert property with one absolute path and one relative path."""
+        # Create cert file in a different location (absolute)
+        other_dir = tmp_path / "other"
+        other_dir.mkdir()
+        cert_file = other_dir / "cert.pem"
+        cert_file.write_text("cert content")
+
+        # Create key file relative to config
+        config_file = tmp_path / "config.toml"
+        config_dir = config_file.parent
+        key_file = config_dir / "key.pem"
+        key_file.write_text("key content")
+
+        # Update config with mixed paths
+        config_mixed = mock_config.copy()
+        config_mixed["cert"] = str(cert_file)  # Absolute
+        config_mixed["key"] = "key.pem"  # Relative
+
+        # Create client with config_path, mocking session creation to avoid SSL errors
+        with patch("pulp_tool.api.pulp_client.create_session_with_retry") as mock_create_session:
+            mock_session = Mock()
+            mock_create_session.return_value = mock_session
+
+            client = PulpClient(config_mixed, config_path=config_file)
+
+            # Cert property should return absolute cert as-is, resolve relative key
+            cert_tuple = client.cert
+
+            assert cert_tuple == (str(cert_file), str(key_file))
 
     def test_request_params_with_cert(self, mock_pulp_client):
         """Test request_params property with certificate.
@@ -597,9 +788,9 @@ class TestPulpClient:
         assert result.status_code == 200
         assert result.json()["pulp_href"] == "/pulp/api/v3/distributions/rpm/rpm/12345/"
 
-    def test_tomllib_import_fallback(self):
-        """Test tomllib import fallback for Python < 3.11."""
-        # This tests the import fallback logic in lines 33-35
+    def test_tomllib_import(self):
+        """Test tomllib import (built-in in Python 3.12+)."""
+        # tomllib is built-in in Python 3.11+, so no fallback needed for 3.12+
         # The actual import happens at module level, so this is mainly for coverage
         import pulp_tool.api.pulp_client
 

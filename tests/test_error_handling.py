@@ -116,9 +116,10 @@ class TestPulpClientErrorHandling:
 
         labels = {"build_id": "test-build"}
 
-        with patch("pulp_tool.api.content_manager.validate_file_path"), patch(
-            "pulp_tool.api.content_manager.logging"
-        ) as mock_logging:
+        with (
+            patch("pulp_tool.api.content_manager.validate_file_path"),
+            patch("pulp_tool.api.content_manager.logging") as mock_logging,
+        ):
 
             with pytest.raises(HTTPError):
                 client.upload_content(temp_rpm_file, labels, file_type="RPM", arch="x86_64")
@@ -225,8 +226,9 @@ class TestPulpHelperErrorHandling:
         """Test setup_repositories method with validation failure."""
         helper = PulpHelper(mock_pulp_client)
 
-        with patch.object(helper, "_setup_repositories_impl", return_value={}), patch(
-            "pulp_tool.utils.validation.validate_repository_setup", return_value=(False, ["Missing repo"])
+        with (
+            patch.object(helper, "_setup_repositories_impl", return_value={}),
+            patch("pulp_tool.utils.validation.validate_repository_setup", return_value=(False, ["Missing repo"])),
         ):
 
             with pytest.raises(RuntimeError, match="Repository setup validation failed"):
@@ -513,9 +515,10 @@ class TestMemoryErrorHandling:
         try:
             labels = {"build_id": "test-build"}
 
-            with patch("pulp_tool.api.content_manager.validate_file_path"), patch(
-                "pulp_tool.api.content_manager.logging"
-            ) as mock_logging:
+            with (
+                patch("pulp_tool.api.content_manager.validate_file_path"),
+                patch("pulp_tool.api.content_manager.logging") as mock_logging,
+            ):
 
                 # Simulate memory error during upload
                 with pytest.raises(MemoryError):

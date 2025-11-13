@@ -21,7 +21,9 @@ import json
 import logging
 import os
 import traceback
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
+
+from .models.pulp_api import TaskResponse
 
 # Local imports
 from .api import PulpClient
@@ -142,7 +144,7 @@ def _upload_and_get_results_url(
         raise
 
 
-def _extract_results_url(client: PulpClient, context: UploadContext, task_response) -> str:
+def _extract_results_url(client: PulpClient, context: UploadContext, task_response: TaskResponse) -> str:
     """Extract results JSON URL from task response.
 
     Args:
@@ -217,7 +219,7 @@ def _gather_and_validate_content(
     return content_data
 
 
-def _build_artifact_map(client: PulpClient, content_results: list) -> Dict[str, FileInfoModel]:
+def _build_artifact_map(client: PulpClient, content_results: List[Dict[str, Any]]) -> Dict[str, FileInfoModel]:
     """
     Build map of artifact hrefs to file information.
 
@@ -381,7 +383,7 @@ def _find_artifact_content(client: PulpClient, task_response) -> Optional[str]:
     return content_list_location["file"]
 
 
-def _parse_oci_reference(oci_reference: str) -> tuple:
+def _parse_oci_reference(oci_reference: str) -> Tuple[str, str]:
     """
     Parse OCI reference into URL and digest parts.
 
@@ -421,7 +423,7 @@ def _write_konflux_results(image_url: str, digest: str, url_path: str, digest_pa
     logging.debug("Image digest: %s", digest)
 
 
-def _handle_artifact_results(client: PulpClient, context: UploadContext, task_response) -> None:
+def _handle_artifact_results(client: PulpClient, context: UploadContext, task_response: TaskResponse) -> None:
     """
     Handle artifact results for Konflux integration.
 

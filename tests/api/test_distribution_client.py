@@ -52,9 +52,11 @@ class TestDistributionClient:
             return_value=httpx.Response(200, content=b"file content", headers={"content-length": "12"})
         )
 
-        with patch("os.makedirs"), patch(
-            "builtins.open", mock_open(read_data=b"file content")
-        ) as mock_open_func, patch("pulp_tool.api.distribution_client.logging") as mock_logging:
+        with (
+            patch("os.makedirs"),
+            patch("builtins.open", mock_open(read_data=b"file content")) as mock_open_func,
+            patch("pulp_tool.api.distribution_client.logging") as mock_logging,
+        ):
 
             client = DistributionClient("cert.pem", "key.pem")
             result = client.pull_data("file.rpm", "https://example.com/file.rpm", "x86_64")
