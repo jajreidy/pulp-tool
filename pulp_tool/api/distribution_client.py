@@ -51,32 +51,40 @@ class DistributionClient:
         logging.info("Pulling files %s", file_url)
         return self.session.get(file_url)
 
-    def pull_data(self, filename: str, file_url: str, arch: str) -> str:
+    def pull_data(self, filename: str, file_url: str, arch: str, artifact_type: str = "rpm") -> str:
         """Download and save artifact data to local filesystem.
 
         Args:
             filename: Name of the file to save
             file_url: URL to download the file from
             arch: Architecture for organizing the file path
+            artifact_type: Type of artifact (rpm, log, sbom) - determines save location
 
         Returns:
             Full path to the saved file
         """
         logging.info("Pulling file %s", file_url)
-        file_full_filename = f"rpms/{arch}/{filename.split('/')[-1]}"
-        os.makedirs(os.path.dirname(file_full_filename), exist_ok=True)
+        file_basename = filename.split("/")[-1]
+
+        # Determine file path based on artifact type
+        if artifact_type == "log":
+            # Log files go to logs/<arch>/
+            file_full_filename = f"logs/{arch}/{file_basename}"
+            os.makedirs(os.path.dirname(file_full_filename), exist_ok=True)
+        else:
+            # RPM and SBOM files go to current folder
+            file_full_filename = file_basename
 
         with self.session.stream("GET", file_url) as response:
             response.raise_for_status()
 
             # Optimize chunk size based on content length
             content_length = response.headers.get("content-length")
+            chunk_size = 8192  # Default chunk size
             if content_length:
                 file_size = int(content_length)
                 # Use larger chunks for bigger files, but cap at 64KB
                 chunk_size = min(max(8192, file_size // 100), 65536)
-            else:
-                chunk_size = 8192
 
             with open(file_full_filename, "wb") as f:
                 for chunk in response.iter_bytes(chunk_size=chunk_size):
@@ -92,13 +100,13 @@ class DistributionClient:
         Returns:
             Tuple of (artifact_name, file_path)
         """
-        artifact_name, file_url, arch, _ = download_info
+        artifact_name, file_url, arch, artifact_type = download_info
         try:
-            file_path = self.pull_data(artifact_name, file_url, arch)
+            file_path = self.pull_data(artifact_name, file_url, arch, artifact_type)
             return artifact_name, file_path
         except httpx.HTTPError as e:
             logging.error("Failed to download %s: %s", artifact_name, e)
-            logging.error("Traceback: %s", traceback.format_exc())
+            logging.debug("Traceback: %s", traceback.format_exc())
             raise
 
 

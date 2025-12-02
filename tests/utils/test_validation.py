@@ -16,7 +16,12 @@ from pulp_tool.utils import (
     extract_build_id_from_artifact_json,
     extract_build_id_from_artifacts,
 )
-from pulp_tool.models.artifacts import ArtifactJsonResponse, ArtifactMetadata
+from pulp_tool.utils.validation import (
+    _extract_field_from_artifact,
+    extract_metadata_from_artifact_json,
+    strip_namespace_from_build_id,
+)
+from pulp_tool.models.artifacts import ArtifactJsonResponse, ArtifactMetadata, PulledArtifacts
 
 
 class TestFileValidation:
@@ -172,8 +177,6 @@ class TestBuildIDExtraction:
 
     def test_extract_build_id_from_pulled_artifacts_model(self):
         """Test extract_build_id_from_artifacts with PulledArtifacts Pydantic model."""
-        from pulp_tool.models.artifacts import PulledArtifacts
-
         # Create a PulledArtifacts model with some artifacts
         pulled_artifacts = PulledArtifacts()
         pulled_artifacts.add_rpm("test.rpm", "/tmp/test.rpm", {"build_id": "model-build-789", "arch": "x86_64"})
@@ -183,8 +186,6 @@ class TestBuildIDExtraction:
 
     def test_extract_build_id_from_pulled_artifacts_sbom(self):
         """Test extract_build_id_from_artifacts extracting from sbom artifacts."""
-        from pulp_tool.models.artifacts import PulledArtifacts
-
         # Create a PulledArtifacts model with sbom artifacts
         pulled_artifacts = PulledArtifacts()
         pulled_artifacts.add_sbom("test.sbom", "/tmp/test.sbom", {"build_id": "sbom-build-123", "arch": "noarch"})
@@ -194,8 +195,6 @@ class TestBuildIDExtraction:
 
     def test_extract_build_id_from_pulled_artifacts_fallback(self):
         """Test extract_build_id_from_artifacts fallback when no build_id found."""
-        from pulp_tool.models.artifacts import PulledArtifacts
-
         # Create empty PulledArtifacts model
         pulled_artifacts = PulledArtifacts()
 
@@ -208,8 +207,6 @@ class TestAdditionalValidation:
 
     def test_strip_namespace_from_build_id(self):
         """Test strip_namespace_from_build_id function."""
-        from pulp_tool.utils.validation import strip_namespace_from_build_id
-
         # Test with namespace prefix
         result = strip_namespace_from_build_id("namespace/build-123")
         assert result == "build-123"
@@ -223,3 +220,46 @@ class TestAdditionalValidation:
         assert result == ""
 
     # create_labels test temporarily removed
+
+    def test_extract_field_from_artifact(self):
+        """Test _extract_field_from_artifact with both dict and ArtifactMetadata inputs."""
+        # Test with dict input (covers line 202)
+        artifact_dict = {"labels": {"build_id": "test-build-123", "arch": "x86_64"}}
+        result = _extract_field_from_artifact(artifact_dict, "build_id")
+        assert result == "test-build-123"
+
+        # Test with dict input and missing field
+        result = _extract_field_from_artifact(artifact_dict, "missing_field")
+        assert result is None
+
+        # Test with dict input and missing labels
+        artifact_dict_no_labels = {"file": "test.rpm"}
+        result = _extract_field_from_artifact(artifact_dict_no_labels, "build_id")
+        assert result is None
+
+        # Test with ArtifactMetadata input
+        metadata = ArtifactMetadata(labels={"build_id": "test-build-456", "arch": "x86_64"})
+        result = _extract_field_from_artifact(metadata, "build_id")
+        assert result == "test-build-456"
+
+        # Test with ArtifactMetadata and empty labels
+        metadata_no_labels = ArtifactMetadata(labels={})
+        result = _extract_field_from_artifact(metadata_no_labels, "build_id")
+        assert result is None
+
+    def test_extract_metadata_from_artifact_json_with_labels_none(self):
+        """Test extract_metadata_from_artifact_json with dict metadata having labels=None (covers line 169)."""
+        # Test with dict metadata that has labels=None
+        artifact_json = {"artifacts": {"test.rpm": {"labels": None, "url": "https://example.com/test.rpm"}}}
+        result = extract_metadata_from_artifact_json(artifact_json, "build_id", fallback="fallback-value")
+        # Should return fallback since labels is None (converted to empty dict)
+        assert result == "fallback-value"
+
+    def test_extract_metadata_from_artifact_json_with_non_dict_metadata(self):
+        """Test extract_metadata_from_artifact_json with non-dict metadata (covers line 172)."""
+        # Test with metadata that is not a dict (ArtifactMetadata object)
+        metadata = ArtifactMetadata(labels={"build_id": "test-build-789", "arch": "x86_64"})
+        artifact_json = {"artifacts": {"test.rpm": metadata}}
+        result = extract_metadata_from_artifact_json(artifact_json, "build_id", fallback="fallback-value")
+        # Should extract build_id from the ArtifactMetadata object
+        assert result == "test-build-789"

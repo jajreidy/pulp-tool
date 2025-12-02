@@ -19,7 +19,6 @@ class UploadContext(KonfluxBaseModel):
         rpm_path: Path to RPM files
         sbom_path: Path to SBOM file
         config: Optional path to config file
-        cert_config: Optional certificate configuration path
         debug: Verbosity level (0=WARNING, 1=INFO, 2=DEBUG, 3+=DEBUG with HTTP logs)
         artifact_results: Optional artifact results configuration
         sbom_results: Optional path to write SBOM results
@@ -32,7 +31,6 @@ class UploadContext(KonfluxBaseModel):
     rpm_path: str
     sbom_path: str
     config: Optional[str] = None
-    cert_config: Optional[str] = None
     debug: int = 0
     artifact_results: Optional[str] = None
     sbom_results: Optional[str] = None

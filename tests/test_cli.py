@@ -7,7 +7,7 @@ from unittest.mock import Mock, patch
 from click.testing import CliRunner
 import httpx
 
-from pulp_tool.cli import cli, main, cert_auth_options
+from pulp_tool.cli import cli, main
 
 
 class TestCLIEntryPoint:
@@ -44,7 +44,6 @@ class TestCLIHelp:
         assert "--config" in result.output
         assert "--build-id" in result.output
         assert "--namespace" in result.output
-        assert "--key-path" in result.output
         assert "--debug" in result.output
         assert "--max-workers" in result.output
 
@@ -70,7 +69,6 @@ class TestCLIHelp:
         assert "--rpm-path" in result.output
         assert "--sbom-results" in result.output
         assert "--artifact-results" in result.output
-        assert "--cert-config" in result.output
 
     def test_transfer_help(self):
         """Test transfer command help output."""
@@ -434,11 +432,11 @@ class TestTransferCommand:
                 [
                     "--config",
                     str(config_path),
-                    "--key-path",
-                    str(key_path),
                     "transfer",
                     "--artifact-location",
                     "https://example.com/artifact.json",
+                    "--key-path",
+                    str(key_path),
                 ],
             )
 
@@ -978,11 +976,11 @@ class TestGetRepoMdCommand:
                     str(config_path),
                     "--build-id",
                     "test-build",
-                    "--key-path",
-                    str(key_path),
                     "get-repo-md",
                     "--output",
                     str(output_dir),
+                    "--key-path",
+                    str(key_path),
                 ],
             )
 
@@ -1008,11 +1006,11 @@ class TestGetRepoMdCommand:
                     str(config_path),
                     "--build-id",
                     "test-build",
-                    "--key-path",
-                    str(key_path),
                     "get-repo-md",
                     "--output",
                     str(output_dir),
+                    "--key-path",
+                    str(key_path),
                 ],
             )
 
@@ -1129,35 +1127,3 @@ class TestGetRepoMdCommand:
             # Partial success should exit with code 2
             assert result.exit_code == 2
             assert "1 succeeded, 1 failed" in result.output
-
-
-class TestCertAuthOptions:
-    """Test cert_auth_options decorator."""
-
-    def test_cert_auth_options_decorator(self, tmp_path):
-        """Test that cert_auth_options decorator adds key_path option."""
-        import click
-
-        # Create temporary key file
-        key_file = tmp_path / "key.pem"
-        key_file.write_text("key content")
-
-        # Create a test command function
-        @click.command()
-        @cert_auth_options()
-        def test_command(key_path):
-            """Test command with cert auth options."""
-            click.echo(f"key_path={key_path}")
-
-        # Test that the decorator added the option
-        runner = CliRunner()
-        result = runner.invoke(
-            test_command,
-            [
-                "--key_path",
-                str(key_file),
-            ],
-        )
-
-        assert result.exit_code == 0
-        assert f"key_path={key_file}" in result.output

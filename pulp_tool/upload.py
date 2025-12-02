@@ -159,7 +159,7 @@ def _extract_results_url(client: PulpClient, context: UploadContext, task_respon
 
     # Get the distribution URL for artifacts repository
     # Namespace is automatically read from config file via client
-    repository_helper = PulpHelper(client, context.cert_config, parent_package=context.parent_package)
+    repository_helper = PulpHelper(client, parent_package=context.parent_package)
     distribution_urls = repository_helper.get_distribution_urls(context.build_id)
 
     logging.debug("Available distribution URLs: %s", list(distribution_urls.keys()))
@@ -288,7 +288,7 @@ def _add_distributions_to_results(client: PulpClient, context: UploadContext, re
         context: Upload context with configuration
         results_model: Model to add distributions to
     """
-    repository_helper = PulpHelper(client, context.cert_config, parent_package=context.parent_package)
+    repository_helper = PulpHelper(client, parent_package=context.parent_package)
     distribution_urls = repository_helper.get_distribution_urls(context.build_id)
 
     if distribution_urls:

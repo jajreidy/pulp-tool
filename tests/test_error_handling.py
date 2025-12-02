@@ -256,11 +256,12 @@ class TestPulpHelperErrorHandling:
             helper.get_distribution_urls("")
 
     def test_get_distribution_urls_config_error(self, mock_pulp_client):
-        """Test get_distribution_urls method with config error."""
-        helper = PulpHelper(mock_pulp_client, "/non/existent/config.toml")
+        """Test get_distribution_urls method with missing base_url in config."""
+        helper = PulpHelper(mock_pulp_client)
 
-        with patch("pulp_tool.utils.url.get_pulp_content_base_url", side_effect=ValueError("Config error")):
-            with pytest.raises(ValueError):
+        # Remove base_url from config to simulate config error
+        with patch.dict(mock_pulp_client.config, {}, clear=True):
+            with pytest.raises(KeyError):
                 helper.get_distribution_urls("test-build-123")
 
 

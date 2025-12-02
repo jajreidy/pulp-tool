@@ -59,11 +59,11 @@ class TestDistributionClient:
         ):
 
             client = DistributionClient("cert.pem", "key.pem")
-            result = client.pull_data("file.rpm", "https://example.com/file.rpm", "x86_64")
+            result = client.pull_data("file.rpm", "https://example.com/file.rpm", "x86_64", "rpm")
 
-            assert result == "rpms/x86_64/file.rpm"
+            assert result == "file.rpm"
             mock_logging.info.assert_called()
-            mock_open_func.assert_called_once_with("rpms/x86_64/file.rpm", "wb")
+            mock_open_func.assert_called_once_with("file.rpm", "wb")
 
     def test_pull_data_async_success(self):
         """Test successful async data pull."""
@@ -83,3 +83,41 @@ class TestDistributionClient:
         with patch.object(client, "pull_data", side_effect=HTTPError("Network error")):
             with pytest.raises(HTTPError):
                 client.pull_data_async(download_info)
+
+    def test_pull_data_log_file(self, httpx_mock):
+        """Test pull_data method for log files."""
+        httpx_mock.get("https://example.com/test.log").mock(
+            return_value=httpx.Response(200, content=b"log content", headers={"content-length": "12"})
+        )
+
+        with (
+            patch("os.makedirs") as mock_makedirs,
+            patch("builtins.open", mock_open(read_data=b"log content")) as mock_open_func,
+            patch("pulp_tool.api.distribution_client.logging") as mock_logging,
+        ):
+
+            client = DistributionClient("cert.pem", "key.pem")
+            result = client.pull_data("test.log", "https://example.com/test.log", "x86_64", "log")
+
+            assert result == "logs/x86_64/test.log"
+            mock_logging.info.assert_called()
+            mock_makedirs.assert_called_once_with("logs/x86_64", exist_ok=True)
+            mock_open_func.assert_called_once_with("logs/x86_64/test.log", "wb")
+
+    def test_pull_data_sbom_file(self, httpx_mock):
+        """Test pull_data method for SBOM files."""
+        httpx_mock.get("https://example.com/test.sbom").mock(
+            return_value=httpx.Response(200, content=b"sbom content", headers={"content-length": "12"})
+        )
+
+        with (
+            patch("builtins.open", mock_open(read_data=b"sbom content")) as mock_open_func,
+            patch("pulp_tool.api.distribution_client.logging") as mock_logging,
+        ):
+
+            client = DistributionClient("cert.pem", "key.pem")
+            result = client.pull_data("test.sbom", "https://example.com/test.sbom", "noarch", "sbom")
+
+            assert result == "test.sbom"
+            mock_logging.info.assert_called()
+            mock_open_func.assert_called_once_with("test.sbom", "wb")

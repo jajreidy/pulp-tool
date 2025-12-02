@@ -50,10 +50,16 @@ pulp-tool upload \
 #### Download Artifacts
 
 ```bash
+# Using config file for cert/key
 pulp-tool transfer \
   --artifact-location /path/to/artifacts.json \
-  --key-path /path/to/key.pem \
   --config ~/.config/pulp/cli.toml
+
+# Using CLI options for cert/key
+pulp-tool transfer \
+  --artifact-location /path/to/artifacts.json \
+  --cert-path /path/to/cert.pem \
+  --key-path /path/to/key.pem
 ```
 
 #### Download Repository Configuration File
@@ -142,16 +148,27 @@ print(upload_ctx.build_id)  # Type-safe access
 from pulp_tool import DistributionClient
 
 # Initialize with certificate authentication
-# Certificate path comes from config file, key can be provided directly
+# Certificate and key paths are required
 dist_client = DistributionClient(
-    cert_path="/path/to/cert.pem",  # From config file
-    key_path="/path/to/key.pem"
+    cert="/path/to/cert.pem",
+    key="/path/to/key.pem"
 )
 
-# Download artifacts from Pulp distributions
-response = dist_client.pull_artifact("https://pulp.example.com/path/to/artifact.rpm")
-with open("artifact.rpm", "wb") as f:
-    f.write(response.content)
+# Download artifact metadata
+response = dist_client.pull_artifact("https://pulp.example.com/path/to/artifacts.json")
+metadata = response.json()
+
+# Download artifact files
+# Files are saved with the following structure:
+# - RPM files: current folder (e.g., "package.rpm")
+# - SBOM files: current folder (e.g., "artifact.sbom")
+# - Log files: logs/<arch>/ directory (e.g., "logs/x86_64/build.log")
+file_path = dist_client.pull_data(
+    filename="package.rpm",
+    file_url="https://pulp.example.com/path/to/package.rpm",
+    arch="x86_64",
+    artifact_type="rpm"  # "rpm", "log", or "sbom"
+)
 ```
 
 #### Programmatic CLI Usage
@@ -227,7 +244,6 @@ Upload RPM packages, logs, and SBOM files to Pulp repositories.
 
 **Optional Arguments:**
 - `--config`: Path to Pulp CLI config file (default: `~/.config/pulp/cli.toml`)
-- `--cert-config`: Path to certificate config file for base URL construction
 - `--artifact-results`: Comma-separated paths for Konflux artifact results (url_path,digest_path)
 - `--sbom-results`: Path to write SBOM results
 - `-d, --debug`: Increase verbosity (use `-d` for INFO, `-dd` for DEBUG, `-ddd` for DEBUG with HTTP logs)
@@ -262,23 +278,53 @@ Download artifacts from Pulp distributions and optionally re-upload to Pulp repo
 - `--artifact-location`: Path to local artifact metadata JSON file or HTTP URL
 
 **Optional Arguments (conditionally required):**
-- `--key-path`: Path to SSL private key file for authentication (required for remote URLs, certificate path comes from config)
+- `--cert-path`: Path to SSL certificate file for authentication (optional, can come from config)
+- `--key-path`: Path to SSL private key file for authentication (optional, can come from config)
 - `--config`: Path to Pulp CLI config file (if supplied, will transfer to this config domain and use cert/key from config)
 - `--build-id`: Build ID for naming repositories (default: extracted from artifact labels)
+- `--content-types`: Comma-separated list of content types to transfer (rpm, log, sbom). If not specified, all types are transferred.
+- `--archs`: Comma-separated list of architectures to transfer (e.g., x86_64,aarch64,noarch). If not specified, all architectures are transferred.
 - `--max-workers`: Maximum number of concurrent download threads (default: 4)
 - `-d, --debug`: Increase verbosity (use `-d` for INFO, `-dd` for DEBUG, `-ddd` for DEBUG with HTTP logs)
 
+**Note:** For remote URLs (`http://` or `https://`), both `--cert-path` and `--key-path` are required (or must be provided via `--config`).
+
+**File Path Behavior:**
+When downloading artifacts, files are saved with the following structure:
+- **RPM files**: Saved to current folder (e.g., `package.rpm`)
+- **SBOM files**: Saved to current folder (e.g., `artifact.sbom`)
+- **Log files**: Saved to `logs/<arch>/` directory (e.g., `logs/x86_64/build.log`)
+
 **Example:**
 ```bash
+# Download all artifacts (cert/key from config file)
 pulp-tool transfer \
   --artifact-location https://example.com/artifacts.json \
-  --key-path /etc/pki/tls/private/client.key \
   --config ~/.config/pulp/cli.toml \
   --max-workers 4 \
   -dd  # DEBUG level logging
+
+# Download all artifacts (cert/key from CLI options)
+pulp-tool transfer \
+  --artifact-location https://example.com/artifacts.json \
+  --cert-path /etc/pki/tls/certs/client.cert \
+  --key-path /etc/pki/tls/private/client.key \
+  --max-workers 4 \
+  -dd  # DEBUG level logging
+
+# Download only RPMs for specific architectures
+pulp-tool transfer \
+  --artifact-location https://example.com/artifacts.json \
+  --cert-path /etc/pki/tls/certs/client.cert \
+  --key-path /etc/pki/tls/private/client.key \
+  --config ~/.config/pulp/cli.toml \
+  --content-types rpm \
+  --archs x86_64,aarch64
 ```
 
 ### Get Repo Config Command
+
+> **⚠️ WORK IN PROGRESS**: This command is currently under development and may have incomplete functionality or behavior changes.
 
 Download `.repo` configuration file(s) from Pulp distribution(s) for use with `dnf` or `yum`. Supports downloading multiple files by providing comma-separated lists for `--build-id` and/or `--repo_type`.
 
@@ -293,9 +339,12 @@ Download `.repo` configuration file(s) from Pulp distribution(s) for use with `d
   - `--namespace`: Pulp namespace/domain (e.g., `my-tenant`)
 
 **Optional Arguments:**
-- `--key-path`: Path to SSL private key file for authentication (certificate path comes from config file)
+- `--cert-path`: Path to SSL certificate file for authentication (optional, can come from config)
+- `--key-path`: Path to SSL private key file for authentication (optional, can come from config)
 - `--output`: Output directory for `.repo` files (default: current directory). Files named `{build_id}-{repo_type}.repo`
 - `-d, --debug`: Increase verbosity (use `-d` for INFO, `-dd` for DEBUG, `-ddd` for DEBUG with HTTP logs)
+
+**Note:** Both `--cert-path` and `--key-path` must be provided together if using certificate authentication (or both must be provided via `--config`).
 
 **Example:**
 ```bash
@@ -333,14 +382,22 @@ pulp-tool get-repo-md \
   --repo_type rpms,logs \
   --output /tmp/repo-files
 
-# With certificate authentication (certificate path comes from config)
+# With certificate authentication (cert/key from config file)
 pulp-tool get-repo-md \
   --base-url https://pulp.example.com \
   --namespace my-tenant \
   --build-id my-build-123 \
   --repo_type rpms \
-  --key-path /path/to/key.pem \
   --config ~/.config/pulp/cli.toml
+
+# With certificate authentication (cert/key from CLI options)
+pulp-tool get-repo-md \
+  --base-url https://pulp.example.com \
+  --namespace my-tenant \
+  --build-id my-build-123 \
+  --repo_type rpms \
+  --cert-path /path/to/cert.pem \
+  --key-path /path/to/key.pem
 
 # Install the repository configuration
 sudo cp *.repo /etc/yum.repos.d/
@@ -479,9 +536,14 @@ High-level helper class for common workflow operations. Orchestrates multiple Pu
 Specialized client for downloading artifacts from Pulp distributions using certificate authentication.
 
 **Key Methods:**
-- `pull_artifact()`: Download artifacts with certificate-based authentication
+- `pull_artifact()`: Download artifact metadata JSON with certificate-based authentication
+- `pull_data()`: Download and save artifact files to local filesystem
+  - RPM files: saved to current folder
+  - SBOM files: saved to current folder
+  - Log files: saved to `logs/<arch>/` directory
+- `pull_data_async()`: Asynchronously download artifacts (used internally by transfer command)
 - Handles SSL/TLS with client certificates
-- Returns httpx Response objects
+- Returns httpx Response objects for metadata, file paths for downloaded files
 
 ### Data Models (Pydantic)
 

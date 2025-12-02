@@ -60,20 +60,6 @@ def debug_option() -> Callable[[F], F]:
     )
 
 
-def cert_auth_options() -> Callable[[F], F]:
-    """Shared certificate authentication options."""
-
-    def decorator(func: F) -> F:
-        func = click.option(
-            "--key_path",
-            type=click.Path(exists=True),
-            help="Path to SSL private key file for authentication (optional)",
-        )(func)
-        return func  # type: ignore[return-value]
-
-    return decorator
-
-
 # ============================================================================
 # CLI Group and Commands
 # ============================================================================
@@ -85,11 +71,6 @@ def cert_auth_options() -> Callable[[F], F]:
     "--config",
     type=click.Path(exists=True),
     help="Path to Pulp CLI config file (default: ~/.config/pulp/cli.toml)",
-)
-@click.option(
-    "--key-path",
-    type=click.Path(exists=True),
-    help="Path to SSL private key file for authentication (optional)",
 )
 @click.option(
     "--build-id",
@@ -115,7 +96,6 @@ def cert_auth_options() -> Callable[[F], F]:
 def cli(
     ctx: click.Context,
     config: Optional[str],
-    key_path: Optional[str],
     build_id: Optional[str],
     namespace: Optional[str],
     debug: int,
@@ -125,7 +105,6 @@ def cli(
     # Store shared options in context for subcommands to access
     ctx.ensure_object(dict)
     ctx.obj["config"] = config
-    ctx.obj["key_path"] = key_path
     ctx.obj["build_id"] = build_id
     ctx.obj["namespace"] = namespace
     ctx.obj["debug"] = debug
@@ -142,11 +121,6 @@ def cli(
 @click.option("--rpm-path", required=True, type=click.Path(exists=True), help="Path to directory containing RPM files")
 @click.option("--sbom-path", required=True, type=click.Path(exists=True), help="Path to SBOM file")
 @click.option(
-    "--cert-config",
-    type=click.Path(exists=True),
-    help="Path to certificate config file for base URL construction",
-)
-@click.option(
     "--artifact-results",
     help="Comma-separated paths for Konflux artifact results location (url_path,digest_path)",
 )
@@ -157,7 +131,6 @@ def upload(  # pylint: disable=too-many-arguments,too-many-positional-arguments
     parent_package: str,
     rpm_path: str,
     sbom_path: str,
-    cert_config: Optional[str],
     artifact_results: Optional[str],
     sbom_results: Optional[str],
 ) -> None:
@@ -194,7 +167,6 @@ def upload(  # pylint: disable=too-many-arguments,too-many-positional-arguments
             rpm_path=rpm_path,
             sbom_path=sbom_path,
             config=config,
-            cert_config=cert_config,
             artifact_results=artifact_results,
             sbom_results=sbom_results,
             debug=debug,
@@ -202,7 +174,7 @@ def upload(  # pylint: disable=too-many-arguments,too-many-positional-arguments
 
         # Setup repositories using helper
         # Namespace is automatically read from config file via client
-        repository_helper = PulpHelper(client, cert_config, parent_package=parent_package)
+        repository_helper = PulpHelper(client, parent_package=parent_package)
         repositories = repository_helper.setup_repositories(build_id)
         logging.info("Repository setup completed")
 
@@ -266,17 +238,28 @@ def upload(  # pylint: disable=too-many-arguments,too-many-positional-arguments
         "If not specified, all architectures are transferred."
     ),
 )
+@click.option(
+    "--cert-path",
+    type=click.Path(exists=True),
+    help="Path to SSL certificate file for authentication (optional, can come from config)",
+)
+@click.option(
+    "--key-path",
+    type=click.Path(exists=True),
+    help="Path to SSL private key file for authentication (optional, can come from config)",
+)
 @click.pass_context
 def transfer(  # pylint: disable=too-many-positional-arguments
     ctx: click.Context,
     artifact_location: Optional[str],
     content_types: Optional[str],
     archs: Optional[str],
+    cert_path: Optional[str],
+    key_path: Optional[str],
 ) -> None:
     """Download artifacts and optionally re-upload to Pulp repositories."""
     # Get shared options from context
     namespace = ctx.obj["namespace"]
-    key_path = ctx.obj["key_path"]
     config = ctx.obj["config"]
     build_id = ctx.obj["build_id"]
     debug = ctx.obj["debug"]
@@ -318,14 +301,14 @@ def transfer(  # pylint: disable=too-many-positional-arguments
     content_types_list = [ct.strip() for ct in content_types.split(",")] if content_types else None
     archs_list = [arch.strip() for arch in archs.split(",")] if archs else None
 
-    # Get certificate paths from config if available
-    cert_path = None
-    if config:
+    # Get certificate paths from config if not provided via CLI
+    if config and (not cert_path or not key_path):
         try:
             config_path = Path(config).expanduser()
             with open(config_path, "rb") as fp:
                 config_data = tomllib.load(fp)
-            cert_path = config_data.get("cli", {}).get("cert")
+            if not cert_path:
+                cert_path = config_data.get("cli", {}).get("cert")
             if not key_path:
                 key_path = config_data.get("cli", {}).get("key")
         except Exception as e:
@@ -352,7 +335,7 @@ def transfer(  # pylint: disable=too-many-positional-arguments
         if is_remote and (not cert_path or not key_path):
             logging.error(
                 "Certificate and key paths are required when artifact_location is a remote URL. "
-                "Provide them via --config or --key-path."
+                "Provide them via --config, --cert-path, or --key-path."
             )
             sys.exit(1)
 
@@ -447,13 +430,28 @@ def transfer(  # pylint: disable=too-many-positional-arguments
     type=click.Path(),
     help="Output directory for .repo files (default: current directory). Files named {build_id}.repo",
 )
+@click.option(
+    "--cert-path",
+    type=click.Path(exists=True),
+    help="Path to SSL certificate file for authentication (optional, can come from config)",
+)
+@click.option(
+    "--key-path",
+    type=click.Path(exists=True),
+    help="Path to SSL private key file for authentication (optional, can come from config)",
+)
 @click.pass_context
 def get_repo_md(  # pylint: disable=too-many-arguments,too-many-positional-arguments
     ctx: click.Context,
     base_url: Optional[str],
     output: Optional[str],
+    cert_path: Optional[str],
+    key_path: Optional[str],
 ) -> None:
     """Download .repo configuration file(s) from Pulp RPM distributions.
+
+    **WORK IN PROGRESS**: This command is currently under development and may have
+    incomplete functionality or behavior changes.
 
     Supports downloading multiple .repo files by providing comma-separated
     build IDs with --build_id.
@@ -464,7 +462,6 @@ def get_repo_md(  # pylint: disable=too-many-arguments,too-many-positional-argum
     config = ctx.obj["config"]
     namespace = ctx.obj["namespace"]
     build_id = ctx.obj["build_id"]
-    key_path = ctx.obj["key_path"]
     debug = ctx.obj["debug"]
 
     # Validate required option
@@ -474,19 +471,22 @@ def get_repo_md(  # pylint: disable=too-many-arguments,too-many-positional-argum
 
     setup_logging(debug)
 
+    # WORK IN PROGRESS: This command is under development
+    logging.warning("get-repo-md command is a work in progress and may have incomplete functionality")
+
     distribution_client = None
     successful_downloads = []
     failed_downloads = []
 
     try:
-        # Get certificate paths from config if available
-        cert_path = None
-        if config:
+        # Get certificate paths from config if not provided via CLI
+        if config and (not cert_path or not key_path):
             try:
                 config_path = Path(config).expanduser()
                 with open(config_path, "rb") as fp:
                     config_data = tomllib.load(fp)
-                cert_path = config_data.get("cli", {}).get("cert")
+                if not cert_path:
+                    cert_path = config_data.get("cli", {}).get("cert")
                 if not key_path:
                     key_path = config_data.get("cli", {}).get("key")
             except Exception as e:
@@ -494,7 +494,9 @@ def get_repo_md(  # pylint: disable=too-many-arguments,too-many-positional-argum
 
         # Validate certificate/key pair
         if (cert_path and not key_path) or (key_path and not cert_path):
-            logging.error("Both certificate and key paths must be provided together (via --config or --key-path)")
+            logging.error(
+                "Both certificate and key paths must be provided together (via --config, --cert-path, or --key-path)"
+            )
             sys.exit(1)
 
         # Validate that either config OR (base-url AND namespace) are provided

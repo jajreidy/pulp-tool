@@ -160,10 +160,16 @@ def extract_metadata_from_artifact_json(
     else:
         # Handle raw dictionary
         artifacts_raw = artifact_json.get("artifacts", {})
-        artifacts = {
-            name: ArtifactMetadata(**metadata) if isinstance(metadata, dict) else metadata
-            for name, metadata in artifacts_raw.items()
-        }
+        artifacts = {}
+        for name, metadata in artifacts_raw.items():
+            if isinstance(metadata, dict):
+                # Ensure labels is a dict, not None
+                metadata_dict = dict(metadata)
+                if metadata_dict.get("labels") is None:
+                    metadata_dict["labels"] = {}
+                artifacts[name] = ArtifactMetadata(**metadata_dict)
+            else:
+                artifacts[name] = metadata
 
     # Try to find field in any of the artifacts
     for artifact_info in artifacts.values():
@@ -196,12 +202,10 @@ def _extract_field_from_artifact(
         Field value or None
     """
     if isinstance(artifact_info, ArtifactMetadata):
-        return artifact_info.labels.get(field_name) if artifact_info.labels else None
+        return (artifact_info.labels or {}).get(field_name)
 
-    # Fallback for dict access
     if isinstance(artifact_info, dict):
-        labels = artifact_info.get("labels", {})
-        return labels.get(field_name)
+        return artifact_info.get("labels", {}).get(field_name)
 
     return None
 

@@ -76,27 +76,27 @@ def _categorize_artifacts(
     download_tasks = []
 
     for artifact, metadata in artifacts.items():
-        # Handle both ArtifactMetadata objects and raw dicts
+        # Extract architecture from metadata (handle both ArtifactMetadata and dict)
         if isinstance(metadata, ArtifactMetadata):
             arch = metadata.arch or "noarch"
         else:
             arch = metadata.get("labels", {}).get("arch", "noarch")
 
-        # Determine artifact type
+        # Determine artifact type and URL
         artifact_type = None
-        file_url = ""  # Initialize to satisfy pylint
+        file_url = None
         if "sbom" in artifact:
             artifact_type = "sbom"
-            file_url = f"{distros['sbom']}{artifact}"
+            file_url = f"{distros.get('sbom', '')}{artifact}"
         elif "log" in artifact:
             artifact_type = "log"
-            file_url = f"{distros['logs']}{artifact}"
+            file_url = f"{distros.get('logs', '')}{artifact}"
         elif "rpm" in artifact:
             artifact_type = "rpm"
-            file_url = f"{distros['rpms']}Packages/l/{artifact}"
+            file_url = f"{distros.get('rpms', '')}Packages/l/{artifact}"
 
-        # Skip if no artifact type determined
-        if not artifact_type:
+        # Skip if no artifact type determined or file_url is missing
+        if not artifact_type or file_url is None:
             continue
 
         # Apply content type filter
@@ -190,9 +190,7 @@ def setup_repositories_if_needed(args: TransferContext, artifact_json=None) -> O
         build_id = determine_build_id(args, artifact_json=artifact_json)
 
         logging.info("Setting up repositories for pull operations: %s", build_id)
-        repository_helper = PulpHelper(
-            client, None, parent_package=parent_package
-        )  # TODO: Add cert_config support to pulp-transfer
+        repository_helper = PulpHelper(client, parent_package=parent_package)
         repository_helper.setup_repositories(build_id)
         logging.info("Repository setup completed for pull operations")
 
@@ -338,9 +336,7 @@ def upload_downloaded_files_to_pulp(
     logging.debug("Extracted parent_package from artifacts: %s", parent_package)
 
     # Initialize PulpHelper to get repository information
-    helper = PulpHelper(
-        pulp_client, None, parent_package=parent_package
-    )  # TODO: Add cert_config support to pulp-transfer
+    helper = PulpHelper(pulp_client, parent_package=parent_package)
 
     # Determine build ID and setup repositories
     build_id = determine_build_id(args, pulled_artifacts=pulled_artifacts)  # type: ignore[arg-type]
@@ -424,15 +420,13 @@ def _extract_artifact_info(
         Tuple of (file_path, labels)
     """
     if isinstance(artifact_data, dict):
-        file_path = artifact_data["file"]
-        labels = artifact_data.get("labels", {})
-    elif hasattr(artifact_data, "file"):
-        file_path = artifact_data.file
-        labels = artifact_data.labels if hasattr(artifact_data, "labels") else {}
-    else:
-        raise ValueError(f"Unexpected artifact_data type: {type(artifact_data)}")
+        return artifact_data["file"], artifact_data.get("labels", {})
 
-    return file_path, labels
+    if hasattr(artifact_data, "file"):
+        labels = getattr(artifact_data, "labels", {})
+        return artifact_data.file, labels
+
+    raise ValueError(f"Unexpected artifact_data type: {type(artifact_data)}")
 
 
 def _get_file_size_safe(file_path: str) -> Tuple[int, str]:
@@ -787,13 +781,13 @@ def download_artifacts_concurrently(
                 # Find the original artifact info to get labels
                 artifact_info = artifacts[artifact_name]
 
-                # Handle both ArtifactMetadata objects and raw dicts
+                # Extract labels (handle both ArtifactMetadata and dict)
                 if isinstance(artifact_info, ArtifactMetadata):
                     labels = artifact_info.labels
                 else:
                     labels = artifact_info.get("labels", {})
 
-                # Determine artifact type and store
+                # Store artifact by type
                 if "sbom" in artifact_name:
                     pulled_artifacts.add_sbom(artifact_name, file_path, labels)
                 elif "log" in artifact_name:

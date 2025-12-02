@@ -124,7 +124,6 @@ class TestUploadContext:
         assert context.rpm_path == "/path/to/rpms"
         assert context.sbom_path == "/path/to/sbom.json"
         assert context.config is None
-        assert context.cert_config is None
         assert context.debug == 0
         assert context.artifact_results is None
         assert context.sbom_results is None
@@ -139,14 +138,12 @@ class TestUploadContext:
             rpm_path="/path/to/rpms",
             sbom_path="/path/to/sbom.json",
             config="/path/to/config.toml",
-            cert_config="/path/to/cert.conf",
             debug=2,
             artifact_results="url_path,digest_path",
             sbom_results="/path/to/sbom_results.txt",
         )
 
         assert context.config == "/path/to/config.toml"
-        assert context.cert_config == "/path/to/cert.conf"
         assert context.debug == 2
         assert context.artifact_results == "url_path,digest_path"
         assert context.sbom_results == "/path/to/sbom_results.txt"

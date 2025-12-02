@@ -14,8 +14,12 @@ from pulp_tool.upload import (
     _extract_results_url,
     _handle_artifact_results,
     _handle_sbom_results,
+    collect_results,
 )
 from pulp_tool.models import PulpResultsModel, RepositoryRefs
+from pulp_tool.models.pulp_api import TaskResponse
+from pulp_tool.models.context import UploadContext
+import logging
 
 # CLI imports removed - Click testing done in test_cli.py
 
@@ -170,12 +174,8 @@ class TestExtractResultsUrl:
 
     def test_extract_results_url_success(self, mock_pulp_client):
         """Test successful results URL extraction."""
-        from pulp_tool.models.pulp_api import TaskResponse
-        from unittest.mock import patch
-
         args = Mock()
         args.build_id = "test-build"
-        args.cert_config = None
 
         # Now task_response is a TaskResponse model, not a Mock
         # relative_path should just be the filename, not the full path
@@ -202,14 +202,84 @@ class TestExtractResultsUrl:
 class TestCollectResults:
     """Test collect_results function."""
 
+    def test_collect_results_calls_add_distributions(self, mock_pulp_client, httpx_mock):
+        """Test that collect_results calls _add_distributions_to_results."""
+        # Mock HTTP responses for content gathering
+        httpx_mock.get(re.compile(r".*/content/rpm/packages/\?pulp_href__in=")).mock(
+            return_value=httpx.Response(200, json={"results": []})
+        )
+        httpx_mock.post(re.compile(r".*/content/file/files/")).mock(
+            return_value=httpx.Response(200, json={"task": "/api/v3/tasks/123/"})
+        )
+        httpx_mock.get(re.compile(r".*/tasks/123/")).mock(
+            return_value=httpx.Response(200, json={"pulp_href": "/pulp/api/v3/tasks/12345/", "state": "completed"})
+        )
+
+        # Create context
+        context = UploadContext(
+            build_id="test-build",
+            date_str="2024-01-01",
+            namespace="test-ns",
+            parent_package="test-pkg",
+            rpm_path="/tmp/rpms",
+            sbom_path="/tmp/sbom.json",
+        )
+
+        # Create results model with repositories
+        repositories = RepositoryRefs(
+            rpms_href="/rpms/",
+            rpms_prn="rpms-prn",
+            logs_href="/logs/",
+            logs_prn="logs-prn",
+            sbom_href="/sbom/",
+            sbom_prn="sbom-prn",
+            artifacts_href="/artifacts/",
+            artifacts_prn="artifacts-prn",
+        )
+        results_model = PulpResultsModel(build_id="test-build", repositories=repositories)
+
+        # Mock get_distribution_urls to return URLs
+        with patch("pulp_tool.upload.PulpHelper") as mock_helper_class:
+            mock_helper = Mock()
+            mock_helper.get_distribution_urls.return_value = {
+                "rpms": "https://pulp.example.com/rpms/",
+                "logs": "https://pulp.example.com/logs/",
+            }
+            mock_helper_class.return_value = mock_helper
+
+            # Call collect_results
+            with patch("pulp_tool.upload._gather_and_validate_content") as mock_gather:
+                # Mock gather to return minimal content
+                mock_gather.return_value = Mock(
+                    content_results=[],
+                    file_results=[],
+                    log_results=[],
+                    sbom_results=[],
+                )
+
+                with patch("pulp_tool.upload._build_artifact_map", return_value={}):
+                    with patch("pulp_tool.upload._populate_results_model"):
+                        # Mock build_results_structure to return the results_model (modifies in place)
+                        with patch.object(mock_pulp_client, "build_results_structure", return_value=results_model):
+                            with patch("pulp_tool.upload._serialize_results_to_json", return_value='{"test": "json"}'):
+                                with patch(
+                                    "pulp_tool.upload._upload_and_get_results_url",
+                                    return_value="https://example.com/results.json",
+                                ):
+                                    result = collect_results(mock_pulp_client, context, "2024-01-01", results_model)
+
+            # Verify PulpHelper was called with parent_package
+            mock_helper_class.assert_called_once_with(mock_pulp_client, parent_package="test-pkg")
+            # Verify get_distribution_urls was called
+            mock_helper.get_distribution_urls.assert_called_once_with("test-build")
+            assert result == "https://example.com/results.json"
+
 
 class TestHandleArtifactResults:
     """Test _handle_artifact_results function."""
 
     def test_handle_artifact_results_success(self, mock_pulp_client, httpx_mock):
         """Test successful artifact results handling."""
-        from pulp_tool.models.pulp_api import TaskResponse
-
         httpx_mock.get(re.compile(r".*/content/\?pulp_href__in=")).mock(
             return_value=httpx.Response(200, json={"results": [{"artifacts": {"file": "/test/artifacts/"}}]})
         )
@@ -232,8 +302,6 @@ class TestHandleArtifactResults:
 
     def test_handle_artifact_results_no_content(self, mock_pulp_client):
         """Test artifact results handling with no content."""
-        from pulp_tool.models.pulp_api import TaskResponse
-
         args = Mock()
         args.artifact_results = "url_path,digest_path"
 
@@ -246,8 +314,6 @@ class TestHandleArtifactResults:
 
     def test_handle_artifact_results_invalid_format(self, mock_pulp_client, httpx_mock):
         """Test artifact results handling with invalid format."""
-        from pulp_tool.models.pulp_api import TaskResponse
-
         httpx_mock.get(re.compile(r".*/content/\?pulp_href__in=")).mock(
             return_value=httpx.Response(200, json={"results": [{"artifacts": {"file": "/test/artifacts/"}}]})
         )
@@ -295,7 +361,6 @@ class TestHandleSbomResults:
         json_content = json.dumps(results_json)
 
         sbom_file = tmp_path / "sbom_result.txt"
-        from pulp_tool.models.context import UploadContext
 
         # Create proper UploadContext instead of Namespace
         args = UploadContext(
@@ -321,8 +386,6 @@ class TestHandleSbomResults:
 
     def test_handle_sbom_results_no_sbom_found(self, tmp_path, caplog):
         """Test handling when no SBOM is found."""
-        import logging
-
         # Create mock results JSON without SBOM
         results_json = {
             "artifacts": {
@@ -337,7 +400,6 @@ class TestHandleSbomResults:
         json_content = json.dumps(results_json)
 
         sbom_file = tmp_path / "sbom_result.txt"
-        from pulp_tool.models.context import UploadContext
 
         args = UploadContext(
             build_id="test-build",
@@ -376,7 +438,6 @@ class TestHandleSbomResults:
         json_content = json.dumps(results_json)
 
         sbom_file = tmp_path / "sbom_result.txt"
-        from pulp_tool.models.context import UploadContext
 
         args = UploadContext(
             build_id="test-build",

@@ -79,11 +79,11 @@ class TestDistributionClient:
         ):
 
             client = DistributionClient("cert.pem", "key.pem")
-            result = client.pull_data("file.rpm", "https://example.com/file.rpm", "x86_64")
+            result = client.pull_data("file.rpm", "https://example.com/file.rpm", "x86_64", "rpm")
 
-            assert result == "rpms/x86_64/file.rpm"
+            assert result == "file.rpm"
             mock_logging.info.assert_called()
-            mock_open_func.assert_called_once_with("rpms/x86_64/file.rpm", "wb")
+            mock_open_func.assert_called_once_with("file.rpm", "wb")
 
     def test_pull_data_async_success(self):
         """Test successful async data pull."""
@@ -515,7 +515,6 @@ class TestUploadFunctionality:
             args = Mock()
             args.build_id = "test-build"
             args.artifact_file = None
-            args.cert_config = None
 
             mock_repositories = RepositoryRefs(
                 rpms_href="/pulp/api/v3/repositories/rpm/12345/",

@@ -22,14 +22,6 @@ class TestPulpHelperInitialization:
         helper = PulpHelper(mock_pulp_client)
 
         assert helper.client == mock_pulp_client
-        assert helper.cert_config_path is None
-
-    def test_init_with_cert_config(self, mock_pulp_client):
-        """Test PulpHelper initialization with cert config."""
-        helper = PulpHelper(mock_pulp_client, "/path/to/cert-config.toml")
-
-        assert helper.client == mock_pulp_client
-        assert helper.cert_config_path == "/path/to/cert-config.toml"
 
 
 class TestPulpHelperRepositoryMethods:
@@ -463,23 +455,26 @@ class TestPulpHelperDistributionOperations:
 
     def test_get_distribution_urls_impl(self, mock_pulp_client):
         """Test PulpHelper _get_distribution_urls_impl."""
-        helper = PulpHelper(mock_pulp_client, "/path/to/cert-config.toml")
+        helper = PulpHelper(mock_pulp_client)
 
-        mock_pulp_client.get_domain = Mock(return_value="test-domain")
-
-        with (
-            patch(
-                "pulp_tool.utils.pulp_helper.get_pulp_content_base_url",
-                return_value="https://pulp.example.com/pulp-content",
-            ),
-            patch.object(helper, "_get_single_distribution_url") as mock_get_url,
-        ):
-            mock_get_url.return_value = "https://pulp.example.com/pulp-content/test-domain/test-build/rpms/"
+        # Mock _get_single_distribution_url to return expected URLs
+        # The namespace comes from helper.namespace (which is set from client.namespace)
+        with patch.object(helper, "_get_single_distribution_url") as mock_get_url:
+            # Mock returns different URLs for each repo type
+            # Format: {base_url}{namespace}/{build_id}/{repo_type}/
+            mock_get_url.side_effect = lambda build_id, repo_type, base_url: (
+                f"{base_url}{helper.namespace}/{build_id}/{repo_type}/"
+            )
 
             result = helper._get_distribution_urls_impl("test-build")
 
         assert len(result) == 4  # All repo types
         assert "rpms" in result
+        assert "logs" in result
+        assert "sbom" in result
+        assert "artifacts" in result
+        # Verify URLs are correctly formatted (namespace comes from mock_pulp_client.config["domain"])
+        assert result["rpms"] == "https://pulp.example.com/api/pulp-content/test-domain/test-build/rpms/"
 
 
 class TestPulpHelperRepositoryImplementation:

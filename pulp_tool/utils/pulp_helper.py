@@ -26,7 +26,6 @@ from .validation import (
     validate_build_id,
     validate_repository_setup,
 )
-from .url import get_pulp_content_base_url
 from .uploads import upload_rpms_logs
 
 # Constants used in this module
@@ -44,19 +43,15 @@ class PulpHelper:
     delegating API calls to the PulpClient instance.
     """
 
-    def __init__(
-        self, pulp_client: "PulpClient", cert_config_path: Optional[str] = None, parent_package: Optional[str] = None
-    ) -> None:
+    def __init__(self, pulp_client: "PulpClient", parent_package: Optional[str] = None) -> None:
         """
         Initialize the helper with a PulpClient instance.
 
         Args:
             pulp_client: PulpClient instance for API interactions
-            cert_config_path: Optional path to certificate config file for base URL construction
             parent_package: Optional parent package name for distribution paths
         """
         self.client = pulp_client
-        self.cert_config_path = cert_config_path
         # Get namespace from the client (which reads it from config file)
         self.namespace = pulp_client.namespace
         self.parent_package = parent_package
@@ -242,7 +237,9 @@ class PulpHelper:
             Dictionary mapping repo_type to distribution URL
         """
         distribution_urls = {}
-        pulp_content_base_url = get_pulp_content_base_url(self.cert_config_path)
+        # Get base_url from client's config
+        base_url_str = str(self.client.config["base_url"])
+        pulp_content_base_url = f"{base_url_str}/api/pulp-content"
         # Base URL from Pulp content service - distribution's base_path is build_id/repo_type
         base_url = f"{pulp_content_base_url}/"
 

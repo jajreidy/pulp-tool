@@ -358,7 +358,6 @@ def mock_args():
     args.namespace = "test-namespace"
     args.parent_package = "test-package"
     args.config = "/path/to/config.toml"
-    args.cert_config = "/path/to/cert-config.toml"
     args.artifact_results = None
     args.debug = False
     args.artifact_location = "/path/to/artifacts.json"
