@@ -7,7 +7,7 @@ import re
 from unittest.mock import Mock, patch, mock_open
 import json
 
-from pulp_tool.upload import (
+from pulp_tool.services.upload_service import (
     upload_sbom,
     _serialize_results_to_json,
     _upload_and_get_results_url,
@@ -57,8 +57,8 @@ class TestUploadSbom:
 
         with (
             patch("os.path.exists", return_value=True),
-            patch("pulp_tool.upload.validate_file_path"),
-            patch("pulp_tool.upload.create_labels", return_value={"build_id": "test-build"}),
+            patch("pulp_tool.services.upload_service.validate_file_path"),
+            patch("pulp_tool.services.upload_service.create_labels", return_value={"build_id": "test-build"}),
             patch("builtins.open", mock_open(read_data="test sbom content")),
         ):
 
@@ -115,8 +115,8 @@ class TestUploadSbom:
 
         with (
             patch("os.path.exists", return_value=True),
-            patch("pulp_tool.upload.validate_file_path"),
-            patch("pulp_tool.upload.create_labels", return_value={"build_id": "test-build"}),
+            patch("pulp_tool.services.upload_service.validate_file_path"),
+            patch("pulp_tool.services.upload_service.create_labels", return_value={"build_id": "test-build"}),
             patch("builtins.open", mock_open(read_data="test sbom content")),
         ):
 
@@ -186,7 +186,7 @@ class TestExtractResultsUrl:
         )
 
         # Mock PulpHelper and its get_distribution_urls method
-        with patch("pulp_tool.upload.PulpHelper") as MockPulpHelper:
+        with patch("pulp_tool.services.upload_service.PulpHelper") as MockPulpHelper:
             mock_helper = Mock()
             mock_helper.get_distribution_urls.return_value = {
                 "artifacts": "https://pulp-content.example.com/test-domain/test-build/artifacts/"
@@ -239,7 +239,7 @@ class TestCollectResults:
         results_model = PulpResultsModel(build_id="test-build", repositories=repositories)
 
         # Mock get_distribution_urls to return URLs
-        with patch("pulp_tool.upload.PulpHelper") as mock_helper_class:
+        with patch("pulp_tool.services.upload_service.PulpHelper") as mock_helper_class:
             mock_helper = Mock()
             mock_helper.get_distribution_urls.return_value = {
                 "rpms": "https://pulp.example.com/rpms/",
@@ -248,7 +248,7 @@ class TestCollectResults:
             mock_helper_class.return_value = mock_helper
 
             # Call collect_results
-            with patch("pulp_tool.upload._gather_and_validate_content") as mock_gather:
+            with patch("pulp_tool.services.upload_service._gather_and_validate_content") as mock_gather:
                 # Mock gather to return minimal content
                 mock_gather.return_value = Mock(
                     content_results=[],
@@ -257,13 +257,16 @@ class TestCollectResults:
                     sbom_results=[],
                 )
 
-                with patch("pulp_tool.upload._build_artifact_map", return_value={}):
-                    with patch("pulp_tool.upload._populate_results_model"):
+                with patch("pulp_tool.services.upload_service._build_artifact_map", return_value={}):
+                    with patch("pulp_tool.services.upload_service._populate_results_model"):
                         # Mock build_results_structure to return the results_model (modifies in place)
                         with patch.object(mock_pulp_client, "build_results_structure", return_value=results_model):
-                            with patch("pulp_tool.upload._serialize_results_to_json", return_value='{"test": "json"}'):
+                            with patch(
+                                "pulp_tool.services.upload_service._serialize_results_to_json",
+                                return_value='{"test": "json"}',
+                            ):
                                 with patch(
-                                    "pulp_tool.upload._upload_and_get_results_url",
+                                    "pulp_tool.services.upload_service._upload_and_get_results_url",
                                     return_value="https://example.com/results.json",
                                 ):
                                     result = collect_results(mock_pulp_client, context, "2024-01-01", results_model)
@@ -457,17 +460,3 @@ class TestHandleSbomResults:
         content = sbom_file.read_text()
         expected = "https://pulp.example.com/pulp/content/test-build/sbom/cyclonedx.json@sha256:def789abc123"
         assert content == expected
-
-
-class TestParseArguments:
-    """Test argument parsing for upload."""
-
-    pass  # Tests removed - create_parser no longer exists
-
-
-class TestUploadHelpers:
-    """Test upload helper functions."""
-
-    # Tests temporarily removed due to complex mocking requirements
-    # Coverage is achieved through integration tests
-    pass

@@ -1,50 +1,18 @@
 """
-Validation utilities for Pulp operations.
+Build ID validation, sanitization, and extraction utilities.
 
-This module provides comprehensive validation functions for build IDs, file paths,
-and repository configurations. It uses guard clauses for early validation failures
-and includes helpers for extracting metadata from artifacts.
-
-Key Functions:
-    - validate_build_id(): Check if build ID is valid
-    - validate_file_path(): Validate file exists, is readable, and not empty
-    - validate_repository_setup(): Validate repository configuration completeness
-    - extract_metadata_from_artifact_json(): Extract metadata fields from artifacts
-    - determine_build_id(): Determine build ID from multiple sources
-    - sanitize_build_id_for_repository(): Clean build IDs for repository naming
-
-Organization:
-    - Build ID Utilities
-    - Metadata Extraction Functions
-    - File Validation Functions
-    - Repository Validation Functions
-
-All functions follow clean code principles with guard clauses and early returns.
+This module provides functions for validating, sanitizing, and extracting build IDs
+from various sources including command line arguments, artifact metadata, and
+downloaded artifacts.
 """
 
 import logging
-import os
-from typing import Any, Dict, List, Optional, Tuple, TYPE_CHECKING, Union
+from typing import Any, Dict, Optional, TYPE_CHECKING, Union
 
-from ..models.artifacts import ArtifactJsonResponse, ArtifactMetadata
+from ...models.artifacts import ArtifactJsonResponse, ArtifactMetadata
 
 if TYPE_CHECKING:
-    from ..models.artifacts import PulledArtifacts
-
-# ============================================================================
-# Validation Constants
-# ============================================================================
-
-# Minimum allowed file size (bytes) - 0 means file must not be empty
-MIN_FILE_SIZE = 0
-
-# Supported repository types in Pulp
-REPOSITORY_TYPES = ["rpms", "logs", "sbom", "artifacts"]
-
-
-# ============================================================================
-# Build ID Utilities
-# ============================================================================
+    from ...models.artifacts import PulledArtifacts
 
 
 def strip_namespace_from_build_id(build_id: str) -> str:
@@ -101,19 +69,15 @@ def sanitize_build_id_for_repository(build_id: str) -> str:
     while "--" in sanitized:
         sanitized = sanitized.replace("--", "-")
 
-    # Remove leading/trailing hyphens
-    sanitized = sanitized.strip("-")
+    # Remove leading/trailing hyphens and convert to lowercase
+    sanitized = sanitized.strip("-").lower()
 
-    # Ensure it's not empty after sanitization
-    if not sanitized:
-        return "default-build"
-
-    return sanitized
+    return sanitized if sanitized else "default-build"
 
 
 def validate_build_id(build_id: str) -> bool:
     """
-    Validate that a build ID is not empty or None.
+    Validate that a build ID is valid.
 
     Args:
         build_id: Build ID to validate
@@ -122,17 +86,43 @@ def validate_build_id(build_id: str) -> bool:
         True if valid, False otherwise
 
     Example:
-        >>> validate_build_id("my-build")
+        >>> validate_build_id("my-build-123")
         True
-        >>> validate_build_id("")
+        >>> validate_build_id("build with spaces")
         False
     """
-    return bool(build_id and isinstance(build_id, str))
+    if not build_id or not isinstance(build_id, str):
+        return False
+
+    # Check for invalid characters
+    invalid_chars = [" ", "/"]
+    for char in invalid_chars:
+        if char in build_id:
+            return False
+
+    return True
 
 
-# ============================================================================
-# Metadata Extraction Functions
-# ============================================================================
+def _extract_field_from_artifact(
+    artifact_info: Union[ArtifactMetadata, Dict[str, Any]], field_name: str
+) -> Optional[str]:
+    """
+    Extract a field from artifact labels (helper function).
+
+    Args:
+        artifact_info: Artifact metadata (ArtifactMetadata or dict)
+        field_name: Field name to extract
+
+    Returns:
+        Field value or None
+    """
+    if isinstance(artifact_info, ArtifactMetadata):
+        return (artifact_info.labels or {}).get(field_name)
+
+    if isinstance(artifact_info, dict):
+        return artifact_info.get("labels", {}).get(field_name)
+
+    return None
 
 
 def extract_metadata_from_artifact_json(
@@ -186,28 +176,6 @@ def extract_metadata_from_artifact_json(
     else:
         logging.debug("No %s found in artifact metadata", field_name)
     return fallback
-
-
-def _extract_field_from_artifact(
-    artifact_info: Union[ArtifactMetadata, Dict[str, Any]], field_name: str
-) -> Optional[str]:
-    """
-    Extract field value from a single artifact.
-
-    Args:
-        artifact_info: Artifact info (ArtifactMetadata or dict)
-        field_name: Field name to extract
-
-    Returns:
-        Field value or None
-    """
-    if isinstance(artifact_info, ArtifactMetadata):
-        return (artifact_info.labels or {}).get(field_name)
-
-    if isinstance(artifact_info, dict):
-        return artifact_info.get("labels", {}).get(field_name)
-
-    return None
 
 
 def extract_metadata_from_artifacts(
@@ -328,103 +296,14 @@ def determine_build_id(
     return build_id
 
 
-# ============================================================================
-# File Validation Functions
-# ============================================================================
-
-
-def validate_file_path(file_path: str, file_type: str) -> None:
-    """
-    Validate file exists, is readable, and not empty.
-
-    Uses guard clauses for early validation failure.
-
-    Args:
-        file_path: Path to the file to validate
-        file_type: Type of file for error messages (e.g., 'RPM', 'SBOM')
-
-    Raises:
-        FileNotFoundError: If the file does not exist
-        PermissionError: If the file cannot be read
-        ValueError: If the file is empty
-
-    Example:
-        >>> validate_file_path("/path/to/file.rpm", "RPM")  # doctest: +SKIP
-    """
-    # Guard clause: file must exist
-    if not os.path.exists(file_path):
-        raise FileNotFoundError(f"{file_type} file not found: {file_path}")
-
-    # Guard clause: file must be readable
-    if not os.access(file_path, os.R_OK):
-        raise PermissionError(f"Cannot read {file_type} file: {file_path}")
-
-    # Guard clause: file must not be empty
-    file_size = os.path.getsize(file_path)
-    if file_size == MIN_FILE_SIZE:
-        raise ValueError(f"{file_type} file is empty: {file_path}")
-
-    logging.debug("%s file size: %d bytes", file_type, file_size)
-
-
-# ============================================================================
-# Repository Validation Functions
-# ============================================================================
-
-
-def validate_repository_setup(repositories: Dict[str, str]) -> Tuple[bool, List[str]]:
-    """
-    Validate that repository setup is complete.
-
-    Args:
-        repositories: Dictionary mapping repository identifiers to repository references
-                     Expected keys: rpms_prn, rpms_href, logs_prn, logs_href,
-                                   sbom_prn, sbom_href, artifacts_prn, artifacts_href
-
-    Returns:
-        Tuple of (is_valid, list_of_errors)
-
-    Example:
-        >>> repos = {
-        ...     "rpms_prn": "/pulp/api/v3/repositories/rpm/rpm/123/",
-        ...     "rpms_href": "/pulp/api/v3/repositories/rpm/rpm/123/"
-        ... }
-        >>> is_valid, errors = validate_repository_setup(repos)
-        >>> is_valid
-        False
-        >>> "logs" in str(errors)
-        True
-    """
-    errors = []
-
-    # Check that all required repository PRNs are present
-    for repo_type in REPOSITORY_TYPES:
-        prn_key = f"{repo_type}_prn"
-        if prn_key not in repositories or not repositories.get(prn_key):
-            errors.append(f"Missing {repo_type} repository PRN")
-
-    # For RPM repositories, also check that href is present
-    if "rpms_href" not in repositories or not repositories.get("rpms_href"):
-        errors.append("Missing rpms repository href")
-
-    # Check that repository references are valid (non-empty strings)
-    for repo_key, repo_ref in repositories.items():
-        if repo_ref and (not isinstance(repo_ref, str) or not repo_ref.strip()):
-            errors.append(f"Invalid repository reference for {repo_key}")
-
-    is_valid = len(errors) == 0
-    return is_valid, errors
-
-
 __all__ = [
     "strip_namespace_from_build_id",
     "sanitize_build_id_for_repository",
     "validate_build_id",
+    "_extract_field_from_artifact",
     "extract_metadata_from_artifact_json",
     "extract_metadata_from_artifacts",
     "extract_build_id_from_artifact_json",
     "extract_build_id_from_artifacts",
     "determine_build_id",
-    "validate_file_path",
-    "validate_repository_setup",
 ]

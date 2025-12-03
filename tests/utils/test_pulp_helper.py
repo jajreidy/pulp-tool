@@ -31,7 +31,7 @@ class TestPulpHelperRepositoryMethods:
         """Test get_repository_methods method."""
         helper = PulpHelper(mock_pulp_client)
 
-        methods = helper.get_repository_methods("rpm")
+        methods = helper._repository_manager.get_repository_methods("rpm")
 
         assert "get" in methods
         assert "create" in methods
@@ -61,7 +61,7 @@ class TestPulpHelperRepositorySetup:
         )
 
         with (
-            patch.object(helper, "_setup_repositories_impl", return_value=mock_repositories),
+            patch.object(helper._repository_manager, "_setup_repositories_impl", return_value=mock_repositories),
             patch("pulp_tool.utils.validate_repository_setup", return_value=(True, [])),
         ):
 
@@ -74,7 +74,7 @@ class TestPulpHelperRepositorySetup:
         helper = PulpHelper(mock_pulp_client)
 
         with (
-            patch.object(helper, "_setup_repositories_impl", return_value={}),
+            patch.object(helper._repository_manager, "_setup_repositories_impl", return_value={}),
             patch("pulp_tool.utils.validate_repository_setup", return_value=(False, ["Missing repo"])),
         ):
 
@@ -98,7 +98,7 @@ class TestPulpHelperRepositorySetup:
         )
 
         with (
-            patch.object(helper, "_setup_repositories_impl", return_value=mock_repositories),
+            patch.object(helper._repository_manager, "_setup_repositories_impl", return_value=mock_repositories),
             patch("pulp_tool.utils.validate_repository_setup", return_value=(True, [])),
         ):
 
@@ -121,7 +121,9 @@ class TestPulpHelperDistributionMethods:
         """Test get_distribution_urls method."""
         helper = PulpHelper(mock_pulp_client, "/path/to/cert-config.toml")
 
-        with patch.object(helper, "_get_distribution_urls_impl", return_value=mock_distribution_urls):
+        with patch.object(
+            helper._distribution_manager, "_get_distribution_urls_impl", return_value=mock_distribution_urls
+        ):
             result = helper.get_distribution_urls("test-build-123")
 
         assert result == mock_distribution_urls
@@ -130,7 +132,9 @@ class TestPulpHelperDistributionMethods:
         """Test PulpHelper get_distribution_urls with sanitization."""
         helper = PulpHelper(mock_pulp_client, "/path/to/cert-config.toml")
 
-        with patch.object(helper, "_get_distribution_urls_impl", return_value=mock_distribution_urls):
+        with patch.object(
+            helper._distribution_manager, "_get_distribution_urls_impl", return_value=mock_distribution_urls
+        ):
             result = helper.get_distribution_urls("test/build:123")
 
         assert result == mock_distribution_urls
@@ -143,7 +147,9 @@ class TestPulpHelperRepositoryOperations:
         """Test create_or_get_repository method."""
         helper = PulpHelper(mock_pulp_client)
 
-        with patch.object(helper, "_create_or_get_repository_impl", return_value=("test-prn", "test-href")):
+        with patch.object(
+            helper._repository_manager, "_create_or_get_repository_impl", return_value=("test-prn", "test-href")
+        ):
             prn, href = helper.create_or_get_repository("test-build-123", "rpms")
 
         assert prn == "test-prn"
@@ -160,7 +166,9 @@ class TestPulpHelperRepositoryOperations:
         """Test PulpHelper create_or_get_repository with sanitization."""
         helper = PulpHelper(mock_pulp_client)
 
-        with patch.object(helper, "_create_or_get_repository_impl", return_value=("test-prn", "test-href")):
+        with patch.object(
+            helper._repository_manager, "_create_or_get_repository_impl", return_value=("test-prn", "test-href")
+        ):
             prn, href = helper.create_or_get_repository("test/build:123", "rpms")
 
         assert prn == "test-prn"
@@ -179,7 +187,7 @@ class TestPulpHelperInternalMethods:
         mock_response.text = "Invalid response text"
 
         with pytest.raises(ValueError, match="Invalid JSON response from Pulp API"):
-            helper._parse_repository_response(mock_response, "rpm", "test")
+            helper._repository_manager._parse_repository_response(mock_response, "rpm", "test")
 
     def test_get_existing_repository(self, mock_pulp_client):
         """Test PulpHelper _get_existing_repository."""
@@ -194,7 +202,7 @@ class TestPulpHelperInternalMethods:
 
         mock_pulp_client.check_response = Mock()
 
-        result = helper._get_existing_repository(methods, "test-build/rpms", "rpms")
+        result = helper._repository_manager._get_existing_repository(methods, "test-build/rpms", "rpms")
 
         assert result == ("test-prn", "/pulp/api/v3/repositories/rpm/rpm/12345/")
 
@@ -209,7 +217,7 @@ class TestPulpHelperInternalMethods:
 
         mock_pulp_client.check_response = Mock()
 
-        result = helper._get_existing_repository(methods, "test-build/rpms", "rpms")
+        result = helper._repository_manager._get_existing_repository(methods, "test-build/rpms", "rpms")
 
         assert result is None
 
@@ -228,7 +236,7 @@ class TestPulpHelperInternalMethods:
 
         mock_pulp_client.check_response = Mock()
 
-        prn, href = helper._create_new_repository(methods, "test-build/rpms", "rpms")
+        prn, href = helper._repository_manager._create_new_repository(methods, "test-build/rpms", "rpms")
 
         assert prn == "test-prn"
         assert href == "/pulp/api/v3/repositories/rpm/rpm/12345/"
@@ -253,7 +261,7 @@ class TestPulpHelperInternalMethods:
 
         methods = {"wait_for_finished_task": Mock(return_value=mock_task_response)}
 
-        result = helper._wait_for_distribution_task(methods, "task-123", "rpms", "test-build")
+        result = helper._repository_manager._wait_for_distribution_task(methods, "task-123", "rpms", "test-build")
 
         methods["wait_for_finished_task"].assert_called_once_with("task-123")
         assert result == "test-build/rpms"
@@ -270,7 +278,7 @@ class TestPulpHelperInternalMethods:
 
         methods = {"wait_for_finished_task": Mock(return_value=mock_task_response)}
 
-        helper._wait_for_distribution_task(methods, "task-123", "rpms", "test-build")
+        helper._repository_manager._wait_for_distribution_task(methods, "task-123", "rpms", "test-build")
 
         methods["wait_for_finished_task"].assert_called_once_with("task-123")
 
@@ -291,7 +299,7 @@ class TestPulpHelperInternalMethods:
         methods = {"wait_for_finished_task": Mock(return_value=mock_task_response)}
 
         with pytest.raises(ValueError, match="Distribution creation task failed"):
-            helper._wait_for_distribution_task(methods, "task-123", "rpms", "test-build")
+            helper._repository_manager._wait_for_distribution_task(methods, "task-123", "rpms", "test-build")
 
 
 class TestPulpHelperDistributionOperations:
@@ -307,7 +315,7 @@ class TestPulpHelperDistributionOperations:
 
         methods = {"get_distro": Mock(return_value=mock_response)}
 
-        result = helper._check_existing_distribution(methods, "test-build/rpms", "rpms")
+        result = helper._repository_manager._check_existing_distribution(methods, "test-build/rpms", "rpms")
 
         assert result is True
 
@@ -320,7 +328,7 @@ class TestPulpHelperDistributionOperations:
 
         methods = {"get_distro": Mock(return_value=mock_response)}
 
-        result = helper._check_existing_distribution(methods, "test-build/rpms", "rpms")
+        result = helper._repository_manager._check_existing_distribution(methods, "test-build/rpms", "rpms")
 
         assert result is False
 
@@ -330,7 +338,7 @@ class TestPulpHelperDistributionOperations:
 
         methods = {"get_distro": Mock(side_effect=HTTPError("API error"))}
 
-        result = helper._check_existing_distribution(methods, "test-build/rpms", "rpms")
+        result = helper._repository_manager._check_existing_distribution(methods, "test-build/rpms", "rpms")
 
         assert result is False
 
@@ -340,7 +348,7 @@ class TestPulpHelperDistributionOperations:
 
         methods: dict[str, Any] = {}
 
-        result = helper._check_existing_distribution(methods, "test-build/rpms", "rpms")
+        result = helper._repository_manager._check_existing_distribution(methods, "test-build/rpms", "rpms")
 
         assert result is False
 
@@ -350,7 +358,7 @@ class TestPulpHelperDistributionOperations:
 
         methods = {"get_distro": Mock(side_effect=ValueError("JSON error"))}
 
-        result = helper._check_existing_distribution(methods, "test-build/rpms", "rpms")
+        result = helper._repository_manager._check_existing_distribution(methods, "test-build/rpms", "rpms")
 
         assert result is False
 
@@ -368,8 +376,8 @@ class TestPulpHelperDistributionOperations:
 
         mock_pulp_client.check_response = Mock()
 
-        with patch.object(helper, "_check_existing_distribution", return_value=False):
-            task_id = helper._create_distribution_task("test-build", "rpms", "test-prn", methods)
+        with patch.object(helper._repository_manager, "_check_existing_distribution", return_value=False):
+            task_id = helper._repository_manager._create_distribution_task("test-build", "rpms", "test-prn", methods)
 
         assert task_id == "/pulp/api/v3/tasks/12345/"
 
@@ -379,8 +387,8 @@ class TestPulpHelperDistributionOperations:
 
         methods: dict[str, Any] = {}
 
-        with patch.object(helper, "_check_existing_distribution", return_value=True):
-            task_id = helper._create_distribution_task("test-build", "rpms", "test-prn", methods)
+        with patch.object(helper._repository_manager, "_check_existing_distribution", return_value=True):
+            task_id = helper._repository_manager._create_distribution_task("test-build", "rpms", "test-prn", methods)
 
         assert task_id == ""  # Empty string indicates distribution already exists
 
@@ -394,10 +402,9 @@ class TestPulpHelperDistributionOperations:
 
         mock_pulp_client.repository_operation = Mock(return_value=mock_response)
 
-        with patch.object(helper, "get_repository_methods") as mock_get_methods:
-            mock_get_methods.return_value = {"get_distro": Mock(return_value=mock_response)}
-
-            url = helper._get_single_distribution_url("test-build", "rpms", "https://pulp.example.com/pulp-content/")
+        url = helper._distribution_manager._get_single_distribution_url(
+            "test-build", "rpms", "https://pulp.example.com/pulp-content/"
+        )
 
         assert url == "https://pulp.example.com/pulp-content/test-domain/test-build/rpms/"
 
@@ -412,10 +419,9 @@ class TestPulpHelperDistributionOperations:
         mock_response.ok = True
         mock_response.json.return_value = {"results": []}
 
-        with patch.object(helper, "get_repository_methods") as mock_get_methods:
-            mock_get_methods.return_value = {"get_distro": Mock(return_value=mock_response)}
-
-            url = helper._get_single_distribution_url("test-build", "rpms", "https://pulp.example.com/pulp-content/")
+        url = helper._distribution_manager._get_single_distribution_url(
+            "test-build", "rpms", "https://pulp.example.com/pulp-content/"
+        )
 
         # Now returns computed URL even if not found in API
         assert url == "https://pulp.example.com/pulp-content/test-domain/test-build/rpms/"
@@ -432,10 +438,9 @@ class TestPulpHelperDistributionOperations:
         mock_response.status_code = 404
         mock_response.text = "Not found"
 
-        with patch.object(helper, "get_repository_methods") as mock_get_methods:
-            mock_get_methods.return_value = {"get_distro": Mock(return_value=mock_response)}
-
-            url = helper._get_single_distribution_url("test-build", "rpms", "https://pulp.example.com/pulp-content/")
+        url = helper._distribution_manager._get_single_distribution_url(
+            "test-build", "rpms", "https://pulp.example.com/pulp-content/"
+        )
 
         # Now returns computed URL even with API error
         assert url == "https://pulp.example.com/pulp-content/test-domain/test-build/rpms/"
@@ -447,8 +452,9 @@ class TestPulpHelperDistributionOperations:
         """
         helper = PulpHelper(mock_pulp_client, "/path/to/cert-config.toml")
 
-        with patch.object(helper, "get_repository_methods", side_effect=HTTPError("API error")):
-            url = helper._get_single_distribution_url("test-build", "rpms", "https://pulp.example.com/pulp-content/")
+        url = helper._distribution_manager._get_single_distribution_url(
+            "test-build", "rpms", "https://pulp.example.com/pulp-content/"
+        )
 
         # Now returns computed URL even with exception
         assert url == "https://pulp.example.com/pulp-content/test-domain/test-build/rpms/"
@@ -459,14 +465,14 @@ class TestPulpHelperDistributionOperations:
 
         # Mock _get_single_distribution_url to return expected URLs
         # The namespace comes from helper.namespace (which is set from client.namespace)
-        with patch.object(helper, "_get_single_distribution_url") as mock_get_url:
+        with patch.object(helper._distribution_manager, "_get_single_distribution_url") as mock_get_url:
             # Mock returns different URLs for each repo type
             # Format: {base_url}{namespace}/{build_id}/{repo_type}/
             mock_get_url.side_effect = lambda build_id, repo_type, base_url: (
                 f"{base_url}{helper.namespace}/{build_id}/{repo_type}/"
             )
 
-            result = helper._get_distribution_urls_impl("test-build")
+            result = helper._distribution_manager._get_distribution_urls_impl("test-build")
 
         assert len(result) == 4  # All repo types
         assert "rpms" in result
@@ -485,16 +491,16 @@ class TestPulpHelperRepositoryImplementation:
         helper = PulpHelper(mock_pulp_client)
 
         with (
-            patch.object(helper, "get_repository_methods") as mock_get_methods,
-            patch.object(helper, "_get_existing_repository", return_value=None),
-            patch.object(helper, "_create_new_repository", return_value=("test-prn", "test-href")),
-            patch.object(helper, "_create_distribution_task", return_value="task-123"),
-            patch.object(helper, "_wait_for_distribution_task"),
+            patch.object(helper._repository_manager, "get_repository_methods") as mock_get_methods,
+            patch.object(helper._repository_manager, "_get_existing_repository", return_value=None),
+            patch.object(helper._repository_manager, "_create_new_repository", return_value=("test-prn", "test-href")),
+            patch.object(helper._repository_manager, "_create_distribution_task", return_value="task-123"),
+            patch.object(helper._repository_manager, "_wait_for_distribution_task"),
         ):
 
             mock_get_methods.return_value = {}
 
-            prn, href = helper._create_or_get_repository_impl("test-build", "rpms")
+            prn, href = helper._repository_manager._create_or_get_repository_impl("test-build", "rpms")
 
         assert prn == "test-prn"
         assert href == "test-href"
@@ -504,15 +510,17 @@ class TestPulpHelperRepositoryImplementation:
         helper = PulpHelper(mock_pulp_client)
 
         with (
-            patch.object(helper, "get_repository_methods") as mock_get_methods,
-            patch.object(helper, "_get_existing_repository", return_value=("test-prn", "test-href")),
-            patch.object(helper, "_create_distribution_task", return_value="task-123"),
-            patch.object(helper, "_wait_for_distribution_task"),
+            patch.object(helper._repository_manager, "get_repository_methods") as mock_get_methods,
+            patch.object(
+                helper._repository_manager, "_get_existing_repository", return_value=("test-prn", "test-href")
+            ),
+            patch.object(helper._repository_manager, "_create_distribution_task", return_value="task-123"),
+            patch.object(helper._repository_manager, "_wait_for_distribution_task"),
         ):
 
             mock_get_methods.return_value = {}
 
-            prn, href = helper._create_or_get_repository_impl("test-build", "rpms")
+            prn, href = helper._repository_manager._create_or_get_repository_impl("test-build", "rpms")
 
         assert prn == "test-prn"
         assert href == "test-href"
@@ -522,14 +530,16 @@ class TestPulpHelperRepositoryImplementation:
         helper = PulpHelper(mock_pulp_client)
 
         with (
-            patch.object(helper, "get_repository_methods") as mock_get_methods,
-            patch.object(helper, "_get_existing_repository", return_value=("test-prn", "test-href")),
-            patch.object(helper, "_create_distribution_task", return_value=None),
+            patch.object(helper._repository_manager, "get_repository_methods") as mock_get_methods,
+            patch.object(
+                helper._repository_manager, "_get_existing_repository", return_value=("test-prn", "test-href")
+            ),
+            patch.object(helper._repository_manager, "_create_distribution_task", return_value=""),
         ):
 
             mock_get_methods.return_value = {}
 
-            prn, href = helper._create_or_get_repository_impl("test-build", "rpms")
+            prn, href = helper._repository_manager._create_or_get_repository_impl("test-build", "rpms")
 
         assert prn == "test-prn"
         assert href == "test-href"

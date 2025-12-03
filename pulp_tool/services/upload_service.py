@@ -1,34 +1,33 @@
-#!/usr/bin/env python3
 """
-Upload operations for Pulp repositories.
+Upload service for high-level upload operations.
 
-This module provides functionality for uploading RPM packages, logs, and SBOM files
-to Pulp repositories. It includes helpers for collecting results, handling artifact
-metadata, and generating distribution URLs.
+This module provides a service layer that orchestrates upload operations,
+abstracting the complexity of coordinating between repositories, distributions,
+and content uploads.
 
 Key Functions:
     - upload_sbom(): Upload SBOM files to repository
     - collect_results(): Gather and upload results JSON
     - _handle_artifact_results(): Process Konflux integration results
     - _handle_sbom_results(): Process SBOM results for Konflux
-
-The module follows clean code principles with small, focused functions
-that are easy to test and maintain.
 """
 
-# Standard library imports
 import json
 import logging
 import os
 import traceback
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, TYPE_CHECKING
 
-from .models.pulp_api import TaskResponse
+from ..models.pulp_api import TaskResponse
+from ..models.context import UploadContext
+from ..models.repository import RepositoryRefs
+from ..models.results import PulpResultsModel
+from ..models.artifacts import FileInfoModel
 
-# Local imports
-from .api import PulpClient
-from .utils import PulpHelper, validate_file_path, create_labels
-from .models import PulpResultsModel, FileInfoModel, UploadContext
+if TYPE_CHECKING:
+    from ..api.pulp_client import PulpClient
+
+from ..utils import PulpHelper, validate_file_path, create_labels
 
 # ============================================================================
 # Constants
@@ -37,13 +36,87 @@ from .models import PulpResultsModel, FileInfoModel, UploadContext
 RESULTS_JSON_FILENAME = "pulp_results.json"
 MAX_LOG_LINE_LENGTH = 114
 
+
+class UploadService:
+    """
+    High-level service for upload operations.
+
+    This service provides a clean interface for upload operations,
+    coordinating between repositories, distributions, and content uploads.
+    """
+
+    def __init__(self, pulp_client: "PulpClient", parent_package: Optional[str] = None) -> None:
+        """
+        Initialize the upload service.
+
+        Args:
+            pulp_client: PulpClient instance for API interactions
+            parent_package: Optional parent package name for distribution paths
+        """
+        self.client = pulp_client
+        self.helper = PulpHelper(pulp_client, parent_package=parent_package)
+
+    def setup_repositories(self, build_id: str) -> RepositoryRefs:
+        """
+        Set up all required repositories for a build.
+
+        Args:
+            build_id: Build identifier
+
+        Returns:
+            RepositoryRefs containing all repository identifiers
+        """
+        logging.info("Setting up repositories for build: %s", build_id)
+        repositories = self.helper.setup_repositories(build_id)
+        logging.info("Repository setup completed")
+        return repositories
+
+    def upload_artifacts(self, context: UploadContext, repositories: RepositoryRefs) -> Optional[str]:
+        """
+        Upload all artifacts (RPMs, logs, SBOMs) and collect results.
+
+        This method orchestrates the complete upload process including:
+        - Processing architecture-specific uploads
+        - Uploading SBOM files
+        - Collecting and uploading results JSON
+
+        Args:
+            context: Upload context with all required parameters
+            repositories: Repository references for upload targets
+
+        Returns:
+            URL of the uploaded results JSON, or None if upload failed
+        """
+        logging.info("Starting upload process for build: %s", context.build_id)
+        results_json_url = self.helper.process_uploads(self.client, context, repositories)
+
+        if not results_json_url:
+            logging.error("Upload completed but results JSON was not created")
+            return None
+
+        logging.info("Upload completed successfully. Results JSON URL: %s", results_json_url)
+        return results_json_url
+
+    def get_distribution_urls(self, build_id: str) -> dict[str, str]:
+        """
+        Get distribution URLs for all repository types.
+
+        Args:
+            build_id: Build identifier
+
+        Returns:
+            Dictionary mapping repository types to distribution URLs
+        """
+        return self.helper.get_distribution_urls(build_id)
+
+
 # ============================================================================
 # SBOM and Results Functions
 # ============================================================================
 
 
 def upload_sbom(
-    client: PulpClient, context: UploadContext, sbom_repository_prn: str, date: str, results_model: PulpResultsModel
+    client: "PulpClient", context: UploadContext, sbom_repository_prn: str, date: str, results_model: PulpResultsModel
 ) -> List[str]:
     """
     Upload SBOM file to repository.
@@ -106,7 +179,7 @@ def _serialize_results_to_json(results: Dict[str, Any]) -> str:
 
 
 def _upload_and_get_results_url(
-    client: PulpClient, context: UploadContext, artifact_repository_prn: str, json_content: str, date: str
+    client: "PulpClient", context: UploadContext, artifact_repository_prn: str, json_content: str, date: str
 ) -> Optional[str]:
     """Upload results JSON and return the distribution URL."""
     # Upload results JSON
@@ -144,7 +217,7 @@ def _upload_and_get_results_url(
         raise
 
 
-def _extract_results_url(client: PulpClient, context: UploadContext, task_response: TaskResponse) -> str:
+def _extract_results_url(client: "PulpClient", context: UploadContext, task_response: TaskResponse) -> str:
     """Extract results JSON URL from task response.
 
     Args:
@@ -189,7 +262,7 @@ def _extract_results_url(client: PulpClient, context: UploadContext, task_respon
 
 
 def _gather_and_validate_content(
-    client: PulpClient, context: UploadContext, extra_artifacts: Optional[List[Dict[str, str]]]
+    client: "PulpClient", context: UploadContext, extra_artifacts: Optional[List[Dict[str, str]]]
 ) -> Any:
     """
     Gather content data and validate it's not empty.
@@ -219,7 +292,7 @@ def _gather_and_validate_content(
     return content_data
 
 
-def _build_artifact_map(client: PulpClient, content_results: List[Dict[str, Any]]) -> Dict[str, FileInfoModel]:
+def _build_artifact_map(client: "PulpClient", content_results: List[Dict[str, Any]]) -> Dict[str, FileInfoModel]:
     """
     Build map of artifact hrefs to file information.
 
@@ -265,7 +338,10 @@ def _build_artifact_map(client: PulpClient, content_results: List[Dict[str, Any]
 
 
 def _populate_results_model(
-    client: PulpClient, results_model: PulpResultsModel, content_results: list, file_info_map: Dict[str, FileInfoModel]
+    client: "PulpClient",
+    results_model: PulpResultsModel,
+    content_results: list,
+    file_info_map: Dict[str, FileInfoModel],
 ) -> None:
     """
     Populate results model with artifacts from content results.
@@ -279,7 +355,9 @@ def _populate_results_model(
     client.build_results_structure(results_model, content_results, file_info_map)
 
 
-def _add_distributions_to_results(client: PulpClient, context: UploadContext, results_model: PulpResultsModel) -> None:
+def _add_distributions_to_results(
+    client: "PulpClient", context: UploadContext, results_model: PulpResultsModel
+) -> None:
     """
     Add distribution URLs to results model.
 
@@ -301,7 +379,7 @@ def _add_distributions_to_results(client: PulpClient, context: UploadContext, re
 
 
 def collect_results(
-    client: PulpClient,
+    client: "PulpClient",
     context: UploadContext,
     date: str,
     results_model: PulpResultsModel,
@@ -342,7 +420,7 @@ def collect_results(
     return _upload_and_get_results_url(client, context, results_model.repositories.artifacts_prn, json_content, date)
 
 
-def _find_artifact_content(client: PulpClient, task_response) -> Optional[str]:
+def _find_artifact_content(client: "PulpClient", task_response: TaskResponse) -> Optional[str]:
     """
     Find artifact content href from task response.
 
@@ -423,7 +501,7 @@ def _write_konflux_results(image_url: str, digest: str, url_path: str, digest_pa
     logging.debug("Image digest: %s", digest)
 
 
-def _handle_artifact_results(client: PulpClient, context: UploadContext, task_response: TaskResponse) -> None:
+def _handle_artifact_results(client: "PulpClient", context: UploadContext, task_response: TaskResponse) -> None:
     """
     Handle artifact results for Konflux integration.
 
@@ -466,7 +544,7 @@ def _handle_artifact_results(client: PulpClient, context: UploadContext, task_re
 
 
 def _handle_sbom_results(
-    client: PulpClient, context: UploadContext, json_content: str
+    client: "PulpClient", context: UploadContext, json_content: str
 ) -> None:  # pylint: disable=unused-argument
     """
     Handle SBOM results for Konflux integration.
@@ -522,3 +600,15 @@ def _handle_sbom_results(
     except IOError as e:
         logging.error("Failed to write SBOM results file: %s", e)
         logging.error("Traceback: %s", traceback.format_exc())
+
+
+__all__ = [
+    "UploadService",
+    "upload_sbom",
+    "collect_results",
+    "_serialize_results_to_json",
+    "_upload_and_get_results_url",
+    "_extract_results_url",
+    "_handle_artifact_results",
+    "_handle_sbom_results",
+]

@@ -9,14 +9,14 @@ import tempfile
 import pytest
 
 from pulp_tool.utils import (
-    validate_file_path,
-    validate_build_id,
-    sanitize_build_id_for_repository,
-    validate_repository_setup,
     extract_build_id_from_artifact_json,
     extract_build_id_from_artifacts,
+    sanitize_build_id_for_repository,
+    validate_build_id,
+    validate_file_path,
+    validate_repository_setup,
 )
-from pulp_tool.utils.validation import (
+from pulp_tool.utils.validation.build_id import (
     _extract_field_from_artifact,
     extract_metadata_from_artifact_json,
     strip_namespace_from_build_id,
@@ -263,3 +263,23 @@ class TestAdditionalValidation:
         result = extract_metadata_from_artifact_json(artifact_json, "build_id", fallback="fallback-value")
         # Should extract build_id from the ArtifactMetadata object
         assert result == "test-build-789"
+
+    def test_validate_build_id_with_space(self):
+        """Test validate_build_id with space character (line 101)."""
+        # Test build ID with space character - should return False
+        assert validate_build_id("test build") is False
+
+    def test_validate_build_id_with_slash(self):
+        """Test validate_build_id with slash character (line 101)."""
+        # Test build ID with slash character - should return False
+        assert validate_build_id("test/build") is False
+
+    def test_extract_field_from_artifact_none(self):
+        """Test _extract_field_from_artifact with None/other types (line 125)."""
+        # Test with None
+        result = _extract_field_from_artifact(None, "build_id")  # type: ignore[arg-type]
+        assert result is None
+
+        # Test with other type (not ArtifactMetadata or dict)
+        result = _extract_field_from_artifact("not a dict or ArtifactMetadata", "build_id")  # type: ignore[arg-type]
+        assert result is None

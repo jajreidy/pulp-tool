@@ -23,8 +23,8 @@ def read_readme():
 setup(
     name="pulp-tool",
     version="1.0.0",
-    author="Konflux Team",
-    author_email="konflux@redhat.com",
+    author="Rok Artifact Storage Team",
+    author_email="rokartifactstorage@redhat.com",
     description="A Python client for Pulp API operations including RPM, log, and SBOM file management",
     long_description=read_readme(),
     long_description_content_type="text/markdown",

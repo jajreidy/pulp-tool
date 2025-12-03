@@ -7,7 +7,6 @@ distribution repositories.
 
 # Standard library imports
 import logging
-import os
 import traceback
 from typing import Tuple
 
@@ -63,17 +62,12 @@ class DistributionClient:
         Returns:
             Full path to the saved file
         """
-        logging.info("Pulling file %s", file_url)
-        file_basename = filename.split("/")[-1]
+        from ..utils.path_utils import get_artifact_save_path
 
-        # Determine file path based on artifact type
-        if artifact_type == "log":
-            # Log files go to logs/<arch>/
-            file_full_filename = f"logs/{arch}/{file_basename}"
-            os.makedirs(os.path.dirname(file_full_filename), exist_ok=True)
-        else:
-            # RPM and SBOM files go to current folder
-            file_full_filename = file_basename
+        logging.info("Pulling file %s", file_url)
+
+        # Use centralized path utility
+        file_full_filename = get_artifact_save_path(filename, arch, artifact_type)
 
         with self.session.stream("GET", file_url) as response:
             response.raise_for_status()

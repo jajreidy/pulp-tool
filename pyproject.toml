@@ -9,10 +9,10 @@ description = "A Python client for Pulp API operations including RPM, log, and S
 readme = "README.md"
 license = {text = "Apache-2.0"}
 authors = [
-    {name = "Konflux Team", email = "konflux@redhat.com"}
+    {name = "Rok Artifact Storage Team", email = "rokartifactstorage@redhat.com"}
 ]
 maintainers = [
-    {name = "Konflux Team", email = "konflux@redhat.com"}
+    {name = "Rok Artifact Storage Team", email = "rokartifactstorage@redhat.com"}
 ]
 keywords = ["pulp", "rpm", "package-management", "konflux", "redhat"]
 classifiers = [

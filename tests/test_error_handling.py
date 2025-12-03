@@ -227,7 +227,7 @@ class TestPulpHelperErrorHandling:
         helper = PulpHelper(mock_pulp_client)
 
         with (
-            patch.object(helper, "_setup_repositories_impl", return_value={}),
+            patch.object(helper._repository_manager, "_setup_repositories_impl", return_value={}),
             patch("pulp_tool.utils.validation.validate_repository_setup", return_value=(False, ["Missing repo"])),
         ):
 

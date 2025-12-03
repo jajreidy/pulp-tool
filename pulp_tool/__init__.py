@@ -6,8 +6,8 @@ RPM repositories, file repositories, and content uploads with OAuth2 authenticat
 """
 
 __version__ = "1.0.0"
-__author__ = "Konflux Team"
-__email__ = "konflux@redhat.com"
+__author__ = "Rok Artifact Storage Team"
+__email__ = "rokartifactstorage@redhat.com"
 
 # Import main classes and functions for easy access
 from .api import PulpClient, OAuth2ClientCredentialsAuth, DistributionClient
