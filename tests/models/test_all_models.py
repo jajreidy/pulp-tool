@@ -39,6 +39,10 @@ from pulp_tool.models.statistics import (
     DownloadStats,
     UploadCounts,
 )
+from pulp_tool.models.pulp_api import (
+    RepositoryRequest,
+    DistributionRequest,
+)
 
 
 class TestKonfluxBaseModel:
@@ -812,6 +816,29 @@ class TestModelValidation:
                 build_id="test",
                 repositories="not a RepositoryRefs object",  # type: ignore[arg-type] # Should fail
             )
+
+
+class TestRepositoryRequest:
+    """Test RepositoryRequest validation errors"""
+
+    def test_empty_name_error(self):
+        """Test that empty(only white space) name raises validation error"""
+        with pytest.raises(ValueError, match="Invalid repository name"):
+            RepositoryRequest(name=" ")
+
+
+class TestDistributionRequest:
+    """Test DistributionRequest validation errors"""
+
+    def test_empty_name_error(self):
+        """Test that empty(only white space) name raises validation error"""
+        with pytest.raises(ValueError, match="Invalid distribution name"):
+            DistributionRequest(name=" ", base_path="test")
+
+    def test_empty_base_path_error(self):
+        """Test that empty(only white space) base_path raises validation error"""
+        with pytest.raises(ValueError, match="Invalid distribution base_path"):
+            DistributionRequest(name="test", base_path=" ")
 
 
 # TestAdditionalModelCoverage temporarily removed due to complex property access patterns

@@ -8,6 +8,8 @@ and upload operations.
 
 from typing import Any, Optional, TYPE_CHECKING
 
+from pulp_tool.models.pulp_api import DistributionRequest, RepositoryRequest
+
 from ..models.context import UploadContext
 from ..models.repository import RepositoryRefs
 from ..models.results import PulpResultsModel
@@ -79,7 +81,13 @@ class PulpHelper:
         """
         return self._distribution_manager.get_distribution_urls(build_id)
 
-    def create_or_get_repository(self, build_id: str, repo_type: str) -> tuple[str, Optional[str]]:
+    def create_or_get_repository(
+        self,
+        build_id: Optional[str],
+        repo_api_type: str,
+        new_repository: Optional[RepositoryRequest] = None,
+        new_distribution: Optional[DistributionRequest] = None,
+    ) -> tuple[str, Optional[str]]:
         """
         Create or get a repository and distribution of the specified type.
 
@@ -88,12 +96,17 @@ class PulpHelper:
 
         Args:
             build_id: Build ID for naming repositories and distributions
-            repo_type: Type of repository ('rpms', 'logs', 'sbom', 'artifacts')
+            repo_api_type: Type of repository or API ('rpms', 'logs', 'sbom', 'artifacts', 'rpm','file')
+            new_repository: RepositoryRequest model for the repository to create
+            new_distribution: DistributionRequest model for the distribution to create
 
         Returns:
             Tuple of (repository_prn, repository_href) where href is None for file repos
         """
-        return self._repository_manager.create_or_get_repository(build_id, repo_type)
+
+        return self._repository_manager.create_or_get_repository(
+            build_id, repo_api_type, new_repository, new_distribution
+        )
 
     def process_architecture_uploads(
         self,

@@ -8,6 +8,8 @@ from typing import Any, Callable, Optional, Protocol, runtime_checkable
 
 import httpx
 
+from ..models.pulp_api import DistributionRequest, RepositoryRequest
+
 
 @runtime_checkable
 class RepositoryManagerMixin(Protocol):
@@ -24,66 +26,46 @@ class RepositoryManagerMixin(Protocol):
         """Get a single resource."""
         ...  # pragma: no cover - defined in implementation
 
-    def _create_repository(self, endpoint: str, name: str) -> httpx.Response:
+    def _create_repository(self, endpoint: str, new_repository: RepositoryRequest) -> httpx.Response:
         """
         Create a repository.
 
         Args:
             endpoint: API endpoint for repository creation
-            name: Name of the repository to create
+            new_repository: RepositoryRequest model for the repository to create
 
         Returns:
             Response object from the repository creation request
         """
         url = self._url(endpoint)
-        data = {"name": name, "autopublish": True}
+        data = new_repository.model_dump(exclude_none=True)
+
         return self.session.post(url, json=data, timeout=self.timeout, **self.request_params)
 
-    def _create_distribution(
-        self,
-        endpoint: str,
-        name: str,
-        repository: str,
-        *,
-        basepath: Optional[str] = None,
-        publication: Optional[str] = None,
-    ) -> httpx.Response:
+    def _create_distribution(self, endpoint: str, new_distribution: DistributionRequest) -> httpx.Response:
         """
         Create a distribution.
 
         Args:
             endpoint: API endpoint for distribution creation
-            name: Name of the distribution to create
-            repository: Repository PRN or href to associate with the distribution
-            basepath: Base path for the distribution (defaults to name)
-            publication: Publication href to associate with the distribution (optional)
+            new_distribution: DistributionRequest model for the distribution to create
 
         Returns:
             Response object from the distribution creation request
         """
         url = self._url(endpoint)
-        if publication:
-            data = {
-                "name": name,
-                "base_path": basepath or name,
-                "publication": publication,
-            }
-        else:
-            data = {
-                "name": name,
-                "repository": repository,
-                "base_path": basepath or name,
-            }
+
+        data = new_distribution.model_dump(exclude_none=True)
         return self.session.post(url, json=data, timeout=self.timeout, **self.request_params)
 
     def repository_operation(
         self,
         operation: str,
         repo_type: str,
-        name: str,
         *,
-        repository: Optional[str] = None,
-        basepath: Optional[str] = None,
+        name: str = None,
+        repository_data: Optional[RepositoryRequest] = None,
+        distribution_data: Optional[DistributionRequest] = None,
         publication: Optional[str] = None,
         distribution_href: Optional[str] = None,
     ) -> httpx.Response:
@@ -94,31 +76,39 @@ class RepositoryManagerMixin(Protocol):
             operation: Operation to perform ('create_repo', 'get_repo',
                       'create_distro', 'get_distro', 'update_distro')
             repo_type: Type of repository/distribution ('rpm' or 'file')
-            name: Name of the repository/distribution
-            repository: Repository PRN or href (for distribution operations)
-            basepath: Base path for distribution (for distribution creation)
-            publication: Publication href (for distribution operations)
+            name: Name of the repository/distribution (for get resource operations)
+            repository_data: RepositoryRequest model for the repository to create
+            distribution: DistributionRequest model for the distribution to create
+            publication: Publication href (for update operations)
             distribution_href: Full href of distribution (for update operations)
 
         Returns:
             Response object from the operation
         """
         if operation == "create_repo":
-            endpoint = f"api/v3/repositories/{repo_type}/{repo_type}/"
-            return self._create_repository(endpoint, name)
+            if repository_data is not None:
+                endpoint = f"api/v3/repositories/{repo_type}/{repo_type}/"
+                return self._create_repository(endpoint, repository_data)
+            else:
+                raise ValueError("Repository data is required for 'create_repo' operations")
         if operation == "get_repo":
-            endpoint = f"api/v3/repositories/{repo_type}/{repo_type}/"
-            return self._get_single_resource(endpoint, name)
+            if name is not None:
+                endpoint = f"api/v3/repositories/{repo_type}/{repo_type}/"
+                return self._get_single_resource(endpoint, name)
+            else:
+                raise ValueError("Name is required for 'get_repo' operations")
         if operation == "create_distro":
-            endpoint = f"api/v3/distributions/{repo_type}/{repo_type}/"
-            if repository is None:
-                raise ValueError("Repository is required for distribution creation")
-            return self._create_distribution(
-                endpoint, name, repository, basepath=basepath, publication=publication  # type: ignore[arg-type]
-            )
+            if distribution_data is not None:
+                endpoint = f"api/v3/distributions/{repo_type}/{repo_type}/"
+                return self._create_distribution(endpoint, distribution_data)
+            else:
+                raise ValueError("Distribution data is required for 'create_distro' operations")
         if operation == "get_distro":
-            endpoint = f"api/v3/distributions/{repo_type}/{repo_type}/"
-            return self._get_single_resource(endpoint, name)
+            if name is not None:
+                endpoint = f"api/v3/distributions/{repo_type}/{repo_type}/"
+                return self._get_single_resource(endpoint, name)
+            else:
+                raise ValueError("Name is required for 'get_distro' operations")
         if operation == "update_distro":
             if distribution_href is None:
                 raise ValueError("Distribution href is required")

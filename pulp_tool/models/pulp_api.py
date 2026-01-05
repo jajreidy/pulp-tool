@@ -5,8 +5,8 @@ This module provides type-safe models for all Pulp API responses, enabling
 better validation, IDE support, and error handling.
 """
 
-from typing import Dict, List, Optional, Any
-from pydantic import BaseModel, Field, ConfigDict
+from typing import Dict, List, Literal, Optional, Any
+from pydantic import BaseModel, Field, ConfigDict, ValidationInfo, field_validator
 
 
 # ============================================================================
@@ -27,6 +27,11 @@ class PaginatedResponse(PulpBaseModel):
     next: Optional[str] = None
     previous: Optional[str] = None
     results: List[Dict[str, Any]]
+
+
+class PulpRequestModel(BaseModel):
+
+    model_config = ConfigDict(extra="ignore")
 
 
 # ============================================================================
@@ -93,6 +98,23 @@ class RepositoryListResponse(PaginatedResponse):
     results: List[RepositoryResponse]  # type: ignore[assignment]
 
 
+class RepositoryRequest(PulpRequestModel):
+    name: str
+    pulp_labels: Optional[dict[str, str]] = None
+    description: Optional[str] = None
+    retain_repo_versions: Optional[str] = None
+    remote: Optional[str] = None
+    autopublish: Optional[bool] = None
+    manifest: Optional[str] = None
+
+    @field_validator("name", mode="after")
+    @classmethod
+    def is_empty(cls, value: str, info: ValidationInfo) -> str:
+        if not value.strip():
+            raise ValueError(f"Invalid repository {info.field_name}: {value}")
+        return value
+
+
 # ============================================================================
 # Distribution Models
 # ============================================================================
@@ -115,6 +137,24 @@ class DistributionListResponse(PaginatedResponse):
     """Paginated list of distributions."""
 
     results: List[DistributionResponse]  # type: ignore[assignment]
+
+
+class DistributionRequest(PulpRequestModel):
+    base_path: str
+    content_guard: Optional[str] = None
+    hidden: Optional[bool] = None
+    pulp_labels: Optional[dict[str, str]] = None
+    name: str
+    repository: Optional[str] = None
+    publication: Optional[str] = None
+    checkpoint: Optional[bool] = None
+
+    @field_validator("base_path", "name", mode="after")
+    @classmethod
+    def is_empty(cls, value: str, info: ValidationInfo) -> str:
+        if not value or not value.strip():
+            raise ValueError(f"Invalid distribution {info.field_name}: {value}")
+        return value
 
 
 # ============================================================================
@@ -181,6 +221,21 @@ class RpmListResponse(PaginatedResponse):
     """Paginated list of RPM packages."""
 
     results: List[RpmPackageResponse]  # type: ignore[assignment]
+
+
+class RpmRepositoryRequest(RepositoryRequest):
+    metadata_signing_service: Optional[str] = None
+    package_signing_service: Optional[str] = None
+    package_signing_fingerprint: Optional[str] = None
+    retain_package_versions: Optional[int] = None
+    checksum_type: Optional[Literal["unknown", "md5", "sha1", "sha224", "sha256", "sha384", "sha512"]] = None
+    repo_config: Optional[Any] = None
+    compression_type: Optional[Literal["zstd", "gz"]] = None
+    layout: Optional[Literal["nested_alphabetically", "flat"]] = None
+
+
+class RpmDistributionRequest(DistributionRequest):
+    generate_repo_config: Optional[bool] = None
 
 
 # ============================================================================

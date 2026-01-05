@@ -238,7 +238,7 @@ class TestPulpHelperErrorHandling:
         """Test create_or_get_repository method with invalid repository type."""
         helper = PulpHelper(mock_pulp_client)
 
-        with pytest.raises(ValueError, match="Invalid repository type"):
+        with pytest.raises(ValueError, match="Invalid repository or API type"):
             helper.create_or_get_repository("test-build-123", "invalid")
 
     def test_create_or_get_repository_invalid_build_id(self, mock_pulp_client):

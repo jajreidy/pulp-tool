@@ -12,11 +12,18 @@ from typing import Any, Dict, Optional, Tuple, TYPE_CHECKING
 import httpx
 
 from ..models.repository import RepositoryRefs
+from ..models.pulp_api import (
+    DistributionRequest,
+    RepositoryRequest,
+)
 
 if TYPE_CHECKING:
     from ..api.pulp_client import PulpClient
 
-from .constants import REPOSITORY_TYPES
+from .constants import (
+    API_TYPES,
+    REPOSITORY_TYPES,
+)
 from .validation import (
     strip_namespace_from_build_id,
     sanitize_build_id_for_repository,
@@ -97,7 +104,13 @@ class RepositoryManager:
             artifacts_prn=repositories.get("artifacts_prn", ""),
         )
 
-    def create_or_get_repository(self, build_id: str, repo_type: str) -> Tuple[str, Optional[str]]:
+    def create_or_get_repository(
+        self,
+        build_id: Optional[str],
+        repo_api_type: str,
+        new_repository: Optional[RepositoryRequest] = None,
+        new_distribution: Optional[DistributionRequest] = None,
+    ) -> Tuple[str, Optional[str]]:
         """
         Create or get a repository and distribution of the specified type.
 
@@ -106,34 +119,54 @@ class RepositoryManager:
 
         Args:
             build_id: Build ID for naming repositories and distributions
-            repo_type: Type of repository ('rpms', 'logs', 'sbom', 'artifacts')
+            repo_api_type: Type of repository or API ('rpms', 'logs', 'sbom', 'artifacts', 'rpm','file')
+            new_repository: RepositoryRequest model for the repository to create
+            new_distribution: DistributionRequest model for the distribution to create
 
         Returns:
             Tuple of (repository_prn, repository_href) where href is None for file repos
         """
         # Validate repository type
-        if repo_type not in REPOSITORY_TYPES:
-            raise ValueError(f"Invalid repository type: {repo_type}")
+        if repo_api_type not in REPOSITORY_TYPES + API_TYPES:
+            raise ValueError(f"Invalid repository or API type: {repo_api_type}")
 
-        # Check for empty/None build ID before sanitization
-        if not build_id or not isinstance(build_id, str) or not build_id.strip():
-            raise ValueError(f"Invalid build ID: {build_id}")
+        if new_repository is not None and new_distribution is not None:
+            logging.debug("Creating or getting defined repository: %s", new_repository.name)
+            # Create or get repository directly using the helper's own methods
+            repository_prn, repository_href = self._create_or_get_repository_impl(
+                new_repository, new_distribution, repo_api_type
+            )
+            logging.debug("Repository operation completed: %s", new_repository.name)
 
-        # Sanitize build ID for repository naming first
-        sanitized_build_id = sanitize_build_id_for_repository(build_id)
+        else:
 
-        # Validate sanitized build ID
-        if not validate_build_id(sanitized_build_id):
-            raise ValueError(f"Invalid build ID: {build_id} (sanitized: {sanitized_build_id})")
-        if sanitized_build_id != build_id:
-            logging.debug("Sanitized build ID '%s' to '%s' for repository naming", build_id, sanitized_build_id)
+            # Check for empty/None build ID before sanitization
+            if not build_id or not isinstance(build_id, str) or not build_id.strip():
+                raise ValueError(f"Invalid build ID: {build_id}")
 
-        logging.debug("Creating or getting repository: %s/%s", sanitized_build_id, repo_type)
+            # Sanitize build ID for repository naming first
+            sanitized_build_id = sanitize_build_id_for_repository(build_id)
 
-        # Create or get repository directly using the helper's own methods
-        repository_prn, repository_href = self._create_or_get_repository_impl(sanitized_build_id, repo_type)
+            # Validate sanitized build ID
+            if not validate_build_id(sanitized_build_id):
+                raise ValueError(f"Invalid build ID: {build_id} (sanitized: {sanitized_build_id})")
+            if sanitized_build_id != build_id:
+                logging.debug("Sanitized build ID '%s' to '%s' for repository naming", build_id, sanitized_build_id)
 
-        logging.debug("Repository operation completed: %s/%s", sanitized_build_id, repo_type)
+            logging.debug("Creating or getting repository: %s/%s", sanitized_build_id, repo_api_type)
+
+            build_name = strip_namespace_from_build_id(build_id)
+            full_name = f"{build_name}/{repo_api_type}"
+            new_repo = RepositoryRequest(name=full_name, autopublish=True)
+            new_distro = DistributionRequest(name=full_name, base_path=full_name)
+
+            # Create or get repository directly using the helper's own methods
+            repository_prn, repository_href = self._create_or_get_repository_impl(
+                new_repo, new_distro, repo_api_type, build_id=build_id
+            )
+
+            logging.debug("Repository operation completed: %s/%s", sanitized_build_id, repo_api_type)
+
         return repository_prn, repository_href
 
     def get_repository_methods(self, repo_type: str) -> Dict[str, Any]:
@@ -147,14 +180,16 @@ class RepositoryManager:
             Dictionary mapping method names to their implementations
         """
         return {
-            "get": lambda name: self.client.repository_operation("get_repo", repo_type, name),
-            "create": lambda name: self.client.repository_operation("create_repo", repo_type, name),
-            "distro": lambda name, repository, basepath=None, publication=None: self.client.repository_operation(
-                "create_distro", repo_type, name, repository=repository, basepath=basepath, publication=publication
+            "get": lambda name: self.client.repository_operation("get_repo", repo_type, name=name),
+            "create": lambda new_repository: self.client.repository_operation(
+                "create_repo", repo_type, repository_data=new_repository
             ),
-            "get_distro": lambda name: self.client.repository_operation("get_distro", repo_type, name),
+            "distro": lambda new_distribution: self.client.repository_operation(
+                "create_distro", repo_type, distribution_data=new_distribution
+            ),
+            "get_distro": lambda name: self.client.repository_operation("get_distro", repo_type, name=name),
             "update_distro": lambda distribution_href, publication: self.client.repository_operation(
-                "update_distro", repo_type, "", distribution_href=distribution_href, publication=publication
+                "update_distro", repo_type, distribution_href=distribution_href, publication=publication
             ),
             "wait_for_finished_task": self.client.wait_for_finished_task,
         }
@@ -187,11 +222,11 @@ class RepositoryManager:
         return None
 
     def _create_new_repository(
-        self, methods: Dict[str, Any], full_name: str, repo_type: str
+        self, methods: Dict[str, Any], new_repository: RepositoryRequest, repo_type: str
     ) -> Tuple[str, Optional[str]]:
         """Create a new repository and return its details."""
-        logging.warning("Creating new %s repository: %s", repo_type.capitalize(), full_name)
-        repository_response = methods["create"](full_name)
+        logging.warning("Creating new %s repository: %s", repo_type.capitalize(), new_repository.name)
+        repository_response = methods["create"](new_repository)
         self.client.check_response(repository_response, f"create {repo_type} repository")
 
         # The create response contains the repository details directly
@@ -205,11 +240,11 @@ class RepositoryManager:
             # Wrapped in results (fallback)
             results = response_data["results"]
             if not results:
-                raise ValueError(f"No {repo_type} repository found after creation: {full_name}")
+                raise ValueError(f"No {repo_type} repository found after creation: {new_repository.name}")
             result = results[0]
             return result["prn"], result.get("pulp_href")
         else:
-            raise ValueError(f"Unexpected response format for {repo_type} repository creation: {full_name}")
+            raise ValueError(f"Unexpected response format for {repo_type} repository creation: {new_repository.name}")
 
     def _wait_for_distribution_task(
         self, methods: Dict[str, Any], task_id: str, repo_type: str, build_id: str
@@ -282,8 +317,14 @@ class RepositoryManager:
         async def create_repo(repo_type: str) -> Tuple[str, Tuple[str, Optional[str]]]:
             """Helper to create repository and return type with result."""
             loop = asyncio.get_event_loop()
+            build_name = strip_namespace_from_build_id(build_id)
+            full_name = f"{build_name}/{repo_type}"
+            new_repository = RepositoryRequest(name=full_name, autopublish=True)
+            new_distribution = DistributionRequest(name=full_name, base_path=full_name)
             # Run sync method in executor to avoid blocking
-            prn, href = await loop.run_in_executor(None, self._create_or_get_repository_impl, build_id, repo_type)
+            prn, href = await loop.run_in_executor(
+                None, self._create_or_get_repository_impl, new_repository, new_distribution, repo_type
+            )
             return repo_type, (prn, href)
 
         try:
@@ -321,39 +362,50 @@ class RepositoryManager:
             logging.debug("Traceback: %s", traceback.format_exc())
             raise
 
-    def _create_or_get_repository_impl(self, build_id: str, repo_type: str) -> Tuple[str, Optional[str]]:
+    def _create_or_get_repository_impl(
+        self,
+        new_repository: RepositoryRequest,
+        new_distribution: DistributionRequest,
+        repo_type: str,
+        build_id: Optional[str] = None,
+    ) -> Tuple[str, Optional[str]]:
         """
         Create or get a repository and distribution of the specified type.
 
         Args:
+            new_repository: RepositoryRequest model for the repository to create
+            new_distribution: DistributionRequest model for the distribution to create
+            repo_type: Type of repository ('rpms', 'logs', 'sbom', 'artifacts', 'rpm', 'file')
             build_id: Base name for the repository (may include namespace prefix)
-            repo_type: Type of repository ('rpms', 'logs', 'sbom', 'artifacts')
 
         Returns:
             Tuple of (repository_prn, repository_href) where href is None for file repos
         """
-        # Strip namespace prefix from build_id for repository naming
-        build_name = strip_namespace_from_build_id(build_id)
-        full_name = f"{build_name}/{repo_type}"
-        api_type = "rpm" if repo_type == "rpms" else "file"
-        methods = self.get_repository_methods(api_type)
+        if repo_type not in API_TYPES:
+            api_type = "rpm" if repo_type == "rpms" else "file"
+            methods = self.get_repository_methods(api_type)
+        else:
+            methods = self.get_repository_methods(repo_type)
 
         # Check if repository already exists
-        existing_repo = self._get_existing_repository(methods, full_name, repo_type)
+        existing_repo = self._get_existing_repository(methods, new_repository.name, repo_type)
         if existing_repo:
             repository_prn, repository_href = existing_repo
             is_new_repository = False
         else:
-            repository_prn, repository_href = self._create_new_repository(methods, full_name, repo_type)
+            repository_prn, repository_href = self._create_new_repository(methods, new_repository, repo_type)
             is_new_repository = True
 
         # Create distribution (always create new distribution for new repositories)
-        task_id = self._create_distribution_task(build_id, repo_type, repository_prn, methods, is_new_repository)
+        new_distribution.repository = repository_prn
+        task_id = self._create_distribution_task(
+            methods, new_distribution, repo_type, is_new_repository, build_id=build_id
+        )
 
         # If distribution was created, wait for it to complete and cache the base_path
         if task_id:
-            base_path = self._wait_for_distribution_task(methods, task_id, repo_type, build_id)
-            if base_path:
+            base_path = self._wait_for_distribution_task(methods, task_id, repo_type, build_id or new_repository.name)
+            if build_id and base_path:
                 # Cache the base_path so we don't need to query it later
                 self._distribution_cache[(build_id, repo_type)] = base_path
                 logging.debug("Cached distribution base_path for %s/%s: %s", build_id, repo_type, base_path)
@@ -384,55 +436,70 @@ class RepositoryManager:
             logging.error("Traceback: %s", traceback.format_exc())
             return False  # Continue with creation if check fails
 
-    def _create_distribution_task(
-        self,
-        build_id: str,
-        repo_type: str,
-        repository_prn: str,
-        methods: Dict[str, Any],
-        is_new_repository: bool = False,
-    ) -> str:
+    def _new_distribution_task(self, methods: Dict[str, Any], new_distribution: DistributionRequest, repo_type: str):
         """Create a distribution for a repository and return the task ID.
 
-        Args:
-            build_id: Base name for the repository (may include namespace prefix)
-            repo_type: Type of repository ('rpms', 'logs', 'sbom', 'artifacts')
-            repository_prn: PRN of the repository to link to
+         Args:
             methods: Dictionary of repository methods
-            is_new_repository: If True, always create distribution without checking existence
+            new_distribution: DistributionRequest model for the distribution to create
+            repo_type: Type of repository ('rpms', 'logs', 'sbom', 'artifacts', 'rpm', 'file')
 
         Returns:
-            Task ID if distribution was created, empty string if it already exists
+            Task ID for the new distribution
         """
-        # Strip namespace prefix from build_id for distribution naming
-        build_name = strip_namespace_from_build_id(build_id)
-        full_name = f"{build_name}/{repo_type}"
-
-        # Distribution base_path must include: build_name/repo_type
-        # This creates URLs like: /pulp-content/build_name/repo_type/
-        # Example: /pulp-content/jreidy-tenant-libecpg-playground-on-pull-request-xxp48/artifacts/
-        # Note: Use build_name (without namespace prefix) to avoid duplication
-        basepath = f"{build_name}/{repo_type}"
-
-        # For new repositories, always create a distribution without checking
-        # For existing repositories, check if distribution already exists
-        if not is_new_repository and self._check_existing_distribution(methods, full_name, repo_type):
-            return ""  # Return empty string instead of None to match return type
-
-        # Create distribution with namespace/build_id/repo_type basepath
         logging.warning(
-            "Creating new %s distribution: %s with basepath: %s", repo_type.capitalize(), full_name, basepath
+            "Creating new %s distribution: %s with basepath: %s",
+            repo_type.capitalize(),
+            new_distribution.name,
+            new_distribution.base_path,
         )
-        distro_response = methods["distro"](full_name, repository_prn, basepath=basepath)
+        distro_response = methods["distro"](new_distribution)
         self.client.check_response(distro_response, f"create {repo_type} distribution")
 
         response_data = self._parse_repository_response(distro_response, repo_type, "distribution creation")
 
-        # Cache the base_path for future URL construction
-        cache_key = (build_id, repo_type)
-        self._distribution_cache[cache_key] = basepath
-
         return response_data["task"]
+
+    def _create_distribution_task(
+        self,
+        methods: Dict[str, Any],
+        new_distribution: DistributionRequest,
+        repo_type: str,
+        is_new_repository: bool = False,
+        build_id: Optional[str] = None,
+    ) -> str:
+        """Create a distribution for a repository and return the task ID.
+
+        Args:
+            methods: Dictionary of repository methods
+            new_distribution: DistributionRequest model for the distribution to create
+            repo_type: Type of repository ('rpms', 'logs', 'sbom', 'artifacts', 'rpm', 'file')
+            is_new_repository: If True, always create distribution without checking existence
+            build_id: Base name for the repository (may include namespace prefix)
+
+        Returns:
+            Task ID if distribution was created, empty string if it already exists
+        """
+        # For new repositories, always create a distribution without checking
+        # For existing repositories, check if distribution already exists
+        if not is_new_repository and self._check_existing_distribution(methods, new_distribution.name, repo_type):
+            return ""  # Return empty string instead of None to match return type
+
+        # Create distribution with namespace/build_id/repo_type basepath
+        logging.warning(
+            "Creating new %s distribution: %s with basepath: %s",
+            repo_type.capitalize(),
+            new_distribution.name,
+            new_distribution.base_path,
+        )
+        distro_task = self._new_distribution_task(methods, new_distribution, repo_type)
+
+        # Cache the base_path for future URL construction
+        if build_id:
+            cache_key = (build_id, repo_type)
+            self._distribution_cache[cache_key] = new_distribution.base_path
+
+        return distro_task
 
     def _setup_repositories_impl(self, build_id: str) -> Dict[str, str]:
         """

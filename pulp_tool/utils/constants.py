@@ -51,6 +51,8 @@ DEFAULT_MAX_WORKERS = 4
 # Maximum workers for repository setup operations
 REPOSITORY_SETUP_MAX_WORKERS = 4
 
+API_TYPES = ["rpm", "file"]
+
 # ============================================================================
 # Task Management Constants
 # ============================================================================

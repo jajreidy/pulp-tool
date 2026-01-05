@@ -11,6 +11,7 @@ from unittest.mock import Mock, patch
 from httpx import HTTPError
 import pytest
 
+from pulp_tool.models.pulp_api import RpmDistributionRequest, RpmRepositoryRequest
 from pulp_tool.utils import PulpHelper, RepositoryRefs
 
 
@@ -155,11 +156,25 @@ class TestPulpHelperRepositoryOperations:
         assert prn == "test-prn"
         assert href == "test-href"
 
+    def test_create_or_get_repository_predefined(self, mock_pulp_client, mock_repositories):
+        """Test create_or_get_repository method."""
+        helper = PulpHelper(mock_pulp_client)
+
+        new_repo = RpmRepositoryRequest(name="test-repo")
+        new_distro = RpmDistributionRequest(name="test-distro", base_path="test-base-path")
+        with patch.object(
+            helper._repository_manager, "_create_or_get_repository_impl", return_value=("test-prn", "test-href")
+        ):
+            prn, href = helper.create_or_get_repository(None, "rpm", new_repo, new_distro)
+
+        assert prn == "test-prn"
+        assert href == "test-href"
+
     def test_create_or_get_repository_invalid_type(self, mock_pulp_client):
         """Test create_or_get_repository method with invalid type."""
         helper = PulpHelper(mock_pulp_client)
 
-        with pytest.raises(ValueError, match="Invalid repository type"):
+        with pytest.raises(ValueError, match="Invalid repository or API type"):
             helper.create_or_get_repository("test-build-123", "invalid")
 
     def test_create_or_get_repository_with_sanitization(self, mock_pulp_client):
@@ -235,8 +250,8 @@ class TestPulpHelperInternalMethods:
         methods = {"create": Mock(return_value=mock_create_response)}
 
         mock_pulp_client.check_response = Mock()
-
-        prn, href = helper._repository_manager._create_new_repository(methods, "test-build/rpms", "rpms")
+        new_repo = RpmRepositoryRequest(name="test-repo", autopublish=True)
+        prn, href = helper._repository_manager._create_new_repository(methods, new_repo, "rpms")
 
         assert prn == "test-prn"
         assert href == "/pulp/api/v3/repositories/rpm/rpm/12345/"
@@ -362,22 +377,38 @@ class TestPulpHelperDistributionOperations:
 
         assert result is False
 
-    def test_create_distribution_task(self, mock_pulp_client):
-        """Test PulpHelper _create_distribution_task."""
+    def test_new_distribution_task(self, mock_pulp_client):
+        """Test pulphelper _test_new_distribution_task"""
         helper = PulpHelper(mock_pulp_client)
 
         mock_distro_response = Mock()
         mock_distro_response.json.return_value = {"task": "/pulp/api/v3/tasks/12345/"}
-
         methods = {
             "distro": Mock(return_value=mock_distro_response),
             "get_distro": Mock(return_value=Mock(json=lambda: {"results": []})),
         }
 
         mock_pulp_client.check_response = Mock()
+        new_distro = RpmDistributionRequest(name="test-distro", base_path="test-distro", repository="test-repo")
+        task_id = helper._repository_manager._new_distribution_task(methods, new_distro, "rpm")
+        assert task_id == "/pulp/api/v3/tasks/12345/"
 
-        with patch.object(helper._repository_manager, "_check_existing_distribution", return_value=False):
-            task_id = helper._repository_manager._create_distribution_task("test-build", "rpms", "test-prn", methods)
+    def test_create_distribution_task(self, mock_pulp_client):
+        """Test PulpHelper _create_distribution_task."""
+        helper = PulpHelper(mock_pulp_client)
+
+        methods: dict[str, Any] = {}
+        new_distro = RpmDistributionRequest(name="test-distro", base_path="test-distro", repository="test-repo")
+
+        with (
+            patch.object(helper._repository_manager, "_check_existing_distribution", return_value=False),
+            patch.object(
+                helper._repository_manager, "_new_distribution_task", return_value="/pulp/api/v3/tasks/12345/"
+            ),
+        ):
+            task_id = helper._repository_manager._create_distribution_task(
+                methods, new_distro, "rpms", build_id="test-build"
+            )
 
         assert task_id == "/pulp/api/v3/tasks/12345/"
 
@@ -386,9 +417,10 @@ class TestPulpHelperDistributionOperations:
         helper = PulpHelper(mock_pulp_client)
 
         methods: dict[str, Any] = {}
+        new_distro = RpmDistributionRequest(name="test-distro", base_path="test-distro", repository="test-repo")
 
         with patch.object(helper._repository_manager, "_check_existing_distribution", return_value=True):
-            task_id = helper._repository_manager._create_distribution_task("test-build", "rpms", "test-prn", methods)
+            task_id = helper._repository_manager._create_distribution_task(methods, new_distro, "rpms")
 
         assert task_id == ""  # Empty string indicates distribution already exists
 
@@ -499,9 +531,17 @@ class TestPulpHelperRepositoryImplementation:
         ):
 
             mock_get_methods.return_value = {}
+            new_repo_def = RpmRepositoryRequest(name="test-repo")
+            new_distro_def = RpmDistributionRequest(
+                name="test-repo",
+                base_path="test-repo",
+            )
 
-            prn, href = helper._repository_manager._create_or_get_repository_impl("test-build", "rpms")
+            prn, href = helper._repository_manager._create_or_get_repository_impl(
+                new_repo_def, new_distro_def, "rpms", "test-build"
+            )
 
+        assert new_distro_def.repository == "test-prn"
         assert prn == "test-prn"
         assert href == "test-href"
 
@@ -519,9 +559,15 @@ class TestPulpHelperRepositoryImplementation:
         ):
 
             mock_get_methods.return_value = {}
-
-            prn, href = helper._repository_manager._create_or_get_repository_impl("test-build", "rpms")
-
+            new_repo_def = RpmRepositoryRequest(name="test-repo")
+            new_distro_def = RpmDistributionRequest(
+                name="test-repo",
+                base_path="test-repo",
+            )
+            prn, href = helper._repository_manager._create_or_get_repository_impl(
+                new_repo_def, new_distro_def, "file", "test-build"
+            )
+        assert new_distro_def.repository == "test-prn"
         assert prn == "test-prn"
         assert href == "test-href"
 
@@ -539,7 +585,15 @@ class TestPulpHelperRepositoryImplementation:
 
             mock_get_methods.return_value = {}
 
-            prn, href = helper._repository_manager._create_or_get_repository_impl("test-build", "rpms")
+            mock_get_methods.return_value = {}
+            new_repo_def = RpmRepositoryRequest(name="test-repo")
+            new_distro_def = RpmDistributionRequest(
+                name="test-repo",
+                base_path="test-repo",
+            )
+            prn, href = helper._repository_manager._create_or_get_repository_impl(
+                new_repo_def, new_distro_def, "rpms", "test-build"
+            )
 
         assert prn == "test-prn"
         assert href == "test-href"
