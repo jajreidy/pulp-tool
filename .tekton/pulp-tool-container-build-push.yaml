@@ -2,18 +2,18 @@ apiVersion: tekton.dev/v1
 kind: PipelineRun
 metadata:
   annotations:
-    build.appstudio.openshift.io/repo: https://github.com/konflux-ci/pulp-tool-container?rev={{revision}}
+    build.appstudio.openshift.io/repo: https://github.com/konflux-ci/pulp-tool?rev={{revision}}
     build.appstudio.redhat.com/commit_sha: '{{revision}}'
     build.appstudio.redhat.com/target_branch: '{{target_branch}}'
     pipelinesascode.tekton.dev/max-keep-runs: '3'
     pipelinesascode.tekton.dev/on-cel-expression: event == "push" && target_branch == "main"
   creationTimestamp:
   labels:
-    appstudio.openshift.io/application: pulp-tool-container
+    appstudio.openshift.io/application: tooling
     appstudio.openshift.io/component: pulp-tool-container
     pipelines.appstudio.openshift.io/type: build
   name: pulp-tool-container-on-push
-  namespace: rh-ee-jreidy-tenant
+  namespace: artifact-storage-tenant
 spec:
   params:
   - name: git-url
@@ -21,7 +21,7 @@ spec:
   - name: revision
     value: '{{revision}}'
   - name: output-image
-    value: quay.io/redhat-user-workloads/rh-ee-jreidy-tenant/pulp-tool-container-build:{{revision}}
+    value: quay.io/redhat-user-workloads/artifact-storage-tenant/tooling/pulp-tool-container:{{revision}}
   - name: dockerfile
     value: Dockerfile
   - name: path-context
