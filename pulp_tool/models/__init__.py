@@ -26,7 +26,7 @@ from .validation import RpmCheckResult
 from .artifacts import ArtifactFile, PulledArtifacts, FileInfoModel
 from .statistics import UploadCounts
 from .results import ArtifactInfo, PulpResultsModel
-from .context import UploadContext, TransferContext
+from .context import UploadContext, UploadRpmContext, TransferContext, UploadFilesContext
 
 __all__ = [
     # Pulp API Models
@@ -50,5 +50,7 @@ __all__ = [
     "ArtifactInfo",
     "PulpResultsModel",
     "UploadContext",
+    "UploadRpmContext",
+    "UploadFilesContext",
     "TransferContext",
 ]

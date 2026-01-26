@@ -59,7 +59,7 @@ def upload_log(
     build_id: str,
     labels: Dict[str, str],
     arch: str,
-) -> None:
+) -> List[str]:
     """
     Upload a log file to the specified file repository.
 
@@ -70,6 +70,9 @@ def upload_log(
         build_id: Build identifier for the log
         labels: Labels to attach to the log content
         arch: Architecture for the log content
+
+    Returns:
+        List of created resource hrefs from the upload task
     """
     validate_file_path(log_path, "Log")
 
@@ -79,7 +82,10 @@ def upload_log(
 
     client.check_response(content_upload_response, f"upload log {log_path}")
     task_href = content_upload_response.json()["task"]
-    client.wait_for_finished_task(task_href)
+    task_response = client.wait_for_finished_task(task_href)
+
+    # Return the created resources from the task
+    return task_response.created_resources if task_response.created_resources else []
 
 
 def _upload_logs_sequential(
@@ -171,6 +177,62 @@ def upload_artifacts_to_repository(
     return upload_count, errors
 
 
+def upload_rpms(
+    rpms: List[str],
+    context: UploadContext,
+    client: "PulpClient",
+    arch: str,
+    *,
+    rpm_repository_href: str,
+    date: str,
+    results_model: PulpResultsModel,
+) -> List[str]:
+    """
+    Upload RPMs for a specific architecture.
+
+    This function handles uploading RPMs in parallel and adding them to the repository.
+
+    Args:
+        rpms: List of RPM file paths to upload
+        context: Upload context containing build metadata
+        client: PulpClient instance for API interactions
+        arch: Architecture being processed
+        rpm_repository_href: RPM repository href for adding content
+        date: Build date string
+        results_model: PulpResultsModel to update with upload counts
+
+    Returns:
+        List of created resource hrefs from the add_content operation
+    """
+    if not rpms:
+        logging.debug("No new RPMs to upload for %s", arch)
+        return []
+
+    logging.info("Uploading %d RPMs for %s", len(rpms), arch)
+    labels = create_labels(context.build_id, arch, context.namespace, context.parent_package, date)
+
+    # Upload RPMs in parallel
+    rpm_results_artifacts = upload_rpms_parallel(client, rpms, labels, arch)
+
+    # Update upload counts
+    results_model.uploaded_counts.rpms += len(rpms)
+
+    # Store created resources from add_content operations
+    created_resources = []
+
+    # Add uploaded RPMs to the repository
+    if rpm_results_artifacts:
+        logging.debug("Adding %s RPM artifacts to repository", len(rpm_results_artifacts))
+        rpm_repo_task = client.add_content(rpm_repository_href, rpm_results_artifacts)
+        final_task = client.wait_for_finished_task(rpm_repo_task.pulp_href)
+        # Capture created resources from the task
+        if final_task.created_resources:
+            created_resources.extend(final_task.created_resources)
+            logging.debug("Captured %d created resources from RPM add_content", len(final_task.created_resources))
+
+    return created_resources
+
+
 def upload_rpms_logs(
     rpm_path: str,
     context: UploadContext,
@@ -217,23 +279,9 @@ def upload_rpms_logs(
 
     # Upload RPMs in parallel
     if rpms:
-        logging.info("Uploading %d RPMs for %s", len(rpms), arch)
-        rpm_results_artifacts = upload_rpms_parallel(client, rpms, labels, arch)
-
-        # Update upload counts
-        results_model.uploaded_counts.rpms += len(rpms)
-
-        # Add uploaded RPMs to the repository
-        if rpm_results_artifacts:
-            logging.debug("Adding %s RPM artifacts to repository", len(rpm_results_artifacts))
-            rpm_repo_task = client.add_content(rpm_repository_href, rpm_results_artifacts)
-            final_task = client.wait_for_finished_task(rpm_repo_task.pulp_href)
-            # Capture created resources from the task
-            if final_task.created_resources:
-                created_resources.extend(final_task.created_resources)
-                logging.debug("Captured %d created resources from RPM add_content", len(final_task.created_resources))
-    else:
-        logging.debug("No new RPMs to upload for %s", arch)
+        created_resources = upload_rpms(
+            rpms, context, client, arch, rpm_repository_href=rpm_repository_href, date=date, results_model=results_model
+        )
 
     # Upload logs sequentially
     if logs:
@@ -256,5 +304,6 @@ __all__ = [
     "create_labels",
     "upload_log",
     "upload_artifacts_to_repository",
+    "upload_rpms",
     "upload_rpms_logs",
 ]

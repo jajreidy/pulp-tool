@@ -19,7 +19,7 @@ import traceback
 from typing import Any, Dict, List, Optional, Tuple, TYPE_CHECKING
 
 from ..models.pulp_api import TaskResponse
-from ..models.context import UploadContext
+from ..models.context import UploadContext, UploadRpmContext
 from ..models.repository import RepositoryRefs
 from ..models.results import PulpResultsModel
 from ..models.artifacts import FileInfoModel
@@ -71,7 +71,7 @@ class UploadService:
         logging.info("Repository setup completed")
         return repositories
 
-    def upload_artifacts(self, context: UploadContext, repositories: RepositoryRefs) -> Optional[str]:
+    def upload_artifacts(self, context: UploadRpmContext, repositories: RepositoryRefs) -> Optional[str]:
         """
         Upload all artifacts (RPMs, logs, SBOMs) and collect results.
 
@@ -81,7 +81,7 @@ class UploadService:
         - Collecting and uploading results JSON
 
         Args:
-            context: Upload context with all required parameters
+            context: UploadRpmContext with all required parameters
             repositories: Repository references for upload targets
 
         Returns:
@@ -116,37 +116,43 @@ class UploadService:
 
 
 def upload_sbom(
-    client: "PulpClient", context: UploadContext, sbom_repository_prn: str, date: str, results_model: PulpResultsModel
+    client: "PulpClient",
+    context: UploadContext,
+    sbom_repository_prn: str,
+    date: str,
+    results_model: PulpResultsModel,
+    sbom_path: str,
 ) -> List[str]:
     """
     Upload SBOM file to repository.
 
     Args:
         client: PulpClient instance for API interactions
-        context: Upload context containing SBOM path and metadata
+        context: Upload context containing metadata
         sbom_repository_prn: SBOM repository PRN
         date: Build date string
         results_model: PulpResultsModel to update with upload counts
+        sbom_path: Path to the SBOM file to upload
 
     Returns:
         List of created resource hrefs from the upload task
     """
-    if not os.path.exists(context.sbom_path):
-        logging.error("SBOM file not found: %s", context.sbom_path)
+    if not os.path.exists(sbom_path):
+        logging.error("SBOM file not found: %s", sbom_path)
         return []
 
-    logging.info("Uploading SBOM: %s", context.sbom_path)
+    logging.info("Uploading SBOM: %s", sbom_path)
     labels = create_labels(context.build_id, "", context.namespace, context.parent_package, date)
-    validate_file_path(context.sbom_path, "SBOM")
+    validate_file_path(sbom_path, "SBOM")
 
     content_upload_response = client.create_file_content(
-        sbom_repository_prn, context.sbom_path, build_id=context.build_id, pulp_label=labels
+        sbom_repository_prn, sbom_path, build_id=context.build_id, pulp_label=labels
     )
 
-    client.check_response(content_upload_response, f"upload SBOM {context.sbom_path}")
+    client.check_response(content_upload_response, f"upload SBOM {sbom_path}")
     task_href = content_upload_response.json()["task"]
     task_response = client.wait_for_finished_task(task_href)
-    logging.debug("SBOM uploaded successfully: %s", context.sbom_path)
+    logging.debug("SBOM uploaded successfully: %s", sbom_path)
 
     # Update upload counts
     results_model.uploaded_counts.sboms += 1

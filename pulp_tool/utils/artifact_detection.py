@@ -5,10 +5,13 @@ This module provides functions for detecting artifact types from filenames
 and organizing artifacts by their content type.
 """
 
+import os
+import re
 import logging
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 from ..models.artifacts import ArtifactMetadata
+from .constants import SUPPORTED_ARCHITECTURES
 
 
 def detect_artifact_type(artifact_name: str) -> Optional[str]:
@@ -141,9 +144,77 @@ def categorize_artifacts_by_type(
     return download_tasks
 
 
+def detect_arch_from_filepath(filepath: str) -> Optional[str]:
+    """
+    Try to detect architecture from file path.
+
+    This function checks if any supported architecture appears in the file path
+    as a directory segment (e.g., /path/to/x86_64/package.rpm).
+
+    Args:
+        filepath: Path to file
+
+    Returns:
+        Architecture string if detected, None otherwise
+
+    Example:
+        >>> detect_arch_from_filepath("/path/to/x86_64/package.rpm")
+        'x86_64'
+        >>> detect_arch_from_filepath("/path/to/aarch64/package.rpm")
+        'aarch64'
+        >>> detect_arch_from_filepath("/path/to/package.rpm")
+        None
+    """
+    # This handles cases like /path/to/x86_64/package.rpm or /path/to/aarch64/package.rpm
+    path_lower = filepath.lower()
+    for arch in SUPPORTED_ARCHITECTURES:
+        # Check if architecture appears in the path as a directory segment
+        # Pattern ensures there's at least one character before and after the /arch/ segment
+        arch_pattern = rf"[^/\\][/\\]{re.escape(arch)}[/\\][^/\\]"
+        if re.search(arch_pattern, path_lower, re.IGNORECASE):
+            return arch
+
+    return None
+
+
+def detect_arch_from_rpm_filename(rpm_path: str) -> Optional[str]:
+    """
+    Try to detect architecture from RPM filename.
+
+    This function checks the RPM filename pattern (name-version-release.arch.rpm)
+    to extract the architecture.
+
+    Args:
+        rpm_path: Path to RPM file (filename will be extracted)
+
+    Returns:
+        Architecture string if detected, None otherwise
+
+    Example:
+        >>> detect_arch_from_rpm_filename("/path/to/package-1.0.0-1.x86_64.rpm")
+        'x86_64'
+        >>> detect_arch_from_rpm_filename("/path/to/package-1.0.0-1.aarch64.rpm")
+        'aarch64'
+        >>> detect_arch_from_rpm_filename("/path/to/package.rpm")
+        None
+    """
+    # This handles cases like package-1.0.0-1.x86_64.rpm or package-1.0.0-1.aarch64.rpm
+    filename = os.path.basename(rpm_path)
+    match = re.search(r"\.([a-z0-9_]+)\.rpm$", filename, re.IGNORECASE)
+    if match:
+        arch = match.group(1)
+        # Check if the detected arch from filename is in supported architectures
+        if arch in SUPPORTED_ARCHITECTURES:
+            return arch
+
+    return None
+
+
 __all__ = [
     "detect_artifact_type",
     "build_artifact_url",
     "extract_architecture_from_metadata",
     "categorize_artifacts_by_type",
+    "detect_arch_from_filepath",
+    "detect_arch_from_rpm_filename",
 ]

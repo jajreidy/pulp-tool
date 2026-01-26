@@ -6,6 +6,8 @@ from pulp_tool.models.artifacts import ArtifactMetadata
 from pulp_tool.utils.artifact_detection import (
     build_artifact_url,
     categorize_artifacts_by_type,
+    detect_arch_from_filepath,
+    detect_arch_from_rpm_filename,
     detect_artifact_type,
     extract_architecture_from_metadata,
 )
@@ -197,3 +199,59 @@ class TestCategorizeArtifactsByType:
         assert len(result) == 2
         assert ("package.rpm", "https://example.com/rpms/Packages/l/package.rpm", "x86_64", "rpm") in result
         assert ("build.log", "https://example.com/logs/build.log", "noarch", "log") in result
+
+
+class TestDetectArchFromFilepath:
+    """Tests for detect_arch_from_filepath function."""
+
+    def test_detect_arch_from_path(self):
+        """Test detecting x86_64 architecture from file path."""
+        assert detect_arch_from_filepath("/path/to/x86_64/package.rpm") == "x86_64"
+        assert detect_arch_from_filepath("/build/x86_64/package.rpm") == "x86_64"
+
+    def test_detect_arch_from_path_case_insensitive(self):
+        """Test that architecture detection is case insensitive."""
+        assert detect_arch_from_filepath("/path/to/X86_64/package.rpm") == "x86_64"
+        assert detect_arch_from_filepath("/path/to/AARCH64/package.rpm") == "aarch64"
+
+    def test_detect_arch_from_path_no_match(self):
+        """Test that None is returned when no architecture is found in path."""
+        assert detect_arch_from_filepath("/path/to/package.rpm") is None
+        assert detect_arch_from_filepath("/path/package.rpm") is None
+        assert detect_arch_from_filepath("package.rpm") is None
+
+    def test_detect_arch_from_path_not_at_start_or_end(self):
+        """Test that architecture must be in the middle of the path."""
+        # Should not match if arch is at the start
+        assert detect_arch_from_filepath("/x86_64/package.rpm") is None
+        assert detect_arch_from_filepath("x86_64/package.rpm") is None
+        # Should not match if arch is at the end
+        assert detect_arch_from_filepath("/path/to/package.x86_64") is None
+
+
+class TestDetectArchFromRpmFilename:
+    """Tests for detect_arch_from_rpm_filename function."""
+
+    def test_detect_arch_from_filename_x86_64(self):
+        """Test detecting x86_64 architecture from RPM filename."""
+        assert detect_arch_from_rpm_filename("/path/to/package-1.0.0-1.x86_64.rpm") == "x86_64"
+        assert detect_arch_from_rpm_filename("package-1.0.0-1.x86_64.rpm") == "x86_64"
+
+    def test_detect_arch_from_filename_noarch(self):
+        """Test detecting noarch architecture from RPM filename."""
+        assert detect_arch_from_rpm_filename("/path/to/package-1.0.0-1.noarch.rpm") == "noarch"
+
+    def test_detect_arch_from_filename_no_match(self):
+        """Test that None is returned when no architecture is found in filename."""
+        assert detect_arch_from_rpm_filename("/path/to/package.rpm") is None
+        assert detect_arch_from_rpm_filename("/path/to/package-1.0.0.rpm") is None
+        assert detect_arch_from_rpm_filename("package.rpm") is None
+
+    def test_detect_arch_from_filename_unsupported_arch(self):
+        """Test that unsupported architectures return None."""
+        assert detect_arch_from_rpm_filename("/path/to/package-1.0.0-1.i386.rpm") is None
+        assert detect_arch_from_rpm_filename("/path/to/package-1.0.0-1.armv7hl.rpm") is None
+
+    def test_detect_arch_from_filename_with_underscores(self):
+        """Test that architectures with underscores work correctly."""
+        assert detect_arch_from_rpm_filename("/path/to/pack_age-1.0.0-1.x86_64.rpm") == "x86_64"

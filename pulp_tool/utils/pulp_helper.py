@@ -10,7 +10,7 @@ from typing import Any, Optional, TYPE_CHECKING
 
 from pulp_tool.models.pulp_api import DistributionRequest, RepositoryRequest
 
-from ..models.context import UploadContext
+from ..models.context import UploadRpmContext, UploadFilesContext
 from ..models.repository import RepositoryRefs
 from ..models.results import PulpResultsModel
 
@@ -111,7 +111,7 @@ class PulpHelper:
     def process_architecture_uploads(
         self,
         client: "PulpClient",
-        args: UploadContext,
+        args: UploadRpmContext,
         repositories: RepositoryRefs,
         *,
         date_str: str,
@@ -138,7 +138,9 @@ class PulpHelper:
             client, args, repositories, date_str=date_str, rpm_href=rpm_href, results_model=results_model
         )
 
-    def process_uploads(self, client: "PulpClient", args: UploadContext, repositories: RepositoryRefs) -> Optional[str]:
+    def process_uploads(
+        self, client: "PulpClient", args: UploadRpmContext, repositories: RepositoryRefs
+    ) -> Optional[str]:
         """
         Process all upload operations.
 
@@ -146,13 +148,31 @@ class PulpHelper:
 
         Args:
             client: PulpClient instance for API interactions
-            args: UploadContext with command line arguments (including date_str)
+            args: UploadRpmContext with command line arguments (including date_str)
             repositories: RepositoryRefs containing all repository identifiers
 
         Returns:
             URL of the uploaded results JSON, or None if upload failed
         """
         return self._upload_orchestrator.process_uploads(client, args, repositories)
+
+    def process_file_uploads(
+        self, client: "PulpClient", context: UploadFilesContext, repositories: RepositoryRefs
+    ) -> Optional[str]:
+        """
+        Process upload of individual files to Pulp repositories.
+
+        Delegates to UploadOrchestrator.
+
+        Args:
+            client: PulpClient instance for API interactions
+            context: UploadFilesContext with file paths and metadata
+            repositories: RepositoryRefs containing all repository identifiers
+
+        Returns:
+            URL of the uploaded results JSON, or None if upload failed
+        """
+        return self._upload_orchestrator.process_file_uploads(client, context, repositories)
 
 
 __all__ = ["PulpHelper"]

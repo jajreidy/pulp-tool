@@ -11,12 +11,14 @@ import traceback
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any, Dict, List, Optional, TYPE_CHECKING
 
-from ..models.context import UploadContext
+from ..models.context import UploadRpmContext, UploadFilesContext
 from ..models.repository import RepositoryRefs
 from ..models.results import PulpResultsModel
 
 from .constants import ARCHITECTURE_THREAD_PREFIX, SUPPORTED_ARCHITECTURES
-from .uploads import upload_rpms_logs
+from .uploads import upload_log, upload_rpms, upload_rpms_logs, create_labels
+from .validation import validate_file_path
+from .artifact_detection import detect_arch_from_filepath, detect_arch_from_rpm_filename
 
 if TYPE_CHECKING:
     from ..api.pulp_client import PulpClient
@@ -57,7 +59,7 @@ class UploadOrchestrator:
         executor: ThreadPoolExecutor,
         existing_archs: List[str],
         rpm_path: str,
-        args: UploadContext,
+        args: UploadRpmContext,
         client: "PulpClient",
         rpm_href: str,
         logs_prn: str,
@@ -137,7 +139,7 @@ class UploadOrchestrator:
     def process_architecture_uploads(
         self,
         client: "PulpClient",
-        args: UploadContext,
+        args: UploadRpmContext,
         repositories: RepositoryRefs,
         *,
         date_str: str,
@@ -191,7 +193,9 @@ class UploadOrchestrator:
 
         return processed_archs
 
-    def process_uploads(self, client: "PulpClient", args: UploadContext, repositories: RepositoryRefs) -> Optional[str]:
+    def process_uploads(
+        self, client: "PulpClient", args: UploadRpmContext, repositories: RepositoryRefs
+    ) -> Optional[str]:
         """
         Process all upload operations.
 
@@ -200,7 +204,7 @@ class UploadOrchestrator:
 
         Args:
             client: PulpClient instance for API interactions
-            args: UploadContext with command line arguments (including date_str)
+            args: UploadRpmContext with command line arguments (including date_str)
             repositories: RepositoryRefs containing all repository identifiers
 
         Returns:
@@ -230,7 +234,9 @@ class UploadOrchestrator:
             created_resources.extend(upload.get("created_resources", []))
 
         # Upload SBOM and capture its created resources - updates results_model internally
-        sbom_created_resources = upload_sbom(client, args, repositories.sbom_prn, date_str, results_model)
+        sbom_created_resources = upload_sbom(
+            client, args, repositories.sbom_prn, date_str, results_model, args.sbom_path
+        )
         created_resources.extend(sbom_created_resources)
 
         logging.info("Collected %d created resource hrefs from upload operations", len(created_resources))
@@ -248,6 +254,137 @@ class UploadOrchestrator:
             "Upload process completed: %d architectures processed",
             total_architectures,
         )
+
+        return results_json_url
+
+    def process_file_uploads(
+        self, client: "PulpClient", context: UploadFilesContext, repositories: RepositoryRefs
+    ) -> Optional[str]:
+        """
+        Process upload of individual files to Pulp repositories.
+
+        This function handles uploading RPMs, generic files, logs, and SBOMs
+        from individual file paths specified in the context.
+
+        Args:
+            client: PulpClient instance for API interactions
+            context: UploadFilesContext with file paths and metadata
+            repositories: RepositoryRefs containing all repository identifiers
+
+        Returns:
+            URL of the uploaded results JSON, or None if upload failed
+        """
+        # Import here to avoid circular import
+        from ..services.upload_service import upload_sbom, collect_results
+
+        # Create unified results model
+        results_model = PulpResultsModel(build_id=context.build_id, repositories=repositories)
+
+        # Store created resources from add_content operations
+        created_resources = []
+
+        # Upload RPMs
+        if context.rpm_files:
+            logging.info("Uploading %d RPM file(s)", len(context.rpm_files))
+
+            # Group RPMs by architecture
+            rpms_by_arch: Dict[str, List[str]] = {}
+            for rpm_path in context.rpm_files:
+                # Determine architecture: use provided arch, or try to detect from filename/path
+                arch = context.arch
+                if not arch:
+                    arch = detect_arch_from_filepath(rpm_path) or detect_arch_from_rpm_filename(rpm_path)
+                    if not arch:
+                        logging.warning(
+                            "Skipping %s: Could not detect architecture. "
+                            "Use --arch to specify architecture explicitly.",
+                            os.path.basename(rpm_path),
+                        )
+                        continue  # Skip this RPM and continue with others
+
+                if arch not in rpms_by_arch:
+                    rpms_by_arch[arch] = []
+                rpms_by_arch[arch].append(rpm_path)
+
+            # Upload RPMs for each architecture
+            for arch, rpm_list in rpms_by_arch.items():
+                arch_created_resources = upload_rpms(
+                    rpm_list,
+                    context,
+                    client,
+                    arch,
+                    rpm_repository_href=repositories.rpms_href,
+                    date=context.date_str,
+                    results_model=results_model,
+                )
+                created_resources.extend(arch_created_resources)
+
+        # Upload generic files
+        if context.file_files:
+            logging.info("Uploading %d generic file(s)", len(context.file_files))
+            for file_path in context.file_files:
+                logging.warning("Uploading file: %s", os.path.basename(file_path))
+                labels = create_labels(
+                    context.build_id, "", context.namespace, context.parent_package, context.date_str
+                )
+                validate_file_path(file_path, "File")
+
+                content_upload_response = client.create_file_content(
+                    repositories.artifacts_prn, file_path, build_id=context.build_id, pulp_label=labels
+                )
+
+                client.check_response(content_upload_response, f"upload file {file_path}")
+                task_href = content_upload_response.json()["task"]
+                task_response = client.wait_for_finished_task(task_href)
+                if task_response.created_resources:
+                    created_resources.extend(task_response.created_resources)
+
+            results_model.uploaded_counts.files += len(task_response.created_resources)
+
+        # Upload logs
+        if context.log_files:
+            logging.info("Uploading %d log file(s)", len(context.log_files))
+            log_created_resources = []
+            for log_path in context.log_files:
+                logging.warning("Uploading log: %s", os.path.basename(log_path))
+                # For logs, try to detect arch from path or use provided arch
+                arch = context.arch or detect_arch_from_filepath(log_path)
+                if not arch:
+                    logging.warning(
+                        "Skipping %s: Could not detect architecture. " "Use --arch to specify architecture explicitly.",
+                        os.path.basename(log_path),
+                    )
+                    continue  # Skip this log and continue with others
+
+                labels = create_labels(
+                    context.build_id, arch, context.namespace, context.parent_package, context.date_str
+                )
+
+                log_created_resources = upload_log(
+                    client, repositories.logs_prn, log_path, build_id=context.build_id, labels=labels, arch=arch
+                )
+                created_resources.extend(log_created_resources)
+
+            results_model.uploaded_counts.logs += len(log_created_resources)
+
+        # Upload SBOMs
+        if context.sbom_files:
+            logging.info("Uploading %d SBOM file(s)", len(context.sbom_files))
+            for sbom_path in context.sbom_files:
+                logging.warning("Uploading SBOM: %s", os.path.basename(sbom_path))
+                sbom_created_resources = upload_sbom(
+                    client, context, repositories.sbom_prn, context.date_str, results_model, sbom_path
+                )
+                created_resources.extend(sbom_created_resources)
+
+        logging.info("Collected %d created resource hrefs from upload operations", len(created_resources))
+
+        # Convert created_resources hrefs into artifact format for extra_artifacts
+        extra_artifacts = [{"pulp_href": href} for href in created_resources]
+        logging.info("Total artifacts to include in results: %d", len(extra_artifacts))
+
+        # Collect and save results, passing the results_model and all artifacts
+        results_json_url = collect_results(client, context, context.date_str, results_model, extra_artifacts)
 
         return results_json_url
 
