@@ -8,7 +8,6 @@ better validation, IDE support, and error handling.
 from typing import Dict, List, Literal, Optional, Any
 from pydantic import BaseModel, Field, ConfigDict, ValidationInfo, field_validator
 
-
 # ============================================================================
 # Base Models
 # ============================================================================
