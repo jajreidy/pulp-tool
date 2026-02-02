@@ -21,6 +21,7 @@ from pulp_tool.models.base import KonfluxBaseModel
 from pulp_tool.models.repository import RepositoryRefs
 from pulp_tool.models.context import (
     UploadContext,
+    UploadRpmContext,
     TransferContext,
 )
 from pulp_tool.models.artifacts import (
@@ -107,12 +108,12 @@ class TestRepositoryRefs:
             )
 
 
-class TestUploadContext:
-    """Test UploadContext model."""
+class TestUploadRpmContext:
+    """Test UploadRpmContext model."""
 
-    def test_create_upload_context_minimal(self):
-        """Test creating UploadContext with minimal required fields."""
-        context = UploadContext(
+    def test_create_upload_rpm_context_minimal(self):
+        """Test creating UploadRpmContext with minimal required fields."""
+        context = UploadRpmContext(
             build_id="test-build-123",
             date_str="2024-01-15",
             namespace="test-namespace",
@@ -132,9 +133,9 @@ class TestUploadContext:
         assert context.artifact_results is None
         assert context.sbom_results is None
 
-    def test_create_upload_context_full(self):
-        """Test creating UploadContext with all fields."""
-        context = UploadContext(
+    def test_create_upload_rpm_context_full(self):
+        """Test creating UploadRpmContext with all fields."""
+        context = UploadRpmContext(
             build_id="test-build-123",
             date_str="2024-01-15",
             namespace="test-namespace",

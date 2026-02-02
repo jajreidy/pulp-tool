@@ -18,7 +18,7 @@ from pulp_tool.services.upload_service import (
 )
 from pulp_tool.models import PulpResultsModel, RepositoryRefs
 from pulp_tool.models.pulp_api import TaskResponse
-from pulp_tool.models.context import UploadContext
+from pulp_tool.models.context import UploadRpmContext
 import logging
 
 # CLI imports removed - Click testing done in test_cli.py
@@ -62,7 +62,7 @@ class TestUploadSbom:
             patch("builtins.open", mock_open(read_data="test sbom content")),
         ):
 
-            upload_sbom(mock_pulp_client, args, "test-repo", "2024-01-01", results_model)
+            upload_sbom(mock_pulp_client, args, "test-repo", "2024-01-01", results_model, args.sbom_path)
 
     def test_upload_sbom_file_not_found(self, mock_pulp_client):
         """Test upload_sbom with file not found."""
@@ -86,7 +86,7 @@ class TestUploadSbom:
         results_model = PulpResultsModel(build_id="test-build", repositories=repositories)
 
         with patch("os.path.exists", return_value=False):
-            upload_sbom(mock_pulp_client, args, "test-repo", "2024-01-01", results_model)
+            upload_sbom(mock_pulp_client, args, "test-repo", "2024-01-01", results_model, args.sbom_path)
 
     def test_upload_sbom_upload_error(self, mock_pulp_client, httpx_mock):
         """Test upload_sbom with upload error."""
@@ -121,7 +121,7 @@ class TestUploadSbom:
         ):
 
             with pytest.raises(HTTPError):
-                upload_sbom(mock_pulp_client, args, "test-repo", "2024-01-01", results_model)
+                upload_sbom(mock_pulp_client, args, "test-repo", "2024-01-01", results_model, args.sbom_path)
 
 
 class TestSerializeResultsToJson:
@@ -216,7 +216,7 @@ class TestCollectResults:
         )
 
         # Create context
-        context = UploadContext(
+        context = UploadRpmContext(
             build_id="test-build",
             date_str="2024-01-01",
             namespace="test-ns",
@@ -365,8 +365,8 @@ class TestHandleSbomResults:
 
         sbom_file = tmp_path / "sbom_result.txt"
 
-        # Create proper UploadContext instead of Namespace
-        args = UploadContext(
+        # Create proper UploadRpmContext instead of Namespace
+        args = UploadRpmContext(
             build_id="test-build",
             date_str="2024-01-01",
             namespace="test-ns",
@@ -404,7 +404,7 @@ class TestHandleSbomResults:
 
         sbom_file = tmp_path / "sbom_result.txt"
 
-        args = UploadContext(
+        args = UploadRpmContext(
             build_id="test-build",
             date_str="2024-01-01",
             namespace="test-ns",
@@ -442,7 +442,7 @@ class TestHandleSbomResults:
 
         sbom_file = tmp_path / "sbom_result.txt"
 
-        args = UploadContext(
+        args = UploadRpmContext(
             build_id="test-build",
             date_str="2024-01-01",
             namespace="test-ns",

@@ -13,7 +13,7 @@ import click
 import httpx
 
 from ..api import PulpClient
-from ..models.context import UploadContext
+from ..models.context import UploadRpmContext
 from ..utils import PulpHelper, setup_logging
 from ..utils.error_handling import handle_http_error, handle_generic_error
 
@@ -61,7 +61,7 @@ def upload(  # pylint: disable=too-many-arguments,too-many-positional-arguments
         date_str = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
 
         # Create context object with generated date_str
-        args = UploadContext(
+        args = UploadRpmContext(
             build_id=build_id,
             date_str=date_str,
             namespace=namespace,

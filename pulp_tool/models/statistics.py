@@ -100,6 +100,7 @@ class UploadCounts(KonfluxBaseModel):
     sboms: int = Field(default=0, ge=0)
     logs: int = Field(default=0, ge=0)
     rpms: int = Field(default=0, ge=0)
+    files: int = Field(default=0, ge=0)
 
     @property
     def total(self) -> int:

@@ -13,7 +13,6 @@ from typing import Any, Callable, Optional, TypeVar
 
 import httpx
 
-
 # Type variable for generic function decorators
 F = TypeVar("F", bound=Callable[..., Any])
 

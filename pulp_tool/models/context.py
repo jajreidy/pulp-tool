@@ -9,15 +9,16 @@ from .base import KonfluxBaseModel
 
 class UploadContext(KonfluxBaseModel):
     """
-    Context information for upload operations.
+    Base context information for upload operations.
+
+    This is the base class containing common attributes shared by
+    UploadRpmContext and UploadFilesContext.
 
     Attributes:
         build_id: Unique build identifier
         date_str: Build date string
         namespace: Namespace for the upload operation
         parent_package: Parent package name
-        rpm_path: Path to RPM files
-        sbom_path: Path to SBOM file
         config: Optional path to config file
         debug: Verbosity level (0=WARNING, 1=INFO, 2=DEBUG, 3+=DEBUG with HTTP logs)
         artifact_results: Optional artifact results configuration
@@ -28,12 +29,26 @@ class UploadContext(KonfluxBaseModel):
     date_str: str
     namespace: str
     parent_package: str
-    rpm_path: str
-    sbom_path: str
     config: Optional[str] = None
     debug: int = 0
     artifact_results: Optional[str] = None
     sbom_results: Optional[str] = None
+
+
+class UploadRpmContext(UploadContext):
+    """
+    Context information for upload operations (RPM directory-based).
+
+    This context is used for the upload command which processes RPMs
+    from directory structures organized by architecture.
+
+    Attributes:
+        rpm_path: Path to directory containing RPM files
+        sbom_path: Path to SBOM file
+    """
+
+    rpm_path: str
+    sbom_path: str
 
 
 class TransferContext(KonfluxBaseModel):
@@ -119,9 +134,33 @@ class UploadCallbacks(KonfluxBaseModel):
     collect_results_func: Callable
 
 
+class UploadFilesContext(UploadContext):
+    """
+    Context information for upload-files operations.
+
+    This context is used for the upload-files command which processes
+    individual files specified via command-line options.
+
+    Attributes:
+        rpm_files: List of RPM file paths to upload
+        file_files: List of generic file paths to upload
+        log_files: List of log file paths to upload
+        sbom_files: List of SBOM file paths to upload
+        arch: Optional architecture for RPMs (if not provided, will try to detect)
+    """
+
+    rpm_files: List[str] = Field(default_factory=list)
+    file_files: List[str] = Field(default_factory=list)
+    log_files: List[str] = Field(default_factory=list)
+    sbom_files: List[str] = Field(default_factory=list)
+    arch: Optional[str] = None
+
+
 __all__ = [
     "UploadContext",
+    "UploadRpmContext",
     "TransferContext",
     "ArchUploadConfig",
     "UploadCallbacks",
+    "UploadFilesContext",
 ]

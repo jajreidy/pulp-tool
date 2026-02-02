@@ -9,7 +9,6 @@ from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple
 
 from ..models.artifacts import PulledArtifacts, ArtifactFile
 
-
 # Standard artifact types in order
 ARTIFACT_TYPES = ["rpms", "sboms", "logs"]
 

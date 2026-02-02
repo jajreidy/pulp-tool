@@ -4,7 +4,7 @@ from unittest.mock import Mock, patch
 
 from pulp_tool.services.transfer_service import TransferService
 from pulp_tool.services.upload_service import UploadService
-from pulp_tool.models.context import TransferContext, UploadContext
+from pulp_tool.models.context import TransferContext, UploadRpmContext
 from pulp_tool.models.artifacts import ArtifactData, ArtifactJsonResponse
 
 
@@ -208,7 +208,7 @@ class TestUploadService:
             artifacts_prn="",
         )
 
-        context = UploadContext(
+        context = UploadRpmContext(
             build_id="test-build",
             date_str="2024-01-01 00:00:00",
             namespace="test-ns",
@@ -248,7 +248,7 @@ class TestUploadService:
             artifacts_prn="",
         )
 
-        context = UploadContext(
+        context = UploadRpmContext(
             build_id="test-build",
             date_str="2024-01-01 00:00:00",
             namespace="test-ns",
