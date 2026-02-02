@@ -555,7 +555,7 @@ spec:
     - name: netrc
       optional: true
   taskRunTemplate:
-    serviceAccountName: build-pipeline-pulp-tool
+    serviceAccountName: build-pipeline-pulp-tool-container
   workspaces:
   - name: git-auth
     secret:

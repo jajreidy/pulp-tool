@@ -109,7 +109,7 @@ finally:
 #### Working with Pydantic Models
 
 The package uses Pydantic for type-safe data handling:
-
+a
 ```python
 from pulp_tool.models import (
     RepositoryRefs,
