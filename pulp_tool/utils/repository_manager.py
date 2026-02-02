@@ -54,6 +54,23 @@ class RepositoryManager:
         # Cache for distribution base paths: (build_id, repo_type) -> base_path
         self._distribution_cache: Dict[Tuple[str, str], str] = {}
 
+    def _validate_full_name(self, full_name: str, build_name: str, repo_type: str) -> None:
+        """
+        Validate that full_name is not empty or whitespace-only.
+
+        This method is extracted to allow patching in tests for coverage.
+
+        Args:
+            full_name: The full repository name to validate
+            build_name: The build name (for error messages)
+            repo_type: The repository type (for error messages)
+
+        Raises:
+            ValueError: If full_name is empty or whitespace-only
+        """
+        if not full_name or not full_name.strip():
+            raise ValueError(f"Invalid full_name constructed: build_name={build_name}, repo_type={repo_type}")
+
     def setup_repositories(self, build_id: str) -> RepositoryRefs:
         """
         Setup all required repositories and return their identifiers.
@@ -156,9 +173,18 @@ class RepositoryManager:
             logging.debug("Creating or getting repository: %s/%s", sanitized_build_id, repo_api_type)
 
             build_name = strip_namespace_from_build_id(build_id)
+            if not build_name or not build_name.strip():
+                raise ValueError(f"Empty build_name after stripping namespace from build_id: {build_id}")
             full_name = f"{build_name}/{repo_api_type}"
+            self._validate_full_name(full_name, build_name, repo_api_type)
             new_repo = RepositoryRequest(name=full_name, autopublish=True)
             new_distro = DistributionRequest(name=full_name, base_path=full_name)
+            # Validate that base_path was set correctly
+            if not new_distro.base_path or not new_distro.base_path.strip():
+                raise ValueError(
+                    f"DistributionRequest base_path is empty after creation: "
+                    f"name={full_name}, base_path={new_distro.base_path}"
+                )
 
             # Create or get repository directly using the helper's own methods
             repository_prn, repository_href = self._create_or_get_repository_impl(
@@ -207,8 +233,18 @@ class RepositoryManager:
     def _get_existing_repository(
         self, methods: Dict[str, Any], full_name: str, repo_type: str
     ) -> Optional[Tuple[str, Optional[str]]]:
-        """Check if repository exists and return its details."""
+        """Check if repository exists and return its details.
+
+        Returns None if repository doesn't exist (404), allowing the caller to create it.
+        """
         repository_response = methods["get"](full_name)
+
+        # Handle 404 gracefully - repository doesn't exist, return None to allow creation
+        if repository_response.status_code == 404:
+            logging.debug("Repository %s not found (404), will create it", full_name)
+            return None
+
+        # For other errors, check_response will raise an exception
         self.client.check_response(repository_response, f"check {repo_type} repository")
 
         response_data = self._parse_repository_response(repository_response, repo_type, "check")
@@ -318,9 +354,18 @@ class RepositoryManager:
             """Helper to create repository and return type with result."""
             loop = asyncio.get_event_loop()
             build_name = strip_namespace_from_build_id(build_id)
+            if not build_name or not build_name.strip():
+                raise ValueError(f"Empty build_name after stripping namespace from build_id: {build_id}")
             full_name = f"{build_name}/{repo_type}"
+            self._validate_full_name(full_name, build_name, repo_type)
             new_repository = RepositoryRequest(name=full_name, autopublish=True)
             new_distribution = DistributionRequest(name=full_name, base_path=full_name)
+            # Validate that base_path was set correctly
+            if not new_distribution.base_path or not new_distribution.base_path.strip():
+                raise ValueError(
+                    f"DistributionRequest base_path is empty after creation: "
+                    f"name={full_name}, base_path={new_distribution.base_path}"
+                )
             # Run sync method in executor to avoid blocking
             prn, href = await loop.run_in_executor(
                 None, self._create_or_get_repository_impl, new_repository, new_distribution, repo_type
@@ -398,6 +443,12 @@ class RepositoryManager:
 
         # Create distribution (always create new distribution for new repositories)
         new_distribution.repository = repository_prn
+        # Validate base_path is still valid after setting repository
+        if not new_distribution.base_path or not new_distribution.base_path.strip():
+            raise ValueError(
+                f"DistributionRequest base_path is empty before creating {repo_type} distribution: "
+                f"name={new_distribution.name}, repository={repository_prn}"
+            )
         task_id = self._create_distribution_task(
             methods, new_distribution, repo_type, is_new_repository, build_id=build_id
         )
@@ -413,11 +464,22 @@ class RepositoryManager:
         return repository_prn, repository_href
 
     def _check_existing_distribution(self, methods: Dict[str, Any], full_name: str, repo_type: str) -> bool:
-        """Check if distribution already exists by name."""
+        """Check if distribution already exists by name.
+
+        Returns False if distribution doesn't exist (404), allowing the caller to create it.
+        """
         try:
             logging.debug("Checking for existing %s distribution: %s", repo_type, full_name)
             distro_response = methods["get_distro"](full_name)
             logging.debug("Distribution check response status: %s", distro_response.status_code)
+
+            # Handle 404 gracefully - distribution doesn't exist, return False to allow creation
+            if distro_response.status_code == 404:
+                logging.debug("Distribution %s not found (404), will create it", full_name)
+                return False
+
+            # For other errors, check_response will raise an exception
+            self.client.check_response(distro_response, f"check {repo_type} distribution")
 
             response_data = self._parse_repository_response(distro_response, repo_type, "distribution check")
             logging.debug("Distribution check response data: %s", response_data)
@@ -447,12 +509,7 @@ class RepositoryManager:
         Returns:
             Task ID for the new distribution
         """
-        logging.warning(
-            "Creating new %s distribution: %s with basepath: %s",
-            repo_type.capitalize(),
-            new_distribution.name,
-            new_distribution.base_path,
-        )
+        # Logging is handled by the caller (_create_distribution_task) to avoid duplicate messages
         distro_response = methods["distro"](new_distribution)
         self.client.check_response(distro_response, f"create {repo_type} distribution")
 
@@ -485,12 +542,22 @@ class RepositoryManager:
         if not is_new_repository and self._check_existing_distribution(methods, new_distribution.name, repo_type):
             return ""  # Return empty string instead of None to match return type
 
+        # Validate base_path before creating distribution
+        base_path_value = getattr(new_distribution, "base_path", None)
+        if not base_path_value or not str(base_path_value).strip():
+            error_msg = (
+                f"Invalid base_path for {repo_type} distribution: "
+                f"name={new_distribution.name}, base_path={base_path_value}, "
+                f"type={type(base_path_value)}"
+            )
+            logging.error(error_msg)
+            raise ValueError(error_msg)
         # Create distribution with namespace/build_id/repo_type basepath
         logging.warning(
             "Creating new %s distribution: %s with basepath: %s",
             repo_type.capitalize(),
             new_distribution.name,
-            new_distribution.base_path,
+            base_path_value,
         )
         distro_task = self._new_distribution_task(methods, new_distribution, repo_type)
 

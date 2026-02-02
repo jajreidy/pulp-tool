@@ -5,13 +5,14 @@ This module provides the main PulpClient class, which is composed using the
 mixin pattern to provide specialized functionality:
 
 Mixins:
-    - TaskManagerMixin: Asynchronous task monitoring with exponential backoff
-    - RepositoryManagerMixin: Repository creation and management (RPM, file)
-    - ContentManagerMixin: Content upload (RPMs, logs, SBOMs) and artifact management
-    - ContentQueryMixin: Content search, filtering, and metadata extraction
+    - RpmRepositoryMixin, FileRepositoryMixin: Repository creation and management
+    - RpmDistributionMixin, FileDistributionMixin: Distribution management
+    - RpmPackageContentMixin, FileContentMixin: Content upload and management
+    - ArtifactMixin: Artifact operations
+    - TaskMixin: Task monitoring with exponential backoff
 
-The PulpClient class combines all mixins to provide a complete Pulp API interface
-with clean separation of concerns and testable components.
+The PulpClient class combines all resource-based mixins to provide a complete Pulp API interface
+organized by resource type, matching Pulp's API documentation structure.
 
 Key Features:
     - OAuth2 authentication with automatic token refresh
@@ -28,9 +29,9 @@ import os
 import ssl
 import time
 import traceback
-from functools import wraps
+from functools import lru_cache, wraps
 from pathlib import Path
-from typing import Any, Callable, Dict, Optional, Tuple, Union
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 from urllib.parse import urlencode
 
 # Third-party imports
@@ -39,10 +40,16 @@ import httpx
 # Local imports
 from ..utils import create_session_with_retry
 from .auth import OAuth2ClientCredentialsAuth
-from .content_manager import ContentManagerMixin
-from .content_query import ContentQueryMixin
-from .repository_manager import RepositoryManagerMixin
-from .task_manager import TaskManagerMixin
+
+# Resource-based mixins
+from .repositories.rpm import RpmRepositoryMixin
+from .repositories.file import FileRepositoryMixin
+from .distributions.rpm import RpmDistributionMixin
+from .distributions.file import FileDistributionMixin
+from .content.rpm_packages import RpmPackageContentMixin
+from .content.file_files import FileContentMixin
+from .artifacts.operations import ArtifactMixin
+from .tasks.operations import TaskMixin
 
 import tomllib
 
@@ -216,7 +223,16 @@ def cached_get(method: Callable) -> Callable:
 # ============================================================================
 
 
-class PulpClient(ContentManagerMixin, TaskManagerMixin, ContentQueryMixin, RepositoryManagerMixin):
+class PulpClient(
+    RpmRepositoryMixin,
+    FileRepositoryMixin,
+    RpmDistributionMixin,
+    FileDistributionMixin,
+    RpmPackageContentMixin,
+    FileContentMixin,
+    ArtifactMixin,
+    TaskMixin,
+):
     """
     A client for interacting with Pulp API.
 
@@ -741,21 +757,535 @@ class PulpClient(ContentManagerMixin, TaskManagerMixin, ContentQueryMixin, Repos
     # Async Methods for Repository Setup
     # ============================================================================
 
+    def _prepare_async_kwargs(self, **kwargs: Any) -> Dict[str, Any]:
+        """Prepare kwargs for async requests with auth if configured."""
+        if self.auth:
+            kwargs.setdefault("auth", self.auth)
+        return kwargs
+
     async def async_get(self, url: str, **kwargs) -> httpx.Response:
         """Async GET request."""
         client = self._get_async_session()
-        # Add auth if configured
-        if self.auth:
-            kwargs.setdefault("auth", self.auth)
-        return await client.get(url, **kwargs)
+        return await client.get(url, **self._prepare_async_kwargs(**kwargs))
 
     async def async_post(self, url: str, **kwargs) -> httpx.Response:
         """Async POST request."""
         client = self._get_async_session()
-        # Add auth if configured
-        if self.auth:
-            kwargs.setdefault("auth", self.auth)
-        return await client.post(url, **kwargs)
+        return await client.post(url, **self._prepare_async_kwargs(**kwargs))
+
+    # ============================================================================
+    # Content Management Methods (migrated from ContentManagerMixin)
+    # ============================================================================
+
+    def upload_content(
+        self, file_path: str, labels: Dict[str, str], *, file_type: str, arch: Optional[str] = None
+    ) -> str:
+        """
+        Generic file upload function with validation and error handling.
+
+        Args:
+            file_path: Path to the file to upload
+            labels: Labels to attach to the uploaded content
+            file_type: Type of file (e.g., 'rpm', 'file') - determines upload method
+            arch: Architecture for the uploaded content (required for RPM uploads)
+
+        Returns:
+            Pulp href of the uploaded content
+
+        Raises:
+            FileNotFoundError: If the file does not exist
+            PermissionError: If the file cannot be read
+            ValueError: If the file is empty or arch is missing for RPMs
+        """
+        from ..utils import validate_file_path
+
+        # Validate file before upload
+        validate_file_path(file_path, file_type)
+
+        try:
+            # Call the appropriate upload method based on file_type
+            if file_type.lower() == "rpm":
+                if not arch:
+                    raise ValueError("arch parameter is required for RPM uploads")
+                # Handle RPM upload directly
+                url = self._url("api/v3/content/rpm/packages/upload/")
+                with open(file_path, "rb") as fp:
+                    file_name = os.path.basename(file_path)
+                    build_id = labels.get("build_id", "")
+
+                    # Build relative_path for RPMs
+                    # RPMs use only the filename as the relative_path (no build_id, no arch prefix)
+                    # The distribution base_path contains namespace/parent_package/rpms
+                    relative_path = file_name
+
+                    data = {
+                        "pulp_labels": json.dumps(labels),
+                        "relative_path": relative_path,
+                    }
+                    files = {"file": fp}
+
+                    # Log upload attempt details for debugging
+                    logging.debug("Attempting RPM upload:")
+                    logging.debug("  URL: %s", url)
+                    logging.debug("  File: %s", file_name)
+                    logging.debug("  Relative Path: %s", relative_path)
+                    logging.debug("  Build ID: %s", build_id)
+                    logging.debug("  Arch: %s", arch)
+                    logging.debug("  Labels: %s", labels)
+
+                    response = self.session.post(
+                        url, data=data, files=files, timeout=self.timeout, **self.request_params
+                    )
+            else:
+                # For non-RPM files, use create_file_content from FileContentMixin
+                response = self.create_file_content(
+                    "", file_path, build_id=labels.get("build_id", ""), pulp_label=labels, arch=arch
+                )
+
+            # Include filename in operation for better error context
+            operation_context = f"upload {file_type} ({os.path.basename(file_path)})"
+            self._check_response(response, operation_context)
+            return response.json()["pulp_href"]
+
+        except httpx.HTTPError:
+            logging.error("Request failed for %s %s", file_type, file_path, exc_info=True)
+            raise
+        except Exception:
+            logging.error("Unexpected error uploading %s %s", file_type, file_path, exc_info=True)
+            raise
+
+    # Note: create_file_content and add_content are inherited from FileContentMixin
+    # _build_file_relative_path is also inherited from FileContentMixin
+
+    # ============================================================================
+    # Repository Management Methods (migrated from RepositoryManagerMixin)
+    # ============================================================================
+
+    def _create_resource(self, endpoint: str, request_model: Any) -> httpx.Response:
+        """
+        Create a resource (repository or distribution).
+
+        Args:
+            endpoint: API endpoint for resource creation
+            request_model: Request model (RepositoryRequest or DistributionRequest)
+
+        Returns:
+            Response object from the creation request
+        """
+        url = self._url(endpoint)
+        data = request_model.model_dump(exclude_none=True)
+        return self.session.post(url, json=data, timeout=self.timeout, **self.request_params)
+
+    def _create_repository(self, endpoint: str, new_repository: Any) -> httpx.Response:
+        """Create a repository (delegates to _create_resource)."""
+        return self._create_resource(endpoint, new_repository)
+
+    def _create_distribution(self, endpoint: str, new_distribution: Any) -> httpx.Response:
+        """Create a distribution (delegates to _create_resource)."""
+        return self._create_resource(endpoint, new_distribution)
+
+    def repository_operation(
+        self,
+        operation: str,
+        repo_type: str,
+        *,
+        name: Optional[str] = None,
+        repository_data: Optional[Any] = None,
+        distribution_data: Optional[Any] = None,
+        publication: Optional[str] = None,
+        distribution_href: Optional[str] = None,
+    ) -> httpx.Response:
+        """
+        Perform repository or distribution operations.
+
+        Args:
+            operation: Operation to perform ('create_repo', 'get_repo',
+                      'create_distro', 'get_distro', 'update_distro')
+            repo_type: Type of repository/distribution ('rpm' or 'file')
+            name: Name of the repository/distribution (for get resource operations)
+            repository_data: RepositoryRequest model for the repository to create
+            distribution_data: DistributionRequest model for the distribution to create
+            publication: Publication href (for update operations)
+            distribution_href: Full href of distribution (for update operations)
+
+        Returns:
+            Response object from the operation
+        """
+        # Build endpoint prefix (repositories/distributions use duplicate repo_type)
+        endpoint_base = f"api/v3/{'repositories' if 'repo' in operation else 'distributions'}/{repo_type}/{repo_type}/"
+
+        if operation == "create_repo":
+            if not repository_data:
+                raise ValueError("Repository data is required for 'create_repo' operations")
+            return self._create_repository(endpoint_base, repository_data)
+
+        if operation == "get_repo":
+            if not name:
+                raise ValueError("Name is required for 'get_repo' operations")
+            return self._get_single_resource(endpoint_base, name)
+
+        if operation == "create_distro":
+            if not distribution_data:
+                raise ValueError("Distribution data is required for 'create_distro' operations")
+            return self._create_distribution(endpoint_base, distribution_data)
+
+        if operation == "get_distro":
+            if not name:
+                raise ValueError("Name is required for 'get_distro' operations")
+            return self._get_single_resource(endpoint_base, name)
+
+        if operation == "update_distro":
+            if not distribution_href:
+                raise ValueError("Distribution href is required")
+            url = str(self.config["base_url"]) + distribution_href
+            data = {"publication": publication}
+            return self.session.patch(url, json=data, timeout=self.timeout, **self.request_params)
+
+        raise ValueError(f"Unknown operation: {operation}")
+
+    # ============================================================================
+    # Content Query Methods (migrated from ContentQueryMixin)
+    # ============================================================================
+
+    @staticmethod
+    @lru_cache(maxsize=256)
+    def _get_content_type_from_href(pulp_href: str) -> str:
+        """
+        Determine content type from pulp_href (cached for performance).
+
+        Args:
+            pulp_href: The Pulp href path
+
+        Returns:
+            Content type string (e.g., "rpm.package", "file.file", "unknown")
+        """
+        if "/rpm/packages/" in pulp_href:
+            return "rpm.package"
+        elif "/file/files/" in pulp_href:
+            return "file.file"
+        return "unknown"
+
+    @staticmethod
+    def _build_rpm_distribution_url(relative_path: str, distribution_urls: Dict[str, str]) -> str:
+        """Build distribution URL for RPM artifacts."""
+        rpms_url = distribution_urls.get("rpms", "")
+        if rpms_url:
+            filename = relative_path.split("/")[-1]
+            return f"{rpms_url}Packages/l/{filename}"
+        return relative_path
+
+    @staticmethod
+    def _build_file_distribution_url(
+        relative_path: str, labels: Dict[str, str], distribution_urls: Dict[str, str]
+    ) -> str:
+        """Build distribution URL for file artifacts (logs, SBOM, etc.)."""
+        VALID_ARCHES = ["x86_64", "aarch64", "noarch", "ppc64le", "s390x"]
+
+        # Check if relative_path contains arch prefix
+        parts = relative_path.split("/", 1)
+        if len(parts) == 2:
+            arch, _ = parts
+            if arch in VALID_ARCHES:
+                logs_url = distribution_urls.get("logs", "")
+                if logs_url:
+                    return f"{logs_url}{relative_path}"
+
+        # No arch prefix - determine type from filename
+        filename_lower = relative_path.lower()
+        if "sbom" in filename_lower:
+            sbom_url = distribution_urls.get("sbom", "")
+            if sbom_url:
+                return f"{sbom_url}{relative_path}"
+        else:
+            # Likely a log file
+            logs_url = distribution_urls.get("logs", "")
+            if logs_url:
+                arch = labels.get("arch", "")
+                if arch:
+                    return f"{logs_url}{arch}/{relative_path}"
+                return f"{logs_url}{relative_path}"
+
+        return relative_path
+
+    @staticmethod
+    def _build_artifact_distribution_url(
+        relative_path: str, is_rpm: bool, labels: Dict[str, str], distribution_urls: Dict[str, str]
+    ) -> str:
+        """
+        Build distribution URL for an artifact based on its type and relative path.
+
+        Args:
+            relative_path: Relative path of the artifact (e.g., filename or arch/filename)
+            is_rpm: Whether this is an RPM artifact
+            labels: Labels from content (may contain arch, etc.)
+            distribution_urls: Dictionary mapping repo_type to distribution base URL
+
+        Returns:
+            Full distribution URL for the artifact
+        """
+        if is_rpm:
+            return PulpClient._build_rpm_distribution_url(relative_path, distribution_urls)
+        return PulpClient._build_file_distribution_url(relative_path, labels, distribution_urls)
+
+    def find_content(self, search_type: str, search_value: str) -> httpx.Response:
+        """
+        Find content by various criteria.
+
+        Args:
+            search_type: Type of search ('build_id' or 'href')
+            search_value: Value to search for
+
+        Returns:
+            Response object containing content matching the search criteria
+        """
+        if search_type == "build_id":
+            url = self._url(f"api/v3/content/?pulp_label_select=build_id~{search_value}")
+        elif search_type == "href":
+            url = self._url(f"api/v3/content/?pulp_href__in={search_value}")
+        else:
+            raise ValueError(f"Unknown search type: {search_type}")
+
+        return self.session.get(url, timeout=self.timeout, **self.request_params)
+
+    def get_file_locations(self, artifacts: List[Dict[str, str]]) -> httpx.Response:
+        """
+        Get file locations for artifacts using the Pulp artifacts API.
+
+        Args:
+            artifacts: List of artifact dictionaries containing hrefs
+
+        Returns:
+            Response object containing file location information
+        """
+        hrefs = [list(artifact.values())[0] for artifact in artifacts]
+        url = self._url("api/v3/artifacts/")
+        params = {"pulp_href__in": ",".join(hrefs)}
+
+        logging.debug("Querying %d artifacts from Pulp", len(hrefs))
+
+        return self._chunked_get(
+            url, params=params, chunk_param="pulp_href__in", timeout=self.timeout, chunk_size=20, **self.request_params
+        )
+
+    def _build_rpm_packages_url(self) -> str:
+        """Build URL for RPM packages endpoint."""
+        return self._url("api/v3/content/rpm/packages/")
+
+    def get_rpm_by_pkgIDs(self, pkg_ids: List[str]) -> httpx.Response:
+        """
+        Get RPMs by package IDs.
+
+        Args:
+            pkg_ids: List of package IDs (checksums) to search for
+
+        Returns:
+            Response object containing RPM information for matching package IDs
+        """
+        url = self._build_rpm_packages_url()
+        params = {"pkgId__in": ",".join(pkg_ids)}
+        return self._chunked_get(
+            url, params=params, chunk_param="pkgId__in", timeout=self.timeout, **self.request_params
+        )
+
+    async def async_get_rpm_by_pkgIDs(self, pkg_ids: List[str]) -> httpx.Response:
+        """
+        Get RPMs by package IDs asynchronously.
+
+        Args:
+            pkg_ids: List of package IDs (checksums) to search for
+
+        Returns:
+            Response object containing RPM information for matching package IDs
+        """
+        url = self._build_rpm_packages_url()
+        params = {"pkgId__in": ",".join(pkg_ids)}
+        return await self.async_get(url, params=params)
+
+    def gather_content_data(self, build_id: str, extra_artifacts: Optional[List[Dict[str, str]]] = None) -> Any:
+        """
+        Gather content data and artifacts for a build ID.
+
+        Args:
+            build_id: Build identifier
+            extra_artifacts: Optional extra artifacts to include (from created_resources)
+
+        Returns:
+            ContentData containing content results and artifacts
+        """
+        from ..models.artifacts import ContentData
+
+        content_results = []
+        artifacts: List[Dict[str, Any]] = []
+
+        # Always use bulk query by build_id for efficiency
+        # This gets all content in a single API call instead of N individual calls
+        if extra_artifacts:
+            logging.info("Found %d created resources, querying all content by build_id", len(extra_artifacts))
+        else:
+            logging.debug("Searching for content by build_id")
+
+        try:
+            resp = self.find_content("build_id", build_id)
+            resp_json = resp.json()
+            content_results = resp_json["results"]
+        except Exception:
+            logging.error("Failed to get content by build ID", exc_info=True)
+            raise
+
+        # If no results from build_id query and we have extra_artifacts, try querying by href
+        # This handles the case where content hasn't been indexed yet
+        if not content_results and extra_artifacts:
+            logging.warning(
+                "No content found by build_id, trying direct href query for %d artifacts", len(extra_artifacts)
+            )
+            try:
+                # Extract content hrefs from extra_artifacts
+                # Note: extra_artifacts contains content hrefs (not artifact hrefs)
+                href_list = [
+                    artifact.get("pulp_href", "") for artifact in extra_artifacts if artifact.get("pulp_href", "")
+                ]
+                if href_list:
+                    href_query = ",".join(href_list)
+                    resp = self.find_content("href", href_query)
+                    resp_json = resp.json()
+                    content_results = resp_json["results"]
+                    logging.info("Found %d content items by href query", len(content_results))
+            except Exception:
+                logging.error("Failed to get content by href", exc_info=True)
+                # Don't raise, just continue with empty results
+
+        if not content_results:
+            logging.warning("No content found for build ID: %s", build_id)
+            return ContentData()
+
+        logging.info("Found %d content items for build_id: %s", len(content_results), build_id)
+
+        # Log details about what content was found
+        if content_results:
+            logging.info("Content types found:")
+            for idx, result in enumerate(content_results):
+                pulp_href = result.get("pulp_href", "")
+                content_type = self._get_content_type_from_href(pulp_href)
+
+                # Get relative paths from artifacts dict
+                artifacts_dict = result.get("artifacts", {})
+                if artifacts_dict:
+                    relative_paths = list(artifacts_dict.keys())
+                    logging.info("  - %s: %s", content_type, ", ".join(relative_paths))
+                else:
+                    logging.info("  - %s: no artifacts", content_type)
+
+                # Log full structure for first item to help with debugging
+                if idx == 0:
+                    logging.debug("First content item full structure: %s", json.dumps(result, indent=2, default=str))
+
+        # Extract artifacts from content results
+        # Content structure has "artifacts" (plural) field which is a dict: {relative_path: artifact_href}
+        artifacts = [
+            {"artifact": artifact_href}
+            for result in content_results
+            for artifact_href in result.get("artifacts", {}).values()
+            if artifact_href
+        ]
+
+        logging.info("Extracted %d artifact hrefs from content results", len(artifacts))
+        return ContentData(content_results=content_results, artifacts=artifacts)
+
+    def build_results_structure(
+        self,
+        results_model: Any,
+        content_results: List[Dict[str, Any]],
+        file_info_map: Dict[str, Any],
+        distribution_urls: Optional[Dict[str, str]] = None,
+    ) -> Any:
+        """
+        Build the results structure from content and file info using optimized single-pass processing.
+
+        Args:
+            results_model: PulpResultsModel to populate with artifacts
+            content_results: Content data from Pulp
+            file_info_map: Mapping of artifact hrefs to file info models
+            distribution_urls: Optional dictionary mapping repo_type to distribution base URL
+
+        Returns:
+            Populated PulpResultsModel
+        """
+        logging.info("Building results structure:")
+        logging.info("  - Content items: %d", len(content_results))
+        logging.info("  - File info entries: %d", len(file_info_map))
+
+        # Track statistics for logging
+        missing_artifacts = 0
+        missing_file_info = 0
+
+        for idx, content in enumerate(content_results):
+            labels = content.get("pulp_labels", {})
+            build_id = labels.get("build_id", "")
+            pulp_href = content.get("pulp_href", "unknown")
+
+            # Content structure has "artifacts" (plural) field which is a dict: {relative_path: artifact_href}
+            artifacts_dict = content.get("artifacts", {})
+
+            if not artifacts_dict:
+                missing_artifacts += 1
+                # Only log details for the first few items to avoid spam
+                if idx < 3:
+                    logging.warning(
+                        "Content item %d structure (no artifacts field). Available fields: %s",
+                        idx,
+                        list(content.keys()),
+                    )
+                    logging.debug("Full content: %s", json.dumps(content, indent=2, default=str))
+                continue
+
+            # Determine content type once per content item (cached via lru_cache)
+            pulp_type = self._get_content_type_from_href(pulp_href)
+            is_rpm = "rpm" in pulp_type.lower()
+
+            # Process all artifacts in a single pass
+            for relative_path, artifact_href in artifacts_dict.items():
+                # Skip invalid artifact hrefs
+                if not artifact_href or "/artifacts/" not in artifact_href:
+                    continue
+
+                # Get file info
+                file_info = file_info_map.get(artifact_href)
+                if not file_info:
+                    missing_file_info += 1
+                    if missing_file_info <= 3:  # Only log first few
+                        logging.warning("No file info found for artifact href: %s", artifact_href)
+                    continue
+
+                # Construct artifact key based on content type (optimized logic)
+                if is_rpm:
+                    # RPM content - use just the filename as the key
+                    artifact_key = relative_path
+                else:
+                    # File content (logs, SBOM, etc.) - use build_id/relative_path
+                    artifact_key = f"{build_id}/{relative_path}" if build_id else relative_path
+                    if not build_id and missing_file_info <= 1:
+                        logging.warning(
+                            "No build_id in labels for file content, using relative_path only: %s", relative_path
+                        )
+
+                # Construct distribution URL instead of using file_info.file (which is an API href)
+                artifact_url = self._build_artifact_distribution_url(
+                    relative_path, is_rpm, labels, distribution_urls or {}
+                )
+
+                # Add artifact to results model
+                results_model.add_artifact(
+                    key=artifact_key, url=artifact_url, sha256=file_info.sha256 or "", labels=labels
+                )
+
+        # Log summary statistics
+        logging.info("Final results: %d artifacts processed", results_model.artifact_count)
+        if missing_artifacts > 0:
+            logging.warning("Content items without artifacts field: %d", missing_artifacts)
+        if missing_file_info > 3:
+            logging.warning("Missing file info for %d artifacts", missing_file_info)
+
+        return results_model
 
 
 __all__ = ["PulpClient"]

@@ -57,6 +57,9 @@ class TaskResponse(PulpBaseModel):
     created_resources: List[str] = Field(default_factory=list)
     reserved_resources_record: Optional[List[str]] = None
     result: Optional[Any] = None
+    parent_task: Optional[str] = None
+    worker: Optional[str] = None
+    logging_cid: Optional[str] = None
 
     @property
     def is_complete(self) -> bool:
@@ -72,6 +75,12 @@ class TaskResponse(PulpBaseModel):
     def is_failed(self) -> bool:
         """Check if the task failed."""
         return self.state == "failed"
+
+
+class TaskListResponse(PaginatedResponse):
+    """Paginated list of tasks."""
+
+    results: List[TaskResponse]  # type: ignore[assignment]
 
 
 # ============================================================================
@@ -98,6 +107,8 @@ class RepositoryListResponse(PaginatedResponse):
 
 
 class RepositoryRequest(PulpRequestModel):
+    """Request model for creating/updating repositories."""
+
     name: str
     pulp_labels: Optional[dict[str, str]] = None
     description: Optional[str] = None
@@ -112,6 +123,43 @@ class RepositoryRequest(PulpRequestModel):
         if not value.strip():
             raise ValueError(f"Invalid repository {info.field_name}: {value}")
         return value
+
+
+class RpmRepositoryResponse(RepositoryResponse):
+    """Response for RPM repository objects."""
+
+    metadata_signing_service: Optional[str] = None
+    package_signing_service: Optional[str] = None
+    package_signing_fingerprint: Optional[str] = None
+    retain_package_versions: Optional[int] = None
+    checksum_type: Optional[str] = None
+    repo_config: Optional[Dict[str, Any]] = None
+    compression_type: Optional[str] = None
+    layout: Optional[str] = None
+
+
+class RpmRepositoryListResponse(PaginatedResponse):
+    """Paginated list of RPM repositories."""
+
+    results: List[RpmRepositoryResponse]  # type: ignore[assignment]
+
+
+class FileRepositoryResponse(RepositoryResponse):
+    """Response for file repository objects."""
+
+    pass
+
+
+class FileRepositoryRequest(RepositoryRequest):
+    """Request model for creating/updating file repositories."""
+
+    pass
+
+
+class FileRepositoryListResponse(PaginatedResponse):
+    """Paginated list of file repositories."""
+
+    results: List[FileRepositoryResponse]  # type: ignore[assignment]
 
 
 # ============================================================================
@@ -233,8 +281,40 @@ class RpmRepositoryRequest(RepositoryRequest):
     layout: Optional[Literal["nested_alphabetically", "flat"]] = None
 
 
-class RpmDistributionRequest(DistributionRequest):
+class RpmDistributionResponse(DistributionResponse):
+    """Response for RPM distribution objects."""
+
     generate_repo_config: Optional[bool] = None
+
+
+class RpmDistributionListResponse(PaginatedResponse):
+    """Paginated list of RPM distributions."""
+
+    results: List[RpmDistributionResponse]  # type: ignore[assignment]
+
+
+class RpmDistributionRequest(DistributionRequest):
+    """Request model for creating/updating RPM distributions."""
+
+    generate_repo_config: Optional[bool] = None
+
+
+class FileDistributionResponse(DistributionResponse):
+    """Response for file distribution objects."""
+
+    pass
+
+
+class FileDistributionListResponse(PaginatedResponse):
+    """Paginated list of file distributions."""
+
+    results: List[FileDistributionResponse]  # type: ignore[assignment]
+
+
+class FileDistributionRequest(DistributionRequest):
+    """Request model for creating/updating file distributions."""
+
+    pass
 
 
 # ============================================================================
@@ -271,6 +351,12 @@ class ArtifactResponse(PulpBaseModel):
     sha256: Optional[str] = None
     sha384: Optional[str] = None
     sha512: Optional[str] = None
+
+
+class ArtifactListResponse(PaginatedResponse):
+    """Paginated list of artifacts."""
+
+    results: List[ArtifactResponse]  # type: ignore[assignment]
 
 
 # ============================================================================
@@ -351,15 +437,31 @@ __all__ = [
     # Base models
     "PulpBaseModel",
     "PaginatedResponse",
+    "PulpRequestModel",
     # Task models
     "TaskResult",
     "TaskResponse",
+    "TaskListResponse",
     # Repository models
+    "RepositoryRequest",
     "RepositoryResponse",
     "RepositoryListResponse",
+    "RpmRepositoryRequest",
+    "RpmRepositoryResponse",
+    "RpmRepositoryListResponse",
+    "FileRepositoryRequest",
+    "FileRepositoryResponse",
+    "FileRepositoryListResponse",
     # Distribution models
+    "DistributionRequest",
     "DistributionResponse",
     "DistributionListResponse",
+    "RpmDistributionRequest",
+    "RpmDistributionResponse",
+    "RpmDistributionListResponse",
+    "FileDistributionRequest",
+    "FileDistributionResponse",
+    "FileDistributionListResponse",
     # Content models
     "ArtifactRef",
     "ContentResponse",
@@ -371,6 +473,7 @@ __all__ = [
     "FileResponse",
     "FileListResponse",
     "ArtifactResponse",
+    "ArtifactListResponse",
     # Upload models
     "UploadResponse",
     "UploadCommitResponse",

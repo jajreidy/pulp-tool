@@ -36,6 +36,7 @@ dependencies = [
 dev = [
     # Testing
     "pytest>=6.0",
+    "pytest-asyncio>=0.21.0",
     "pytest-cov>=2.0",
     "pytest-mock>=3.6",
     "respx>=0.20.0",
@@ -134,31 +135,65 @@ module = "pulp_tool.utils.validation"
 disable_error_code = ["unreachable"]
 
 [[tool.mypy.overrides]]
-module = "pulp_tool.api.content_manager"
-disable_error_code = ["attr-defined"]
-
-[[tool.mypy.overrides]]
 module = "pulp_tool.api.task_manager"
 disable_error_code = ["attr-defined"]
 
 [[tool.mypy.overrides]]
-module = "pulp_tool.api.content_query"
+module = "pulp_tool.api.base"
 disable_error_code = ["attr-defined"]
 
 [[tool.mypy.overrides]]
-module = "pulp_tool.api.repository_manager"
+module = "pulp_tool.api.repositories.*"
 disable_error_code = ["attr-defined"]
+
+[[tool.mypy.overrides]]
+module = "pulp_tool.api.distributions.*"
+disable_error_code = ["attr-defined"]
+
+[[tool.mypy.overrides]]
+module = "pulp_tool.api.content.*"
+disable_error_code = ["attr-defined"]
+
+[[tool.mypy.overrides]]
+module = "pulp_tool.api.artifacts.*"
+disable_error_code = ["attr-defined"]
+
+[[tool.mypy.overrides]]
+module = "pulp_tool.api.tasks.*"
+disable_error_code = ["attr-defined", "arg-type"]
+
+[[tool.mypy.overrides]]
+module = "pulp_tool.services.*"
+disable_error_code = ["attr-defined", "arg-type"]
+
+[[tool.mypy.overrides]]
+module = "pulp_tool.utils.*"
+disable_error_code = ["attr-defined"]
+
+[[tool.mypy.overrides]]
+module = "pulp_tool.transfer.*"
+disable_error_code = ["attr-defined"]
+
+[[tool.mypy.overrides]]
+module = "pulp_tool.cli.*"
+disable_error_code = ["attr-defined"]
+
+[[tool.mypy.overrides]]
+module = "tests.*"
+disable_error_code = ["attr-defined", "method-assign"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = ["test_*.py", "*_test.py"]
+asyncio_mode = "auto"
 python_classes = ["Test*"]
 python_functions = ["test_*"]
 addopts = "-v --tb=short --cov=pulp_tool --cov-report=term-missing --cov-report=html --cov-report=xml --cov-fail-under=85"
 markers = [
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",
     "integration: marks tests as integration tests",
-    "unit: marks tests as unit tests"
+    "unit: marks tests as unit tests",
+    "asyncio: marks tests as async (use pytest-asyncio)",
 ]
 
 [tool.coverage.report]

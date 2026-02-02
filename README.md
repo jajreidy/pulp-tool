@@ -11,7 +11,6 @@ Pulp Tool provides a comprehensive, modern Python client for interacting with Pu
 The package emphasizes developer experience with comprehensive type safety, intuitive CLI commands, and a modular architecture that makes it easy to integrate into automated workflows.
 
 ## Installation
-```
 
 ### From Source
 
@@ -38,22 +37,24 @@ The `pulp-tool` command provides a modern Click-based CLI with subcommands:
 #### Upload RPMs and Artifacts
 
 ```bash
-pulp-tool upload \
+pulp-tool \
+  --config ~/.config/pulp/cli.toml \
   --build-id my-build-123 \
   --namespace my-namespace \
+  upload \
   --parent-package my-package \
   --rpm-path /path/to/rpms \
-  --sbom-path /path/to/sbom.json \
-  --config ~/.config/pulp/cli.toml
+  --sbom-path /path/to/sbom.json
 ```
 
 #### Download Artifacts
 
 ```bash
 # Using config file for cert/key
-pulp-tool transfer \
-  --artifact-location /path/to/artifacts.json \
-  --config ~/.config/pulp/cli.toml
+pulp-tool \
+  --config ~/.config/pulp/cli.toml \
+  transfer \
+  --artifact-location /path/to/artifacts.json
 
 # Using CLI options for cert/key
 pulp-tool transfer \
@@ -62,24 +63,13 @@ pulp-tool transfer \
   --key-path /path/to/key.pem
 ```
 
-#### Download Repository Configuration File
-
-```bash
-# No config file needed! Use base_url and namespace directly
-pulp-tool get-repo-md \
-  --base-url https://pulp.example.com \
-  --namespace my-tenant \
-  --build-id my-build-123 \
-  --repo_type rpms
-```
-
 #### Get Help
 
 ```bash
 pulp-tool --help              # General help
 pulp-tool upload --help       # Upload command help
 pulp-tool transfer --help     # Transfer command help
-pulp-tool get-repo-md --help  # Get repo config help
+pulp-tool create-repository --help  # Create repository help
 pulp-tool --version           # Show version
 ```
 
@@ -90,8 +80,9 @@ pulp-tool --version           # Show version
 ```python
 from pulp_tool import PulpClient, PulpHelper
 from pulp_tool.models import RepositoryRefs
+from pulp_tool.models.pulp_api import RpmRepositoryRequest
 
-# Create a client from configuration file (uses httpx under the hood)
+# Create a client from configuration file
 client = PulpClient.create_from_config_file(path="~/.config/pulp/cli.toml")
 
 try:
@@ -99,16 +90,17 @@ try:
     helper = PulpHelper(client)
     repositories: RepositoryRefs = helper.setup_repositories("my-build-123")
 
-    # Upload content - client handles authentication automatically
-    artifact_href = client.upload_content(
+    # Upload RPM package - client handles authentication automatically
+    response = client.upload_rpm_package(
         "/path/to/package.rpm",
-        {"build_id": "my-build-123", "arch": "x86_64"},
-        file_type="rpm",
+        labels={"build_id": "my-build-123"},
         arch="x86_64"
     )
 
-    # Add to repository using Pydantic-validated data
-    client.add_content(repositories.rpms_href, [artifact_href])
+    # Get task href if upload returns async task
+    task_href = response.json().get("task")
+    if task_href:
+        task = client.wait_for_finished_task(task_href)
 finally:
     # Always close the client to clean up resources
     client.close()
@@ -229,7 +221,7 @@ verbose = 0
 
 ## CLI Reference
 
-The `pulp-tool` command provides a modern Click-based interface with three main subcommands: `upload`, `transfer`, and `get-repo-md`.
+The `pulp-tool` command provides a modern Click-based interface with three main subcommands: `upload`, `transfer`, and `create-repository`.
 
 ### Upload Command
 
@@ -251,18 +243,20 @@ Upload RPM packages, logs, and SBOM files to Pulp repositories.
 **Example:**
 ```bash
 # Basic upload
-pulp-tool upload \
+pulp-tool \
   --build-id konflux-build-12345 \
   --namespace konflux-team \
+  -dd \
+  upload \
   --parent-package my-application \
   --rpm-path ./build/rpms \
-  --sbom-path ./build/sbom.json \
-  -dd  # DEBUG level logging
+  --sbom-path ./build/sbom.json
 
 # With result file outputs
-pulp-tool upload \
+pulp-tool \
   --build-id konflux-build-12345 \
   --namespace konflux-team \
+  upload \
   --parent-package my-application \
   --rpm-path ./build/rpms \
   --sbom-path ./build/sbom.json \
@@ -275,13 +269,13 @@ pulp-tool upload \
 Download artifacts from Pulp distributions and optionally re-upload to Pulp repositories.
 
 **Required Arguments:**
-- `--artifact-location`: Path to local artifact metadata JSON file or HTTP URL
+- `--artifact-location`: Path to local artifact metadata JSON file or HTTP URL. Mutually exclusive with `--build-id` + `--namespace`.
 
 **Optional Arguments (conditionally required):**
+- `--build-id` + `--namespace`: Alternative to `--artifact-location`. Both must be provided together, and `--config` is required. The artifact location will be auto-generated from these values.
 - `--cert-path`: Path to SSL certificate file for authentication (optional, can come from config)
 - `--key-path`: Path to SSL private key file for authentication (optional, can come from config)
-- `--config`: Path to Pulp CLI config file (if supplied, will transfer to this config domain and use cert/key from config)
-- `--build-id`: Build ID for naming repositories (default: extracted from artifact labels)
+- `--config`: Path to Pulp CLI config file (required when using `--build-id` + `--namespace`, optional otherwise. If supplied, will transfer to this config domain and use cert/key from config)
 - `--content-types`: Comma-separated list of content types to transfer (rpm, log, sbom). If not specified, all types are transferred.
 - `--archs`: Comma-separated list of architectures to transfer (e.g., x86_64,aarch64,noarch). If not specified, all architectures are transferred.
 - `--max-workers`: Maximum number of concurrent download threads (default: 4)
@@ -298,110 +292,88 @@ When downloading artifacts, files are saved with the following structure:
 **Example:**
 ```bash
 # Download all artifacts (cert/key from config file)
-pulp-tool transfer \
-  --artifact-location https://example.com/artifacts.json \
+pulp-tool \
   --config ~/.config/pulp/cli.toml \
   --max-workers 4 \
-  -dd  # DEBUG level logging
+  -dd \
+  transfer \
+  --artifact-location https://example.com/artifacts.json
 
 # Download all artifacts (cert/key from CLI options)
-pulp-tool transfer \
+pulp-tool \
+  --max-workers 4 \
+  -dd \
+  transfer \
   --artifact-location https://example.com/artifacts.json \
   --cert-path /etc/pki/tls/certs/client.cert \
-  --key-path /etc/pki/tls/private/client.key \
-  --max-workers 4 \
-  -dd  # DEBUG level logging
+  --key-path /etc/pki/tls/private/client.key
 
 # Download only RPMs for specific architectures
-pulp-tool transfer \
+pulp-tool \
+  --config ~/.config/pulp/cli.toml \
+  transfer \
   --artifact-location https://example.com/artifacts.json \
   --cert-path /etc/pki/tls/certs/client.cert \
   --key-path /etc/pki/tls/private/client.key \
-  --config ~/.config/pulp/cli.toml \
   --content-types rpm \
   --archs x86_64,aarch64
+
+# Download using build-id + namespace (artifact location auto-generated)
+pulp-tool \
+  --config ~/.config/pulp/cli.toml \
+  --build-id my-build-123 \
+  --namespace my-namespace \
+  --max-workers 4 \
+  transfer
 ```
 
-### Get Repo Config Command
+### Create Repository Command
 
-> **⚠️ WORK IN PROGRESS**: This command is currently under development and may have incomplete functionality or behavior changes.
+Create a custom defined repository in Pulp with specified packages and configuration options.
 
-Download `.repo` configuration file(s) from Pulp distribution(s) for use with `dnf` or `yum`. Supports downloading multiple files by providing comma-separated lists for `--build-id` and/or `--repo_type`.
-
-**Required Arguments:**
-- `--build-id`: Build identifier(s) for the repository (comma-separated for multiple)
-- `--repo_type`: Repository type(s): `rpms`, `logs`, `sbom`, `artifacts` (comma-separated for multiple)
-
-**Configuration (choose one):**
-- **Option 1**: `--config` - Path to Pulp CLI config file (default: `~/.config/pulp/cli.toml`)
-- **Option 2**: `--base-url` AND `--namespace` - Specify Pulp connection directly
-  - `--base-url`: Pulp base URL (e.g., `https://pulp.example.com`)
-  - `--namespace`: Pulp namespace/domain (e.g., `my-tenant`)
+**Required Arguments (when not using JSON):**
+- `--repository-name`: A unique name for this repository
+- `--packages`: Comma-separated list of package Pulp hrefs to be added to the newly created repository
+- `--base-path`: The base (relative) path component of the published URL
 
 **Optional Arguments:**
-- `--cert-path`: Path to SSL certificate file for authentication (optional, can come from config)
-- `--key-path`: Path to SSL private key file for authentication (optional, can come from config)
-- `--output`: Output directory for `.repo` files (default: current directory). Files named `{build_id}-{repo_type}.repo`
+- `--config`: Path to Pulp CLI config file (default: `~/.config/pulp/cli.toml`)
+- `--compression-type`: The compression type to use for metadata files (`zstd` or `gz`)
+- `--checksum-type`: The preferred checksum type during repo publish (`unknown`, `md5`, `sha1`, `sha224`, `sha256`, `sha384`, `sha512`)
+- `--skip-publish`: Disables autopublish for a repository (flag)
+- `--generate-repo-config`: Whether Pulp should generate `.repo` files (flag, ignored for non-RPM distributions)
+- `-j, --json-data`: JSON string input. CLI options are ignored when JSON data is provided
 - `-d, --debug`: Increase verbosity (use `-d` for INFO, `-dd` for DEBUG, `-ddd` for DEBUG with HTTP logs)
 
-**Note:** Both `--cert-path` and `--key-path` must be provided together if using certificate authentication (or both must be provided via `--config`).
+**Note:** When using `--json-data`, all other CLI options are ignored. The JSON must conform to the `CreateRepository` model structure.
 
 **Example:**
 ```bash
-# Using config file (default: ~/.config/pulp/cli.toml)
-pulp-tool get-repo-md \
-  --build-id my-build-123 \
-  --repo_type rpms
+# Create repository with CLI options
+pulp-tool \
+  --config ~/.config/pulp/cli.toml \
+  create-repository \
+  --repository-name my-repo \
+  --packages /api/pulp/konflux-test/api/v3/content/file/packages/019b1338-f265-7ad6-a278-8bead86e5c1d/ \
+  --base-path my-repo-path \
+  --compression-type zstd \
+  --checksum-type sha256 \
+  --generate-repo-config
 
-# Using direct base_url and namespace (no config file needed)
-pulp-tool get-repo-md \
-  --base-url https://pulp.example.com \
-  --namespace my-tenant \
-  --build-id my-build-123 \
-  --repo_type rpms
+# Create repository with JSON input
+pulp-tool \
+  --config ~/.config/pulp/cli.toml \
+  create-repository \
+  --json-data '{"name": "my-repo", "packages": [{"pulp_href": "/api/pulp/..."}], "repository_options": {...}, "distribution_options": {...}}'
 
-# Download multiple .repo files for one build (all repo types)
-pulp-tool get-repo-md \
-  --base-url https://pulp.example.com \
-  --namespace my-tenant \
-  --build-id my-build-123 \
-  --repo_type rpms,logs,sbom
-
-# Download .repo files for multiple builds (same repo type)
-pulp-tool get-repo-md \
-  --base-url https://pulp.example.com \
-  --namespace my-tenant \
-  --build-id build-123,build-456,build-789 \
-  --repo_type rpms
-
-# Download all combinations (3 builds × 2 repo types = 6 files)
-pulp-tool get-repo-md \
-  --base-url https://pulp.example.com \
-  --namespace my-tenant \
-  --build-id build-123,build-456,build-789 \
-  --repo_type rpms,logs \
-  --output /tmp/repo-files
-
-# With certificate authentication (cert/key from config file)
-pulp-tool get-repo-md \
-  --base-url https://pulp.example.com \
-  --namespace my-tenant \
-  --build-id my-build-123 \
-  --repo_type rpms \
-  --config ~/.config/pulp/cli.toml
-
-# With certificate authentication (cert/key from CLI options)
-pulp-tool get-repo-md \
-  --base-url https://pulp.example.com \
-  --namespace my-tenant \
-  --build-id my-build-123 \
-  --repo_type rpms \
-  --cert-path /path/to/cert.pem \
-  --key-path /path/to/key.pem
-
-# Install the repository configuration
-sudo cp *.repo /etc/yum.repos.d/
-sudo dnf install <package-name>
+# Create repository without autopublish
+pulp-tool \
+  --config ~/.config/pulp/cli.toml \
+  create-repository \
+  --repository-name my-repo \
+  --packages /api/pulp/.../ \
+  --base-path my-repo-path \
+  --skip-publish
 ```
 
 ### Environment Variables
@@ -441,16 +413,16 @@ All commands support progressive verbosity levels with the `-d` / `--debug` flag
 **Example:**
 ```bash
 # Minimal output
-pulp-tool upload --build-id test ...
+pulp-tool --build-id test upload ...
 
 # Progress information
-pulp-tool upload --build-id test ... -d
+pulp-tool --build-id test -d upload ...
 
 # Detailed debugging
-pulp-tool upload --build-id test ... -dd
+pulp-tool --build-id test -dd upload ...
 
 # Full HTTP debugging
-pulp-tool upload --build-id test ... -ddd
+pulp-tool --build-id test -ddd upload ...
 ```
 
 ### Troubleshooting
@@ -496,28 +468,47 @@ chmod 600 /path/to/key.pem
 
 #### PulpClient
 
-The main client class for interacting with Pulp API. Built with httpx for modern async-capable HTTP operations and composed of specialized mixins for different operations.
+The main client class for interacting with Pulp API. Built with httpx for modern async-capable HTTP operations and organized by resource type to match Pulp's API structure.
 
 **Architecture:**
-- Uses mixin pattern for modular functionality
-- Inherits from: `ContentManagerMixin`, `ContentQueryMixin`, `RepositoryManagerMixin`, `TaskManagerMixin`
+- Resource-based organization matching Pulp's API documentation
+- Mixins organized by resource type: repositories, distributions, content, artifacts, tasks
 - Automatic OAuth2 authentication with token refresh
 - Context manager support for proper resource cleanup
 
+**Resource-Based Mixins:**
+- `RpmRepositoryMixin`, `FileRepositoryMixin`: Repository operations
+- `RpmDistributionMixin`, `FileDistributionMixin`: Distribution operations
+- `RpmPackageContentMixin`, `FileContentMixin`: Content upload and management
+- `ArtifactMixin`: Artifact operations
+- `TaskMixin`: Task monitoring with exponential backoff
+
 **Key Methods:**
-- `upload_content()`: Upload files to Pulp with automatic deduplication
-- `create_file_content()`: Create file content artifacts
-- `add_content()`: Add content to repositories
-- `wait_for_finished_task()`: Wait for async operations to complete with progress tracking
-- `find_content()`: Search for existing content with flexible filters
+- `create_rpm_repository()`, `create_file_repository()`: Create repositories
+- `create_rpm_distribution()`, `create_file_distribution()`: Create distributions
+- `upload_rpm_package()`, `create_file_content()`: Upload content
+- `get_task()`, `wait_for_finished_task()`: Monitor async operations
+- `get_artifact()`, `list_artifacts()`: Query artifacts
 - `close()`: Clean up HTTP session and resources
 
 **Usage:**
 ```python
+from pulp_tool import PulpClient
+from pulp_tool.models.pulp_api import RpmRepositoryRequest
+
 client = PulpClient.create_from_config_file()
 try:
-    # Client operations
-    pass
+    # Create repository
+    repo_response, task_href = client.create_rpm_repository(
+        RpmRepositoryRequest(name="my-repo")
+    )
+
+    # Upload content
+    response = client.upload_rpm_package(
+        "/path/to/package.rpm",
+        labels={"build_id": "123"},
+        arch="x86_64"
+    )
 finally:
     client.close()
 ```
@@ -549,12 +540,12 @@ Specialized client for downloading artifacts from Pulp distributions using certi
 
 #### API Response Models (`pulp_tool.models.pulp_api`)
 
-- `TaskResponse`: Pulp task status and results
-- `RepositoryResponse`: Repository metadata
-- `DistributionResponse`: Distribution configuration
-- `ContentResponse`: Content unit information
+- `TaskResponse`, `TaskListResponse`: Pulp task status and results
+- `RepositoryResponse`, `RpmRepositoryResponse`, `FileRepositoryResponse`: Repository metadata
+- `DistributionResponse`, `RpmDistributionResponse`, `FileDistributionResponse`: Distribution configuration
 - `RpmPackageResponse`: RPM-specific metadata
 - `FileResponse`: File content metadata
+- `ArtifactResponse`, `ArtifactListResponse`: Artifact information
 - `OAuthTokenResponse`: OAuth token data
 
 #### Domain Models (`pulp_tool.models`)
@@ -565,15 +556,6 @@ Specialized client for downloading artifacts from Pulp distributions using certi
 - `ArtifactMetadata`: Artifact metadata with labels and digests
 - `PulpResultsModel`: Unified upload tracking and results building
 - `PulledArtifacts`: Downloaded artifact organization
-
-### Mixins
-
-The PulpClient is composed of specialized mixins for different operations:
-
-- `ContentManagerMixin`: Content upload and management operations
-- `ContentQueryMixin`: Content search and filtering
-- `RepositoryManagerMixin`: Repository and distribution management
-- `TaskManagerMixin`: Asynchronous task monitoring and management
 
 ## Development
 

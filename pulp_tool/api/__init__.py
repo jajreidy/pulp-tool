@@ -6,15 +6,23 @@ This package provides clients for interacting with Pulp API:
 - Main Pulp client for repository and content management
 - Distribution client for downloading artifacts
 - Specialized managers for content, tasks, queries, and repositories
+- New resource-based API modules matching Pulp's API structure
 """
 
 from .auth import OAuth2ClientCredentialsAuth
-from .content_manager import ContentManagerMixin
-from .content_query import ContentQueryMixin
+from .base import BaseResourceMixin
 from .distribution_client import DistributionClient
 from .pulp_client import PulpClient
-from .repository_manager import RepositoryManagerMixin
-from .task_manager import TaskManagerMixin
+
+# Resource-based modules
+from .repositories.rpm import RpmRepositoryMixin
+from .repositories.file import FileRepositoryMixin
+from .distributions.rpm import RpmDistributionMixin
+from .distributions.file import FileDistributionMixin
+from .content.rpm_packages import RpmPackageContentMixin
+from .content.file_files import FileContentMixin
+from .artifacts.operations import ArtifactMixin
+from .tasks.operations import TaskMixin
 
 # Import Pulp API models for convenience
 from ..models.pulp_api import (
@@ -25,22 +33,43 @@ from ..models.pulp_api import (
     RpmPackageResponse,
     FileResponse,
     OAuthTokenResponse,
+    # New models
+    RpmRepositoryResponse,
+    FileRepositoryResponse,
+    RpmDistributionResponse,
+    FileDistributionResponse,
+    TaskListResponse,
+    ArtifactListResponse,
 )
 
 __all__ = [
+    # Core clients
     "OAuth2ClientCredentialsAuth",
-    "ContentManagerMixin",
-    "ContentQueryMixin",
     "DistributionClient",
     "PulpClient",
-    "RepositoryManagerMixin",
-    "TaskManagerMixin",
+    # Base mixins
+    "BaseResourceMixin",
+    # Resource-based mixins
+    "RpmRepositoryMixin",
+    "FileRepositoryMixin",
+    "RpmDistributionMixin",
+    "FileDistributionMixin",
+    "RpmPackageContentMixin",
+    "FileContentMixin",
+    "ArtifactMixin",
+    "TaskMixin",
     # API Models
     "TaskResponse",
+    "TaskListResponse",
     "RepositoryResponse",
+    "RpmRepositoryResponse",
+    "FileRepositoryResponse",
     "DistributionResponse",
+    "RpmDistributionResponse",
+    "FileDistributionResponse",
     "ContentResponse",
     "RpmPackageResponse",
     "FileResponse",
+    "ArtifactListResponse",
     "OAuthTokenResponse",
 ]

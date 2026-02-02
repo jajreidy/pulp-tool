@@ -18,6 +18,7 @@ from ..models.results import DownloadResult
 from ..models.context import TransferContext
 from ..utils import PulpHelper, determine_build_id, extract_metadata_from_artifact_json
 from ..utils.artifact_detection import categorize_artifacts_by_type
+from ..utils.config_manager import ConfigManager
 
 
 def _categorize_artifacts(
@@ -105,7 +106,16 @@ def setup_repositories_if_needed(args: TransferContext, artifact_json=None) -> O
     try:
         # Initialize Pulp client - domain will be read from config file
         # Note: Transfer uses the DESTINATION domain from config, not the SOURCE domain from artifact_json
-        client = PulpClient.create_from_config_file(path=args.config)
+        # For transfer operations, add "konflux-" prefix to the domain if not already present
+        config_manager = ConfigManager(args.config)
+        config_manager.load()
+        domain = config_manager.get("cli.domain", "")
+        if domain and not domain.startswith("konflux-"):
+            domain = f"konflux-{domain}"
+            logging.debug("Added 'konflux-' prefix to domain for transfer: %s", domain)
+        elif domain:
+            logging.debug("Using domain for transfer (already has 'konflux-' prefix or empty): %s", domain)
+        client = PulpClient.create_from_config_file(path=args.config, domain=domain if domain else None)
 
         # Extract parent_package from artifact_json for proper distribution base_path
         parent_package = None

@@ -3,8 +3,8 @@ Tests for PulpClient class and its mixin components.
 
 This module contains comprehensive tests for:
 - PulpClient: Main client class (pulp_client.py)
-- ContentManagerMixin: Content upload operations (content_manager.py)
-- ContentQueryMixin: Content querying and retrieval (content_query.py)
+- Content upload operations migrated to PulpClient
+- Content querying and retrieval methods migrated to PulpClient
 - RepositoryManagerMixin: Repository operations (repository_manager.py)
 - TaskManagerMixin: Pulp task management (task_manager.py)
 
@@ -443,7 +443,7 @@ class TestPulpClient:
 
         labels = {"build_id": "test-build", "arch": "x86_64"}
 
-        with patch("pulp_tool.api.content_manager.validate_file_path"):
+        with patch("pulp_tool.utils.validation.file.validate_file_path"):
             result = mock_pulp_client.upload_content(temp_rpm_file, labels, file_type="RPM", arch="x86_64")
 
         assert result == "/pulp/api/v3/content/12345/"
@@ -457,7 +457,7 @@ class TestPulpClient:
 
         labels = {"build_id": "test-build"}
 
-        with patch("pulp_tool.api.content_manager.validate_file_path"):
+        with patch("pulp_tool.utils.validation.file.validate_file_path"):
             result = mock_pulp_client.upload_content(temp_file, labels, file_type="File")
 
         assert result == "/pulp/api/v3/content/12345/"
@@ -466,7 +466,7 @@ class TestPulpClient:
         """Test upload_content method with missing arch for RPM."""
         labels = {"build_id": "test-build"}
 
-        with patch("pulp_tool.api.content_manager.validate_file_path"):
+        with patch("pulp_tool.utils.validation.file.validate_file_path"):
             with pytest.raises(ValueError, match="arch parameter is required for RPM uploads"):
                 mock_pulp_client.upload_content(temp_file, labels, file_type="RPM")
 
@@ -544,7 +544,7 @@ class TestPulpClient:
             )
         )
 
-        result = mock_pulp_client._get_task("/pulp/api/v3/tasks/12345/")
+        result = mock_pulp_client.get_task("/pulp/api/v3/tasks/12345/")
 
         # Now returns a TaskResponse model
         from pulp_tool.models.pulp_api import TaskResponse
@@ -727,6 +727,98 @@ class TestPulpClient:
         assert result.artifact_count == 1
         # Verify the result uses relative_path as the key
         assert "test-build-123/x86_64/test-package.rpm" in result.artifacts
+
+    def test_build_results_structure_invalid_artifact_href(self, mock_pulp_client, mock_content_data, httpx_mock):
+        """Test build_results_structure with invalid artifact hrefs (line 1249)."""
+        from pulp_tool.models import PulpResultsModel, RepositoryRefs, FileInfoModel
+
+        repositories = RepositoryRefs(
+            rpms_href="/rpms/",
+            rpms_prn="rpms-prn",
+            logs_href="/logs/",
+            logs_prn="logs-prn",
+            sbom_href="/sbom/",
+            sbom_prn="sbom-prn",
+            artifacts_href="/artifacts/",
+            artifacts_prn="artifacts-prn",
+        )
+        results_model = PulpResultsModel(build_id="test-build-123", repositories=repositories)
+
+        # Content with invalid artifact hrefs (no "/artifacts/" in href)
+        content_results = [
+            {
+                "pulp_href": "/content/123/",
+                "pulp_labels": {"build_id": "test-build-123"},
+                "artifacts": {
+                    "valid.rpm": "/pulp/api/v3/artifacts/67890/",  # Valid
+                    "invalid1.txt": "/content/invalid/",  # Invalid - no "/artifacts/"
+                    "invalid2.txt": "",  # Invalid - empty
+                    "invalid3.txt": None,  # Invalid - None
+                },
+                "relative_path": "test-package.rpm",
+            }
+        ]
+
+        file_info = FileInfoModel(
+            pulp_href="/pulp/api/v3/artifacts/67890/",
+            file="test-package.rpm@sha256:abc",
+            sha256="abc",
+        )
+        file_info_map = {"/pulp/api/v3/artifacts/67890/": file_info}
+
+        result = mock_pulp_client.build_results_structure(results_model, content_results, file_info_map)
+
+        # Should only process the valid artifact
+        assert result.artifact_count == 1
+        # Invalid hrefs should be skipped (line 1249)
+
+    def test_build_results_structure_missing_file_info_many(self, mock_pulp_client, mock_content_data, httpx_mock):
+        """Test build_results_structure with many missing file info entries (line 1286)."""
+        from pulp_tool.models import PulpResultsModel, RepositoryRefs
+
+        repositories = RepositoryRefs(
+            rpms_href="/rpms/",
+            rpms_prn="rpms-prn",
+            logs_href="/logs/",
+            logs_prn="logs-prn",
+            sbom_href="/sbom/",
+            sbom_prn="sbom-prn",
+            artifacts_href="/artifacts/",
+            artifacts_prn="artifacts-prn",
+        )
+        results_model = PulpResultsModel(build_id="test-build-123", repositories=repositories)
+
+        # Content with multiple artifacts, but file_info_map only has one entry
+        content_results = [
+            {
+                "pulp_href": "/content/123/",
+                "pulp_labels": {"build_id": "test-build-123"},
+                "artifacts": {f"file{i}.txt": f"/pulp/api/v3/artifacts/{i}/" for i in range(10)},  # 10 artifacts
+                "relative_path": "test.txt",
+            }
+        ]
+
+        # Only provide file_info for first artifact
+        from pulp_tool.models import FileInfoModel
+
+        file_info_map = {
+            "/pulp/api/v3/artifacts/0/": FileInfoModel(
+                pulp_href="/pulp/api/v3/artifacts/0/",
+                file="file0.txt@sha256:abc",
+                sha256="abc",
+            )
+        }
+
+        with patch("pulp_tool.api.pulp_client.logging") as mock_logging:
+            result = mock_pulp_client.build_results_structure(results_model, content_results, file_info_map)
+
+            # Should only process the one with file_info
+            assert result.artifact_count == 1
+            # Should log warning for missing file info > 3 (line 1286)
+            mock_logging.warning.assert_called()
+            # Check that the summary warning was logged
+            warning_calls = [call for call in mock_logging.warning.call_args_list if "Missing file info" in str(call)]
+            assert len(warning_calls) > 0
 
     def test_repository_operation_create_repo(self, mock_pulp_client, httpx_mock):
         """Test repository_operation method for creating repository."""

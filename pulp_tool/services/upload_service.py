@@ -348,6 +348,7 @@ def _populate_results_model(
     results_model: PulpResultsModel,
     content_results: list,
     file_info_map: Dict[str, FileInfoModel],
+    context: "UploadContext",
 ) -> None:
     """
     Populate results model with artifacts from content results.
@@ -357,8 +358,13 @@ def _populate_results_model(
         results_model: Model to populate
         content_results: List of content results from Pulp
         file_info_map: Map of artifact hrefs to file information
+        context: Upload context for getting distribution URLs
     """
-    client.build_results_structure(results_model, content_results, file_info_map)
+    # Get distribution URLs to construct proper artifact URLs
+    repository_helper = PulpHelper(client, parent_package=context.parent_package)
+    distribution_urls = repository_helper.get_distribution_urls(context.build_id)
+
+    client.build_results_structure(results_model, content_results, file_info_map, distribution_urls)
 
 
 def _add_distributions_to_results(
@@ -416,7 +422,7 @@ def collect_results(
     file_info_map = _build_artifact_map(client, content_data.content_results)
 
     # Populate results model
-    _populate_results_model(client, results_model, content_data.content_results, file_info_map)
+    _populate_results_model(client, results_model, content_data.content_results, file_info_map, context)
 
     # Add distribution URLs
     _add_distributions_to_results(client, context, results_model)
@@ -426,16 +432,16 @@ def collect_results(
     return _upload_and_get_results_url(client, context, results_model.repositories.artifacts_prn, json_content, date)
 
 
-def _find_artifact_content(client: "PulpClient", task_response: TaskResponse) -> Optional[str]:
+def _find_artifact_content(client: "PulpClient", task_response: TaskResponse) -> Optional[Tuple[str, str]]:
     """
-    Find artifact content href from task response.
+    Find artifact content from task response and get file and sha256 from artifacts API.
 
     Args:
         client: PulpClient instance
         task_response: TaskResponse from upload operation
 
     Returns:
-        Content location file value, or None if not found
+        Tuple of (file, sha256) from artifacts API, or None if not found
     """
     logging.debug("Task response: state=%s, created_resources=%s", task_response.state, task_response.created_resources)
 
@@ -452,19 +458,33 @@ def _find_artifact_content(client: "PulpClient", task_response: TaskResponse) ->
 
     # Extract artifact dict, filtering out non-artifact hrefs
     artifacts_dict = content_resp[0]["artifacts"]
-    artifact_href_value = list(artifacts_dict.values())[0] if isinstance(artifacts_dict, dict) else artifacts_dict
 
-    # Only proceed if it's an actual artifact href
-    if artifact_href_value and "/artifacts/" not in str(artifact_href_value):
-        logging.error("No artifact href found in content response, got: %s", artifact_href_value)
+    # Extract all artifact hrefs from the dictionary (not just the first one)
+    if isinstance(artifacts_dict, dict):
+        artifact_hrefs = [href for href in artifacts_dict.values() if href and "/artifacts/" in str(href)]
+    else:
+        artifact_hrefs = [artifacts_dict] if artifacts_dict else []
+
+    if not artifact_hrefs:
+        logging.error("No artifact hrefs found in content response")
         return None
 
-    if not artifact_href_value:
-        logging.error("No artifact href value found in content response")
+    # Get file and sha256 from artifacts API
+    # Format as list of dicts with pulp_href keys as expected by get_file_locations
+    artifact_hrefs_formatted = [{"pulp_href": href} for href in artifact_hrefs]
+    artifact_response = client.get_file_locations(artifact_hrefs_formatted).json()["results"][0]
+    file_value = artifact_response.get("file", "")
+    sha256_value = artifact_response.get("sha256", "")
+
+    if not file_value:
+        logging.error("No file value found in artifact response")
         return None
 
-    content_list_location = client.get_file_locations([artifacts_dict]).json()["results"][0]
-    return content_list_location["file"]
+    if not sha256_value:
+        logging.error("No sha256 value found in artifact response")
+        return None
+
+    return (file_value, sha256_value)
 
 
 def _parse_oci_reference(oci_reference: str) -> Tuple[str, str]:
@@ -472,18 +492,25 @@ def _parse_oci_reference(oci_reference: str) -> Tuple[str, str]:
     Parse OCI reference into URL and digest parts.
 
     Args:
-        oci_reference: Full OCI reference (e.g., "registry/repo@sha256:hash")
+        oci_reference: Full OCI reference (e.g., "registry/repo@sha256:hash" or "registry/repo")
 
     Returns:
-        Tuple of (image_url, digest)
+        Tuple of (image_url, digest). If no digest is present, digest will be empty string.
 
     Example:
         >>> _parse_oci_reference("quay.io/org/repo@sha256:abc123")
         ('quay.io/org/repo', 'sha256:abc123')
+        >>> _parse_oci_reference("quay.io/org/repo")
+        ('quay.io/org/repo', '')
     """
-    image_url, digest = oci_reference.rsplit("@", 1)
-    logging.debug("Parsed OCI reference: URL=%s, digest=%s", image_url, digest)
-    return image_url, digest
+    if "@" in oci_reference:
+        image_url, digest = oci_reference.rsplit("@", 1)
+        logging.debug("Parsed OCI reference: URL=%s, digest=%s", image_url, digest)
+        return image_url, digest
+    else:
+        # No digest in reference, return URL as-is with empty digest
+        logging.debug("OCI reference has no digest: %s", oci_reference)
+        return oci_reference, ""
 
 
 def _write_konflux_results(image_url: str, digest: str, url_path: str, digest_path: str) -> None:
@@ -519,10 +546,26 @@ def _handle_artifact_results(client: "PulpClient", context: UploadContext, task_
         context: Upload context containing artifact_results path
         task_response: TaskResponse model from the upload task
     """
-    # Find artifact content
-    file_value = _find_artifact_content(client, task_response)
-    if not file_value:
+    # Get distribution URL for artifacts repository
+    repository_helper = PulpHelper(client, parent_package=context.parent_package)
+    distribution_urls = repository_helper.get_distribution_urls(context.build_id)
+
+    if "artifacts" not in distribution_urls:
+        logging.error("No distribution URL found for artifacts repository (build_id: %s)", context.build_id)
         return
+
+    artifacts_dist_url = distribution_urls["artifacts"]
+
+    # Get the relative path from the task response
+    relative_path = task_response.result.get("relative_path") if task_response.result else None
+    if not relative_path:
+        logging.error("Task response does not contain relative_path in result")
+        return
+
+    # Construct the distribution URL using the distribution URL and relative path
+    # The distribution base_path includes build_id/artifacts
+    # The relative_path from task is just the filename (e.g., "artifact.tar.gz")
+    distribution_file_url = f"{artifacts_dist_url}{relative_path}"
 
     # Check if artifact_results is set
     if not context.artifact_results:
@@ -537,9 +580,9 @@ def _handle_artifact_results(client: "PulpClient", context: UploadContext, task_
         logging.error("Traceback: %s", traceback.format_exc())
         return
 
-    # Parse OCI reference
+    # Parse OCI reference from the distribution URL
     try:
-        image_url, digest = _parse_oci_reference(file_value)
+        image_url, digest = _parse_oci_reference(distribution_file_url)
     except ValueError as e:
         logging.error("Failed to parse OCI reference: %s", e)
         logging.error("Traceback: %s", traceback.format_exc())
