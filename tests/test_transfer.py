@@ -337,7 +337,7 @@ class TestUploadFunctionality:
                 )
             )
 
-            with patch("pulp_tool.api.content_manager.validate_file_path") as mock_validate:
+            with patch("pulp_tool.utils.validation.file.validate_file_path") as mock_validate:
                 mock_validate.return_value = None  # No exception
 
                 _upload_rpms_to_repository(mock_pulp_client, pulled_artifacts, repositories, upload_info)
@@ -371,7 +371,7 @@ class TestUploadFunctionality:
         httpx_mock.post(re.compile(r".*/content/rpm/packages/upload/")).mock(side_effect=HTTPError("Upload error"))
 
         with (
-            patch("pulp_tool.api.content_manager.validate_file_path") as mock_validate,
+            patch("pulp_tool.utils.validation.file.validate_file_path") as mock_validate,
             patch("builtins.open", mock_open(read_data=b"fake rpm content")),
             patch("pulp_tool.utils.rpm_operations.logging") as mock_logging,
         ):
@@ -1209,6 +1209,78 @@ class TestLoadArtifactMetadata:
 
 class TestSetupRepositories:
     """Test setup_repositories_if_needed function."""
+
+    def test_setup_repositories_adds_konflux_prefix(self, tmp_path, mock_config):
+        """Test setup_repositories_if_needed adds konflux- prefix to domain."""
+        from pulp_tool.models.context import TransferContext
+
+        # Create config file with domain that doesn't have konflux- prefix
+        config_file = tmp_path / "config.toml"
+        config_file.write_text('[cli]\nbase_url = "https://pulp.example.com"\ndomain = "test-domain"')
+
+        args = TransferContext(
+            config=str(config_file),
+            build_id="test-build",
+            namespace="test-namespace",
+        )
+
+        with (
+            patch("pulp_tool.transfer.download.PulpClient") as mock_client_class,
+            patch("pulp_tool.transfer.download.PulpHelper") as mock_helper_class,
+            patch("pulp_tool.transfer.download.logging") as mock_logging,
+        ):
+            mock_client = Mock()
+            mock_client_class.create_from_config_file.return_value = mock_client
+
+            # Mock PulpHelper to avoid real repository setup
+            mock_helper = Mock()
+            mock_helper.setup_repositories.return_value = Mock()
+            mock_helper_class.return_value = mock_helper
+
+            setup_repositories_if_needed(args)
+
+            # Verify domain was passed with konflux- prefix
+            mock_client_class.create_from_config_file.assert_called_once()
+            # Get the call arguments - call_args[1] is kwargs
+            call_args = mock_client_class.create_from_config_file.call_args
+            kwargs = call_args[1] if isinstance(call_args, tuple) else call_args.kwargs
+            assert kwargs["domain"] == "konflux-test-domain"
+            mock_logging.debug.assert_called()
+
+    def test_setup_repositories_preserves_existing_konflux_prefix(self, tmp_path, mock_config):
+        """Test setup_repositories_if_needed preserves existing konflux- prefix."""
+        from pulp_tool.models.context import TransferContext
+
+        # Create config file with domain that already has konflux- prefix
+        config_file = tmp_path / "config.toml"
+        config_file.write_text('[cli]\nbase_url = "https://pulp.example.com"\ndomain = "konflux-test-domain"')
+
+        args = TransferContext(
+            config=str(config_file),
+            build_id="test-build",
+            namespace="test-namespace",
+        )
+
+        with (
+            patch("pulp_tool.transfer.download.PulpClient") as mock_client_class,
+            patch("pulp_tool.transfer.download.PulpHelper") as mock_helper_class,
+            patch("pulp_tool.transfer.download.logging") as mock_logging,
+        ):
+            mock_client = Mock()
+            mock_client_class.create_from_config_file.return_value = mock_client
+
+            # Mock PulpHelper to avoid real repository setup
+            mock_helper = Mock()
+            mock_helper.setup_repositories.return_value = Mock()
+            mock_helper_class.return_value = mock_helper
+
+            setup_repositories_if_needed(args)
+
+            # Verify domain was preserved
+            call_args = mock_client_class.create_from_config_file.call_args
+            kwargs = call_args[1] if isinstance(call_args, tuple) else call_args.kwargs
+            assert kwargs["domain"] == "konflux-test-domain"
+            mock_logging.debug.assert_called()
 
     def test_setup_repositories_with_artifact_json_parent_package(self, mock_config, temp_config_file):
         """Test setup_repositories_if_needed extracts parent_package from artifact_json (lines 113-114)."""

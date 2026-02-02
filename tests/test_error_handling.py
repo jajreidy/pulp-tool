@@ -117,8 +117,8 @@ class TestPulpClientErrorHandling:
         labels = {"build_id": "test-build"}
 
         with (
-            patch("pulp_tool.api.content_manager.validate_file_path"),
-            patch("pulp_tool.api.content_manager.logging") as mock_logging,
+            patch("pulp_tool.utils.validation.file.validate_file_path"),
+            patch("pulp_tool.api.pulp_client.logging") as mock_logging,
         ):
 
             with pytest.raises(HTTPError):
@@ -157,7 +157,7 @@ class TestPulpClientErrorHandling:
         client.find_content = Mock()  # type: ignore[method-assign]
         client.find_content.side_effect = HTTPError("API error")
 
-        with patch("pulp_tool.api.content_query.logging") as mock_logging:
+        with patch("pulp_tool.api.pulp_client.logging") as mock_logging:
             with pytest.raises(HTTPError):
                 client.gather_content_data("test-build-123")
 
@@ -517,8 +517,8 @@ class TestMemoryErrorHandling:
             labels = {"build_id": "test-build"}
 
             with (
-                patch("pulp_tool.api.content_manager.validate_file_path"),
-                patch("pulp_tool.api.content_manager.logging") as mock_logging,
+                patch("pulp_tool.utils.validation.file.validate_file_path"),
+                patch("pulp_tool.api.pulp_client.logging") as mock_logging,
             ):
 
                 # Simulate memory error during upload
