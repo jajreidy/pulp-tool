@@ -48,7 +48,7 @@ repos:
 
   # Pylint (errors only)
   - repo: https://github.com/pycqa/pylint
-    rev: v4.0.3
+    rev: v4.0.4
     hooks:
       - id: pylint
         args: [--errors-only, --max-line-length=120]
