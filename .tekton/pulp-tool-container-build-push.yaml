@@ -21,7 +21,7 @@ spec:
   - name: revision
     value: '{{revision}}'
   - name: output-image
-    value: quay.io/redhat-user-workloads/artifact-storage-tenant/tooling/pulp-tool-container:{{revision}}
+    value: quay.io/redhat-user-workloads/artifact-storage-tenant/tooling/pulp-tool-container:latest
   - name: dockerfile
     value: Dockerfile
   - name: path-context
