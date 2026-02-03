@@ -47,6 +47,22 @@ pulp-tool \
   --sbom-path /path/to/sbom.json
 ```
 
+```bash
+pulp-tool
+  --build-id my-build-123 \
+  --namespace my-namespace \
+  upload-files \
+  --parent-package my-package \
+  --rpm /path/to/rpm1 \
+  --rpm /path/to/rpm2 \
+  --file /path/to/genertic/file \
+  --log /path/to/log \
+  --sbom /path/to/sbom \
+  --arch x86_64 \
+  --artifact-results '/konflux/artifact1/path,/konflux/artifact2/path' \
+  --sbom-results /path/to/write/sbom-results
+```
+
 #### Download Artifacts
 
 ```bash
@@ -61,6 +77,53 @@ pulp-tool transfer \
   --artifact-location /path/to/artifacts.json \
   --cert-path /path/to/cert.pem \
   --key-path /path/to/key.pem
+```
+
+#### Download Repository Configuration File
+
+```bash
+# No config file needed! Use base_url and namespace directly
+pulp-tool get-repo-md \
+  --base-url https://pulp.example.com \
+  --namespace my-tenant \
+  --build-id my-build-123 \
+  --repo_type rpms
+```
+
+#### Create Repository
+
+``` bash
+# Using CLI options
+pulp-tool create-repository \
+  --repository-name my-new-repo \
+  --packages '<comma separated list of content HREFs>' \
+  --compression-type gz \
+  --checksum-type sha256 \
+  --skip-publish \
+  --base-path bear-demo/path \
+  --generate-repo-config
+
+# Using JSON config
+pulp-tool create-repository \
+  --json-data \
+  '{
+    "name": "my-new-repo",
+    "packages": [
+      {
+        "pulp_href": "<pulp content HREF>"
+      }
+    ],
+    "repository_options":{
+      "autopublish": true,
+      "checksum_type": <"unknown", "md5", "sha1", "sha224", "sha256", "sha384", "sha512">,
+      "compression_type": <"zstd", "gz">
+    },
+    "distribution_options": {
+      "name": "my-new-repo",
+      "base_path": "my-new-repo/path",
+      "generate_repo_config": true
+    }
+  }'
 ```
 
 #### Get Help
@@ -221,7 +284,7 @@ verbose = 0
 
 ## CLI Reference
 
-The `pulp-tool` command provides a modern Click-based interface with three main subcommands: `upload`, `transfer`, and `create-repository`.
+The `pulp-tool` command provides a modern Click-based interface with four main subcommands: `upload`, `upload-files`, `transfer`, and `create-repository`.
 
 ### Upload Command
 
@@ -262,6 +325,44 @@ pulp-tool \
   --sbom-path ./build/sbom.json \
   --sbom-results ./sbom_url.txt \
   --artifact-results ./artifact_url.txt,./artifact_digest.txt
+```
+
+### Upload Files Command
+
+Upload individual files to pulp repositories.
+
+**Required Arguments:**
+- `--build-id`: Unique build identifier for organizing content
+- `--namespace`: Namespace for the build (e.g., organization or project name)
+- `--parent-package`: Parent package name
+
+  ***And 1 or more of:***
+
+- `--rpm`: Path to RPM file (can be specified multiple times)
+- `--file`: Path to generic file (can be specified multiple times)
+- `--log`: Path to log file (can be specified multiple times)
+- `--sbom`: Path to SBOM file (can be specified multiple times)
+
+**Optional Arguments:**
+- `--arch`: Architecture for RPM files (e.g., 'x86_64', 'aarch64'). If not provided, will try to detect from RPM file
+- `--artifact-results"`: Comma-separated paths for Konflux artifact results location (url_path,digest_path)
+- `--sbom-results`: Path to write SBOM results
+
+**Example:**
+```bash
+pulp-tool
+  --build-id my-build-123 \
+  --namespace my-namespace \
+  upload-files \
+  --parent-package my-package \
+  --rpm /path/to/rpm1 \
+  --rpm /path/to/rpm2 \
+  --file /path/to/genertic/file \
+  --log /path/to/log \
+  --sbom /path/to/sbom \
+  --arch x86_64 \
+  --artifact-results '/konflux/artifact1/path,/konflux/artifact2/path' \
+  --sbom-results /path/to/write/sbom-results
 ```
 
 ### Transfer Command
@@ -374,6 +475,61 @@ pulp-tool \
   --packages /api/pulp/.../ \
   --base-path my-repo-path \
   --skip-publish
+```
+
+### Create Repository Command
+Creates a new repository using user defined paramters.
+
+**Required Arguments:**
+- `--repository-name`
+- `--packages`
+- `--base-path`
+
+  ***Or***
+
+- `-j, --json-data`
+
+**Optional Arguments:**
+- Repository Options:
+  - `--compression-type`
+  - `--checksum-type`
+  - `--skip-publish`
+- Distribution Options:
+  - `generate-repo-config`
+
+**Example:**
+``` bash
+# Using CLI options
+pulp-tool create-repository \
+  --repository-name my-new-repo \
+  --packages '<comma separated list of pulp HREFs>' \
+  --compression-type gz \
+  --checksum-type sha256 \
+  --skip-publish \
+  --base-path my-new-repo/path \
+  --generate-repo-config
+
+# Using JSON config
+pulp-tool create-repository \
+  --json-data \
+  '{
+    "name": "my-new-repo",
+    "packages": [
+      {
+        "pulp_href": "<pulp content HREF>"
+      }
+    ],
+    "repository_options":{
+      "autopublish": true,
+      "checksum_type": <"unknown", "md5", "sha1", "sha224", "sha256", "sha384", "sha512">,
+      "compression_type": <"zstd", "gz">
+    },
+    "distribution_options": {
+      "name": "my-new-repo",
+      "base_path": "my-new-repo/path",
+      "generate_repo_config": true
+    }
+  }'
 ```
 
 ### Environment Variables
