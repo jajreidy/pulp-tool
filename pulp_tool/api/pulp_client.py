@@ -516,10 +516,22 @@ class PulpClient(
         used by the `pulp` CLI tool.
 
         The namespace/domain will be read from the config file's 'domain' field.
+
+        Args:
+            path: Path to config file or base64-encoded config content. If None, uses default path.
+            domain: Optional domain override
         """
-        config_path = Path(path or "~/.config/pulp/cli.toml").expanduser()
-        with open(config_path, "rb") as fp:
-            config = tomllib.load(fp)
+        from ..utils.config_utils import load_config_content
+
+        config_source = path or "~/.config/pulp/cli.toml"
+        config_bytes, is_base64 = load_config_content(config_source)
+
+        # Parse TOML from bytes
+        config = tomllib.loads(config_bytes.decode("utf-8"))
+
+        # For base64 config, config_path is None (no file path)
+        # For file path, use the expanded path
+        config_path = None if is_base64 else Path(config_source).expanduser()
 
         return cls(config["cli"], domain, config_path=config_path)
 

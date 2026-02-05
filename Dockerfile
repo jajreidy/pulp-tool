@@ -3,7 +3,7 @@
 FROM registry.fedoraproject.org/fedora:44@sha256:afb48feeebe7aa84b27343495ed43bb246ee72892902dec78bcee16d94fd6f2b
 
 # Install Python 3 and pip
-RUN dnf install -y python3 python3-pip && dnf clean all
+RUN dnf install -y python3 python3-pip jq && dnf clean all
 
 # Set working directory
 WORKDIR /app

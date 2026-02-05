@@ -1,5 +1,6 @@
 """Tests for ConfigManager class."""
 
+import base64
 import tempfile
 from pathlib import Path
 from unittest.mock import patch
@@ -23,6 +24,19 @@ class TestConfigManagerInit:
         """Test ConfigManager initialization with default path."""
         manager = ConfigManager()
         assert manager.config_path is not None
+        assert manager._config is None
+
+    def test_init_with_base64(self):
+        """Test ConfigManager initialization with base64 config."""
+        import base64
+
+        config_content = '[cli]\nbase_url = "https://example.com"'
+        base64_config = base64.b64encode(config_content.encode()).decode()
+
+        manager = ConfigManager(base64_config)
+        # For base64, config_path should be None
+        assert manager.config_path is None
+        assert manager.config_source == base64_config
         assert manager._config is None
 
 
@@ -87,6 +101,38 @@ class TestConfigManagerLoad:
                     manager.load()
 
                 assert "Failed to load configuration" in str(exc_info.value)
+
+    def test_load_from_base64(self):
+        """Test load() successfully loads from base64 config."""
+        config_content = '[cli]\nbase_url = "https://example.com"\ndomain = "test"'
+        base64_config = base64.b64encode(config_content.encode()).decode()
+
+        manager = ConfigManager(base64_config)
+        result = manager.load()
+
+        assert result["cli"]["base_url"] == "https://example.com"
+        assert result["cli"]["domain"] == "test"
+        assert manager._config == result
+
+    def test_load_from_base64_with_whitespace(self):
+        """Test load() handles base64 with whitespace."""
+        config_content = '[cli]\nbase_url = "https://example.com"'
+        base64_config = base64.b64encode(config_content.encode()).decode()
+        base64_with_ws = "  " + base64_config + "\n  "
+
+        manager = ConfigManager(base64_with_ws)
+        result = manager.load()
+
+        assert result["cli"]["base_url"] == "https://example.com"
+
+    def test_load_invalid_base64(self):
+        """Test load() raises ValueError for invalid base64."""
+        invalid_base64 = "A" * 100 + "B" * 100 + "C" * 50 + "=" * 3  # Invalid padding
+
+        manager = ConfigManager(invalid_base64)
+
+        with pytest.raises(ValueError, match="Failed to decode base64 config"):
+            manager.load()
 
 
 class TestConfigManagerGet:
