@@ -13,8 +13,7 @@ which is the correct approach for testing mixin-based architecture.
 """
 
 import json
-from pathlib import Path
-from unittest.mock import Mock, patch, mock_open
+from unittest.mock import Mock, patch
 import pytest
 import httpx
 from httpx import HTTPError
@@ -77,8 +76,9 @@ class TestPulpClient:
 
     def test_create_from_config_file(self, temp_config_file):
         """Test create_from_config_file class method."""
-        with patch("pulp_tool.api.pulp_client.tomllib.load") as mock_load:
-            mock_load.return_value = {"cli": {"base_url": "https://test.com"}}
+        with patch("pulp_tool.utils.config_utils.load_config_content") as mock_load_content:
+            config_content = '[cli]\nbase_url = "https://test.com"'
+            mock_load_content.return_value = (config_content.encode(), False)
 
             client = PulpClient.create_from_config_file(path=temp_config_file)
 
@@ -87,18 +87,31 @@ class TestPulpClient:
 
     def test_create_from_config_file_default_path(self):
         """Test create_from_config_file with default path."""
-        with (
-            patch("pulp_tool.api.pulp_client.Path.expanduser") as mock_expanduser,
-            patch("builtins.open", mock_open(read_data='{"cli": {"base_url": "https://test.com"}}')),
-            patch("pulp_tool.api.pulp_client.tomllib.load") as mock_load,
-        ):
-
-            mock_expanduser.return_value = Path("/home/user/.config/pulp/cli.toml")
-            mock_load.return_value = {"cli": {"base_url": "https://test.com"}}
+        with patch("pulp_tool.utils.config_utils.load_config_content") as mock_load_content:
+            config_content = '[cli]\nbase_url = "https://test.com"'
+            mock_load_content.return_value = (config_content.encode(), False)
 
             client = PulpClient.create_from_config_file()
 
             assert isinstance(client, PulpClient)
+            assert client.config["base_url"] == "https://test.com"
+
+    def test_create_from_config_file_with_base64(self):
+        """Test create_from_config_file with base64-encoded config."""
+        import base64
+
+        config_content = '[cli]\nbase_url = "https://test.com"\ndomain = "test-domain"'
+        base64_config = base64.b64encode(config_content.encode()).decode()
+
+        with patch("pulp_tool.api.pulp_client.tomllib.loads") as mock_loads:
+            mock_loads.return_value = {"cli": {"base_url": "https://test.com", "domain": "test-domain"}}
+
+            client = PulpClient.create_from_config_file(path=base64_config)
+
+            assert isinstance(client, PulpClient)
+            assert client.config["base_url"] == "https://test.com"
+            assert client.config_path is None  # Should be None for base64 config
+            mock_loads.assert_called_once()
 
     def test_headers_property(self, mock_pulp_client):
         """Test headers property."""

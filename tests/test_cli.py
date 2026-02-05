@@ -1,5 +1,6 @@
 """Tests for Click CLI commands."""
 
+import base64
 import tempfile
 import os
 from pathlib import Path
@@ -274,6 +275,83 @@ class TestUploadCommand:
 
             assert result.exit_code == 0
             assert "RESULTS JSON URL" in result.output
+
+    @patch("pulp_tool.cli.upload.PulpClient")
+    @patch("pulp_tool.cli.upload.PulpHelper")
+    def test_upload_with_base64_config(self, mock_helper_class, mock_client_class):
+        """Test upload command with base64-encoded config."""
+        runner = CliRunner()
+
+        # Setup mocks
+        mock_client = Mock()
+        mock_client.close = Mock()
+        mock_client_class.create_from_config_file.return_value = mock_client
+
+        mock_helper = Mock()
+        from pulp_tool.models.repository import RepositoryRefs
+
+        mock_repos = RepositoryRefs(
+            rpms_href="/test/",
+            rpms_prn="",
+            logs_href="",
+            logs_prn="",
+            sbom_href="",
+            sbom_prn="",
+            artifacts_href="",
+            artifacts_prn="",
+        )
+        mock_helper.setup_repositories.return_value = mock_repos
+        mock_helper.process_uploads.return_value = "https://example.com/results.json"
+        mock_helper_class.return_value = mock_helper
+
+        # Create base64-encoded config
+        config_content = (
+            '[cli]\nbase_url = "https://pulp.example.com"\napi_root = "/pulp/api/v3"\ndomain = "test-domain"'
+        )
+        base64_config = base64.b64encode(config_content.encode()).decode()
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Create dummy files
+            rpm_dir = Path(tmpdir) / "rpms"
+            rpm_dir.mkdir()
+            sbom_path = Path(tmpdir) / "sbom.json"
+            sbom_path.write_text("{}")
+
+            result = runner.invoke(
+                cli,
+                [
+                    "--build-id",
+                    "test-build",
+                    "--namespace",
+                    "test-ns",
+                    "--config",
+                    base64_config,
+                    "upload",
+                    "--parent-package",
+                    "test-pkg",
+                    "--rpm-path",
+                    str(rpm_dir),
+                    "--sbom-path",
+                    str(sbom_path),
+                ],
+            )
+
+            assert result.exit_code == 0
+            assert "RESULTS JSON URL" in result.output
+            # Verify that create_from_config_file was called with the base64 string directly
+            assert mock_client_class.create_from_config_file.called
+            call_args = mock_client_class.create_from_config_file.call_args
+            assert call_args is not None
+            # Check both kwargs and args
+            if call_args.kwargs and "path" in call_args.kwargs:
+                config_path = call_args.kwargs["path"]
+            elif call_args.args and len(call_args.args) > 0:
+                config_path = call_args.args[0]
+            else:
+                config_path = None
+            assert config_path is not None
+            # Should be the base64 string directly (not converted to temp file)
+            assert config_path == base64_config
 
     @patch("pulp_tool.cli.upload.PulpClient")
     @patch("pulp_tool.cli.upload.PulpHelper")
@@ -2060,6 +2138,44 @@ class TestGetUrlsCommand:
         decorator = config_option(required=True)
         assert callable(decorator)
         # The decorator should be a click.option function
+
+    def test_cli_with_invalid_base64_config(self):
+        """Test CLI handles invalid base64 config gracefully."""
+        runner = CliRunner()
+        invalid_base64 = (
+            "A" * 100 + "B" * 100 + "C" * 50 + "=" * 3
+        )  # Invalid padding (long enough to be detected as base64)
+
+        # Actually invoke a command that will try to use the config
+        # Group-level options (--config, --build-id, --namespace) come before the command
+        with tempfile.TemporaryDirectory() as tmpdir:
+            rpm_dir = Path(tmpdir) / "rpms"
+            rpm_dir.mkdir()
+            sbom_path = Path(tmpdir) / "sbom.json"
+            sbom_path.write_text("{}")
+
+            result = runner.invoke(
+                cli,
+                [
+                    "--config",
+                    invalid_base64,
+                    "--build-id",
+                    "test",
+                    "--namespace",
+                    "test",
+                    "upload",
+                    "--parent-package",
+                    "test",
+                    "--rpm-path",
+                    str(rpm_dir),
+                    "--sbom-path",
+                    str(sbom_path),
+                ],
+            )
+
+            # Should exit with error code when trying to create client
+            assert result.exit_code != 0
+            assert "Failed to decode base64 config" in result.output or "Failed to load configuration" in result.output
 
     def test_debug_option(self):
         """Test debug_option returns a click option decorator."""

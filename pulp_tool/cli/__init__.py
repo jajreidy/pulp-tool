@@ -26,8 +26,8 @@ def config_option(required: bool = False) -> Callable[[F], F]:
     return click.option(
         "--config",
         required=required,
-        type=click.Path(exists=True),
-        help=f"Path to Pulp CLI config file{default_help}",
+        type=str,
+        help=f"Path to Pulp CLI config file or base64-encoded config content{default_help}",
     )
 
 
@@ -50,8 +50,8 @@ def debug_option() -> Callable[[F], F]:
 @click.version_option(version=__version__, prog_name="pulp-tool")
 @click.option(
     "--config",
-    type=click.Path(exists=True),
-    help="Path to Pulp CLI config file (default: ~/.config/pulp/cli.toml)",
+    type=str,
+    help="Path to Pulp CLI config file or base64-encoded config content (default: ~/.config/pulp/cli.toml)",
 )
 @click.option(
     "--build-id",
@@ -85,6 +85,7 @@ def cli(
     """Pulp Tool - Upload and transfer artifacts to/from Pulp repositories."""
     # Store shared options in context for subcommands to access
     ctx.ensure_object(dict)
+    # Config can be a file path or base64-encoded content - pass directly to downstream code
     ctx.obj["config"] = config
     ctx.obj["build_id"] = build_id
     ctx.obj["namespace"] = namespace

@@ -31,6 +31,7 @@ from . import predicates
 from . import artifact_detection
 from . import path_utils
 from . import config_manager
+from . import config_utils
 
 __all__ = [
     "setup_logging",
@@ -65,4 +66,5 @@ __all__ = [
     "artifact_detection",
     "path_utils",
     "config_manager",
+    "config_utils",
 ]
