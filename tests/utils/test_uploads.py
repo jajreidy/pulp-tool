@@ -39,6 +39,26 @@ class TestLabelUtilities:
 
         assert labels == expected
 
+    def test_create_labels_without_parent_package(self):
+        """Test create_labels function without parent_package."""
+        labels = create_labels(
+            build_id="test-build-123",
+            arch="x86_64",
+            namespace="test-namespace",
+            parent_package=None,
+            date="2024-01-01 12:00:00",
+        )
+
+        expected = {
+            "date": "2024-01-01 12:00:00",
+            "build_id": "test-build-123",
+            "arch": "x86_64",
+            "namespace": "test-namespace",
+        }
+
+        assert labels == expected
+        assert "parent_package" not in labels
+
 
 class TestUploadUtilities:
     """Test upload utility functions."""

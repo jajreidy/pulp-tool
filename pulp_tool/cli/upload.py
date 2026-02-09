@@ -5,6 +5,7 @@ This module provides the upload command for uploading RPMs, logs, and SBOM files
 """
 
 import logging
+import os
 import sys
 from datetime import datetime, timezone
 from typing import Optional
@@ -19,9 +20,23 @@ from ..utils.error_handling import handle_http_error, handle_generic_error
 
 
 @click.command()
-@click.option("--parent-package", required=True, help="Parent package name")
-@click.option("--rpm-path", required=True, type=click.Path(exists=True), help="Path to directory containing RPM files")
-@click.option("--sbom-path", required=True, type=click.Path(exists=True), help="Path to SBOM file")
+@click.option(
+    "--parent-package",
+    required=False,
+    help="Parent package name (optional, will not be added to labels if not provided)",
+)
+@click.option(
+    "--rpm-path",
+    required=False,
+    type=click.Path(exists=True),
+    help="Path to directory containing RPM files (defaults to current directory if not provided)",
+)
+@click.option(
+    "--sbom-path",
+    required=False,
+    type=click.Path(exists=True),
+    help="Path to SBOM file (optional, SBOM upload will be skipped if not provided)",
+)
 @click.option(
     "--artifact-results",
     help="Comma-separated paths for Konflux artifact results location (url_path,digest_path)",
@@ -30,9 +45,9 @@ from ..utils.error_handling import handle_http_error, handle_generic_error
 @click.pass_context
 def upload(  # pylint: disable=too-many-arguments,too-many-positional-arguments
     ctx: click.Context,
-    parent_package: str,
-    rpm_path: str,
-    sbom_path: str,
+    parent_package: Optional[str],
+    rpm_path: Optional[str],
+    sbom_path: Optional[str],
     artifact_results: Optional[str],
     sbom_results: Optional[str],
 ) -> None:
@@ -50,6 +65,10 @@ def upload(  # pylint: disable=too-many-arguments,too-many-positional-arguments
     if not namespace:
         click.echo("Error: --namespace is required for upload command", err=True)
         ctx.exit(1)
+
+    # Set default rpm_path to current directory if not provided
+    if not rpm_path:
+        rpm_path = os.getcwd()
 
     setup_logging(debug, use_wrapping=True)
 

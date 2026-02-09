@@ -9,7 +9,7 @@ import glob
 import logging
 import os
 import traceback
-from typing import TYPE_CHECKING, Any, Dict, List, Tuple
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
 import httpx
 
@@ -27,7 +27,7 @@ LOG_FILE_PATTERN = "*.log"
 DEFAULT_MAX_WORKERS = 4
 
 
-def create_labels(build_id: str, arch: str, namespace: str, parent_package: str, date: str) -> Dict[str, str]:
+def create_labels(build_id: str, arch: str, namespace: str, parent_package: Optional[str], date: str) -> Dict[str, str]:
     """
     Create standard labels for Pulp content.
 
@@ -35,7 +35,7 @@ def create_labels(build_id: str, arch: str, namespace: str, parent_package: str,
         build_id: Unique build identifier
         arch: Architecture (e.g., 'x86_64', 'aarch64')
         namespace: Namespace for the content
-        parent_package: Parent package name
+        parent_package: Optional parent package name (will not be added to labels if None)
         date: Build date string
 
     Returns:
@@ -46,8 +46,9 @@ def create_labels(build_id: str, arch: str, namespace: str, parent_package: str,
         "build_id": build_id,
         "arch": arch,
         "namespace": namespace,
-        "parent_package": parent_package,
     }
+    if parent_package:
+        labels["parent_package"] = parent_package
     return labels
 
 

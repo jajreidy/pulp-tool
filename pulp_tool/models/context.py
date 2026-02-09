@@ -18,7 +18,7 @@ class UploadContext(KonfluxBaseModel):
         build_id: Unique build identifier
         date_str: Build date string
         namespace: Namespace for the upload operation
-        parent_package: Parent package name
+        parent_package: Optional parent package name (will not be added to labels if not provided)
         config: Optional path to config file
         debug: Verbosity level (0=WARNING, 1=INFO, 2=DEBUG, 3+=DEBUG with HTTP logs)
         artifact_results: Optional artifact results configuration
@@ -28,7 +28,7 @@ class UploadContext(KonfluxBaseModel):
     build_id: str
     date_str: str
     namespace: str
-    parent_package: str
+    parent_package: Optional[str] = None
     config: Optional[str] = None
     debug: int = 0
     artifact_results: Optional[str] = None
@@ -43,12 +43,12 @@ class UploadRpmContext(UploadContext):
     from directory structures organized by architecture.
 
     Attributes:
-        rpm_path: Path to directory containing RPM files
-        sbom_path: Path to SBOM file
+        rpm_path: Path to directory containing RPM files (defaults to current directory if not provided)
+        sbom_path: Optional path to SBOM file (SBOM upload will be skipped if not provided)
     """
 
-    rpm_path: str
-    sbom_path: str
+    rpm_path: Optional[str] = None
+    sbom_path: Optional[str] = None
 
 
 class TransferContext(KonfluxBaseModel):
