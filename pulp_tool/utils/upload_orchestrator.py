@@ -164,6 +164,11 @@ class UploadOrchestrator:
             Dictionary mapping architecture names to their upload results:
                 - {arch}: Dictionary containing uploaded_rpms and created_resources
         """
+        # Ensure rpm_path is set (should be set by CLI, but check for safety)
+        if not args.rpm_path:
+            logging.warning("rpm_path is not set, cannot process architecture uploads")
+            return {}
+
         # Find architectures that exist
         existing_archs = self._find_existing_architectures(args.rpm_path)
 
@@ -234,10 +239,14 @@ class UploadOrchestrator:
             created_resources.extend(upload.get("created_resources", []))
 
         # Upload SBOM and capture its created resources - updates results_model internally
-        sbom_created_resources = upload_sbom(
-            client, args, repositories.sbom_prn, date_str, results_model, args.sbom_path
-        )
-        created_resources.extend(sbom_created_resources)
+        # Only upload SBOM if sbom_path is provided
+        if args.sbom_path:
+            sbom_created_resources = upload_sbom(
+                client, args, repositories.sbom_prn, date_str, results_model, args.sbom_path
+            )
+            created_resources.extend(sbom_created_resources)
+        else:
+            logging.debug("Skipping SBOM upload - no sbom_path provided")
 
         logging.info("Collected %d created resource hrefs from upload operations", len(created_resources))
 

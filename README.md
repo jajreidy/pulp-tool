@@ -293,11 +293,11 @@ Upload RPM packages, logs, and SBOM files to Pulp repositories.
 **Required Arguments:**
 - `--build-id`: Unique build identifier for organizing content
 - `--namespace`: Namespace for the build (e.g., organization or project name)
-- `--parent-package`: Parent package name
-- `--rpm-path`: Path to directory containing RPM files
-- `--sbom-path`: Path to SBOM file
 
 **Optional Arguments:**
+- `--parent-package`: Parent package name (optional, will not be added to labels if not provided)
+- `--rpm-path`: Path to directory containing RPM files (optional, defaults to current directory if not provided)
+- `--sbom-path`: Path to SBOM file (optional, SBOM upload will be skipped if not provided)
 - `--config`: Path to Pulp CLI config file (default: `~/.config/pulp/cli.toml`)
 - `--artifact-results`: Comma-separated paths for Konflux artifact results (url_path,digest_path)
 - `--sbom-results`: Path to write SBOM results
@@ -305,7 +305,7 @@ Upload RPM packages, logs, and SBOM files to Pulp repositories.
 
 **Example:**
 ```bash
-# Basic upload
+# Basic upload with all parameters
 pulp-tool \
   --build-id konflux-build-12345 \
   --namespace konflux-team \
@@ -314,6 +314,36 @@ pulp-tool \
   --parent-package my-application \
   --rpm-path ./build/rpms \
   --sbom-path ./build/sbom.json
+
+# Upload using current directory for RPMs (rpm-path omitted)
+pulp-tool \
+  --build-id konflux-build-12345 \
+  --namespace konflux-team \
+  upload \
+  --parent-package my-application \
+  --sbom-path ./build/sbom.json
+
+# Upload without SBOM (sbom-path omitted)
+pulp-tool \
+  --build-id konflux-build-12345 \
+  --namespace konflux-team \
+  upload \
+  --parent-package my-application \
+  --rpm-path ./build/rpms
+
+# Upload without parent-package (will not be added to labels)
+pulp-tool \
+  --build-id konflux-build-12345 \
+  --namespace konflux-team \
+  upload \
+  --rpm-path ./build/rpms \
+  --sbom-path ./build/sbom.json
+
+# Minimal upload (using current directory, no SBOM, no parent-package)
+pulp-tool \
+  --build-id konflux-build-12345 \
+  --namespace konflux-team \
+  upload
 
 # With result file outputs
 pulp-tool \

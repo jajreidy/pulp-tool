@@ -277,6 +277,44 @@ class TestUploadOrchestratorProcessArchitectureUploads:
                 assert result == {}
                 mock_logging.warning.assert_called_once()
 
+    def test_process_architecture_uploads_no_rpm_path(self):
+        """Test process_architecture_uploads when rpm_path is None (lines 168-170)."""
+        orchestrator = UploadOrchestrator()
+
+        args = UploadRpmContext(
+            build_id="test-build",
+            date_str="2024-01-01 00:00:00",
+            namespace="test-ns",
+            parent_package="test-pkg",
+            rpm_path=None,  # None rpm_path
+            sbom_path="/test/sbom.json",
+        )
+        mock_client = Mock()
+        repositories = RepositoryRefs(
+            rpms_href="/test/",
+            rpms_prn="",
+            logs_href="",
+            logs_prn="",
+            sbom_href="",
+            sbom_prn="",
+            artifacts_href="",
+            artifacts_prn="",
+        )
+        results_model = PulpResultsModel(build_id="test-build", repositories=repositories)
+
+        with patch("pulp_tool.utils.upload_orchestrator.logging") as mock_logging:
+            result = orchestrator.process_architecture_uploads(
+                mock_client,
+                args,
+                repositories,
+                date_str="2024-01-01",
+                rpm_href="/test/",
+                results_model=results_model,
+            )
+
+            assert result == {}
+            mock_logging.warning.assert_called_once_with("rpm_path is not set, cannot process architecture uploads")
+
 
 class TestUploadOrchestratorProcessUploads:
     """Tests for UploadOrchestrator.process_uploads() method."""
@@ -387,6 +425,47 @@ class TestUploadOrchestratorProcessUploads:
             result = orchestrator.process_uploads(mock_client, args, repositories)
 
             assert result == "https://example.com/results.json"
+            # Verify logging still occurs
+            assert mock_logging.info.call_count >= 1
+
+    def test_process_uploads_without_sbom_path(self):
+        """Test process_uploads when sbom_path is None (line 249)."""
+        orchestrator = UploadOrchestrator()
+
+        args = UploadRpmContext(
+            build_id="test-build",
+            date_str="2024-01-01 00:00:00",
+            namespace="test-ns",
+            parent_package="test-pkg",
+            rpm_path="/test/rpms",
+            sbom_path=None,  # None sbom_path
+        )
+        mock_client = Mock()
+        repositories = RepositoryRefs(
+            rpms_href="/test/rpm-href",
+            rpms_prn="",
+            logs_href="",
+            logs_prn="logs-prn",
+            sbom_href="",
+            sbom_prn="sbom-prn",
+            artifacts_href="",
+            artifacts_prn="",
+        )
+
+        mock_processed_uploads: Dict[str, Dict[str, list[str]]] = {
+            "x86_64": {"created_resources": ["/resource/1"]},
+        }
+
+        with (
+            patch.object(orchestrator, "process_architecture_uploads", return_value=mock_processed_uploads),
+            patch("pulp_tool.services.upload_service.collect_results", return_value="https://example.com/results.json"),
+            patch("pulp_tool.utils.upload_orchestrator.logging") as mock_logging,
+        ):
+            result = orchestrator.process_uploads(mock_client, args, repositories)
+
+            assert result == "https://example.com/results.json"
+            # Verify that upload_sbom was not called
+            mock_logging.debug.assert_any_call("Skipping SBOM upload - no sbom_path provided")
             # Verify logging still occurs
             assert mock_logging.info.call_count >= 1
 

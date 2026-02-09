@@ -359,13 +359,30 @@ class TestEdgeCases:
         """Test create_labels function with edge cases."""
         from pulp_tool.utils import create_labels
 
-        # Test with empty strings
+        # Test with empty strings (empty string for parent_package is falsy, so it won't be added)
         labels = create_labels("", "", "", "", "")
         assert labels["build_id"] == ""
         assert labels["arch"] == ""
         assert labels["namespace"] == ""
-        assert labels["parent_package"] == ""
         assert labels["date"] == ""
+        # parent_package is not added when empty string (falsy)
+        assert "parent_package" not in labels
+
+        # Test with None parent_package (should not be added)
+        labels = create_labels("", "", "", None, "")
+        assert labels["build_id"] == ""
+        assert labels["arch"] == ""
+        assert labels["namespace"] == ""
+        assert labels["date"] == ""
+        assert "parent_package" not in labels
+
+        # Test with non-empty parent_package (should be added)
+        labels = create_labels("", "", "", "test-package", "")
+        assert labels["build_id"] == ""
+        assert labels["arch"] == ""
+        assert labels["namespace"] == ""
+        assert labels["date"] == ""
+        assert labels["parent_package"] == "test-package"
 
         # Test with special characters
         labels = create_labels("test/build:123", "x86_64", "test-namespace", "test-package", "2024-01-01")

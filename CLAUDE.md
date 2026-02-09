@@ -26,22 +26,34 @@ This file is specifically designed for LLM assistants (like Claude, ChatGPT, etc
    ```bash
    make format
    ```
-5. **Run pre-commit hooks** - Verify hooks pass before considering changes complete:
+5. **Run pre-commit hooks (FIRST TIME)** - Verify hooks pass:
    ```bash
    pre-commit run --all-files
    ```
-6. **Run tests with coverage** - Ensure functionality works and coverage requirements are met:
+6. **Fix any pre-commit issues** - Address all failures from step 5
+7. **Run pre-commit hooks (SECOND TIME)** - **CRITICAL**: Run again to ensure all issues are resolved:
+   ```bash
+   pre-commit run --all-files
+   ```
+   **This second run is essential** - it catches any issues that may have been missed or introduced during fixes.
+8. **Run ALL tests with coverage** - Ensure functionality works and coverage requirements are met:
    ```bash
    make test
    ```
-7. **Verify 100% coverage for new changes** - New code must have 100% test coverage:
-   ```bash
-   # Check coverage for changed files
-   python3 -m pytest --cov=pulp_tool --cov-report=term-missing
-   # Review coverage report to ensure new code is fully covered
-   ```
+   **IMPORTANT**: Run the full test suite, not just specific tests. This ensures no regressions were introduced.
+9. **Fix any test failures** - Address all failing tests before proceeding
+10. **Verify 100% coverage for new changes** - New code must have 100% test coverage:
+    ```bash
+    # Check coverage for changed files
+    python3 -m pytest --cov=pulp_tool --cov-report=term-missing
+    # Review coverage report to ensure new code is fully covered
+    ```
+11. **Re-run tests if fixes were made** - If you fixed any test failures, run the full test suite again:
+    ```bash
+    make test
+    ```
 
-**Never skip linting, pre-commit checks, or coverage verification** - They will fail in CI/CD and waste pipeline resources.
+**Never skip linting, pre-commit checks (both runs), or test execution** - They will fail in CI/CD and waste pipeline resources.
 
 ## Linting Tools
 
@@ -195,10 +207,14 @@ make setup
 
 ```bash
 # After making changes:
-make lint          # Check all linters
-make format        # Fix formatting if needed
-pre-commit run --all-files  # Verify hooks pass
-make test          # Verify tests pass and 100% coverage for new changes
+make lint                    # Check all linters
+make format                  # Fix formatting if needed
+pre-commit run --all-files   # First run - verify hooks pass
+# Fix any issues...
+pre-commit run --all-files   # Second run - CRITICAL: ensure all issues resolved
+make test                    # Run ALL tests - verify tests pass and 100% coverage for new changes
+# Fix any test failures...
+make test                    # Re-run if fixes were made
 ```
 
 ### 2. Fix Linting Errors Immediately
@@ -218,15 +234,26 @@ The `Makefile` provides convenient targets for common tasks. Use them instead of
 - `make format` - Consistent formatting across the codebase
 - `make check` - Comprehensive check before committing
 
-### 4. Verify Pre-commit Hooks Pass
+### 4. Verify Pre-commit Hooks Pass (Run Twice)
 
-Pre-commit hooks catch issues before they reach CI/CD. Always run:
+Pre-commit hooks catch issues before they reach CI/CD. **Always run hooks twice**:
 
 ```bash
+# First run - catch initial issues
+pre-commit run --all-files
+
+# Fix any issues found...
+
+# Second run - CRITICAL: verify all issues are resolved
 pre-commit run --all-files
 ```
 
-If hooks fail, fix the issues and run again until all pass.
+**Why run twice?** The second run ensures:
+- All fixes were applied correctly
+- No new issues were introduced during fixes
+- The codebase is truly clean and ready for CI/CD
+
+If hooks fail on either run, fix the issues and run again until both runs pass completely.
 
 ### 5. Check Configuration Files
 
@@ -286,7 +313,10 @@ This is useful before creating pull requests.
 
 **Issue**: Pre-commit hooks fail on commit
 
-**Solution**: Run `pre-commit run --all-files` manually first to catch and fix issues before committing.
+**Solution**:
+1. Run `pre-commit run --all-files` manually first to catch and fix issues
+2. **CRITICAL**: Run `pre-commit run --all-files` a second time after fixes to ensure all issues are resolved
+3. Only commit when both runs pass completely
 
 ### Coverage Failures
 
@@ -317,10 +347,17 @@ The CI/CD pipeline uses `diff-cover` to check only new/changed lines, so you mus
 
 1. ✅ Run `make lint` to check for linting errors
 2. ✅ Run `make format` to ensure proper formatting
-3. ✅ Run `pre-commit run --all-files` to verify hooks pass
-4. ✅ Run `make test` to verify tests pass and **100% coverage for new changes**
-5. ✅ Fix any issues before considering changes complete
+3. ✅ Run `pre-commit run --all-files` (FIRST TIME) to verify hooks pass
+4. ✅ Fix any pre-commit issues found
+5. ✅ Run `pre-commit run --all-files` (SECOND TIME) - **CRITICAL**: ensure all issues resolved
+6. ✅ Run `make test` to run **ALL tests** and verify **100% coverage for new changes**
+7. ✅ Fix any test failures
+8. ✅ Re-run `make test` if fixes were made
+9. ✅ Fix any issues before considering changes complete
 
-**Coverage Requirement**: New code must have 100% test coverage. The CI/CD pipeline uses diff coverage to enforce this requirement.
+**Critical Requirements**:
+- **Pre-commit hooks must be run twice** - second run ensures all issues are truly resolved
+- **Run ALL tests** - not just specific tests, to catch regressions
+- **100% test coverage** - New code must have 100% test coverage. The CI/CD pipeline uses diff coverage to enforce this requirement.
 
 Following this workflow ensures your changes will pass CI/CD checks and avoids unnecessary pipeline runs.
