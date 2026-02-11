@@ -27,6 +27,7 @@ import json
 import logging
 import os
 import ssl
+import tempfile
 import time
 import traceback
 from functools import lru_cache, wraps
@@ -268,8 +269,10 @@ class PulpClient(
         self.config_path = config_path  # Store config path for resolving relative cert/key paths
         self.timeout = DEFAULT_TIMEOUT  # Used by Protocol mixins
         self._auth = None
-        self.session = self._create_session()
         self._async_session: Optional[httpx.AsyncClient] = None
+        self._cert_temp_dir: Optional[tempfile.TemporaryDirectory] = None
+        self._cert_paths: Optional[Tuple[str, str]] = None
+        self.session = self._create_session()
         # Initialize cache for GET requests
         self._get_cache = TTLCache(ttl=CACHE_TTL)
         # Initialize performance metrics tracker
@@ -352,6 +355,14 @@ class PulpClient(
         # Log performance metrics summary
         if hasattr(self, "_metrics"):
             self._metrics.log_summary()
+        # Clean up temp cert/key dir if we created one for base64-decoded certs
+        if hasattr(self, "_cert_temp_dir") and self._cert_temp_dir is not None:
+            try:
+                self._cert_temp_dir.cleanup()
+            except OSError:
+                pass
+            self._cert_temp_dir = None
+            self._cert_paths = None
 
     async def async_close(self) -> None:
         """Close the async session and release all connections."""
@@ -527,7 +538,11 @@ class PulpClient(
         config_bytes, is_base64 = load_config_content(config_source)
 
         # Parse TOML from bytes
-        config = tomllib.loads(config_bytes.decode("utf-8"))
+        try:
+            config = tomllib.loads(config_bytes.decode("utf-8"))
+        except tomllib.TOMLDecodeError as e:
+            source_desc = "base64 config" if is_base64 else str(Path(config_source).expanduser())
+            raise ValueError(f"Invalid TOML in configuration {source_desc}: {e}") from e
 
         # For base64 config, config_path is None (no file path)
         # For file path, use the expanded path
@@ -574,10 +589,18 @@ class PulpClient(
 
         If cert/key paths are not absolute and config_path is available,
         tries to resolve them relative to the config file's directory.
+        If cert or key file content is base64-encoded, decodes it and uses
+        temporary files so the SSL context receives valid paths.
 
         Returns:
             Tuple of (cert_path, key_path) for client certificate authentication
         """
+        from ..utils.config_utils import load_file_content_maybe_base64
+
+        # Return cached paths when we previously wrote base64-decoded content to temp files
+        if self._cert_paths is not None:
+            return self._cert_paths
+
         cert_path_str = str(self.config.get("cert"))
         key_path_str = str(self.config.get("key"))
 
@@ -597,6 +620,30 @@ class PulpClient(
                 potential_key = self.config_path.parent / key_path
                 if potential_key.exists():
                     key_path_str = str(potential_key)
+
+        cert_path = Path(cert_path_str)
+        key_path = Path(key_path_str)
+        if (
+            cert_path_str in ("None", "")
+            or key_path_str in ("None", "")
+            or not cert_path.exists()
+            or not key_path.exists()
+        ):
+            return (cert_path_str, key_path_str)
+
+        cert_bytes, cert_was_base64 = load_file_content_maybe_base64(cert_path)
+        key_bytes, key_was_base64 = load_file_content_maybe_base64(key_path)
+
+        if cert_was_base64 or key_was_base64:
+            self._cert_temp_dir = tempfile.TemporaryDirectory()
+            temp_dir = Path(self._cert_temp_dir.name)
+            temp_cert = temp_dir / "cert.pem"
+            temp_key = temp_dir / "key.pem"
+            temp_cert.write_bytes(cert_bytes)
+            temp_key.write_bytes(key_bytes)
+            self._cert_paths = (str(temp_cert), str(temp_key))
+            logging.debug("Using temp cert/key from base64-decoded content")
+            return self._cert_paths
 
         return (cert_path_str, key_path_str)
 

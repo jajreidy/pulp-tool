@@ -1,4 +1,9 @@
-# CLAUDE.md - LLM-Assisted Development Guidelines
+---
+description: LLM-assisted development guidelines for pulp-tool (lint, format, pre-commit, test, 100% coverage)
+alwaysApply: true
+---
+
+# LLM-Assisted Development Guidelines
 
 This document provides essential guidelines for LLM-assisted development in the pulp-tool repository. It emphasizes code quality, linting, and pre-commit hooks to ensure changes pass CI/CD pipelines on the first attempt.
 
