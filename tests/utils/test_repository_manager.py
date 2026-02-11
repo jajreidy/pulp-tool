@@ -458,6 +458,7 @@ class TestRepositoryManagerWaitForDistributionTask:
         """Test _wait_for_distribution_task exception handling (lines 256-257)."""
         mock_client = Mock()
         mock_client.namespace = "test-namespace"
+        mock_client.config = {"base_url": "https://pulp.example.com"}
         mock_client.session = Mock()
         mock_client.timeout = 30
         mock_client.request_params = {}

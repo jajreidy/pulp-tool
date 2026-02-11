@@ -309,9 +309,11 @@ class RepositoryManager:
                 logging.debug("  - %s", resource_href)
                 # Fetch the distribution details to get the base_path
                 try:
-                    # Use session.get to make the API request
+                    # resource_href from created_resources is a path; build full URL
+                    base_url = str(self.client.config["base_url"]).rstrip("/")
+                    full_url = f"{base_url}{resource_href}" if resource_href.startswith("/") else resource_href
                     distro_response = self.client.session.get(
-                        resource_href, timeout=self.client.timeout, **self.client.request_params
+                        full_url, timeout=self.client.timeout, **self.client.request_params
                     )
                     if distro_response.is_success:
                         distro_data = distro_response.json()
