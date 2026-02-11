@@ -13,6 +13,7 @@ which is the correct approach for testing mixin-based architecture.
 """
 
 import json
+from pathlib import Path
 from unittest.mock import Mock, patch
 import pytest
 import httpx
@@ -113,6 +114,19 @@ class TestPulpClient:
             assert client.config_path is None  # Should be None for base64 config
             mock_loads.assert_called_once()
 
+    def test_create_from_config_file_invalid_toml_raises_value_error(self, temp_config_file):
+        """Test create_from_config_file raises ValueError with clear message for invalid TOML."""
+        import tomllib
+
+        with patch("pulp_tool.utils.config_utils.load_config_content") as mock_load_content:
+            mock_load_content.return_value = (b"invalid toml [cli\nbase_url", False)
+
+            with pytest.raises(ValueError, match=r"Invalid TOML in configuration .*: .*") as exc_info:
+                PulpClient.create_from_config_file(path=temp_config_file)
+
+            assert "Invalid TOML" in str(exc_info.value)
+            assert isinstance(exc_info.value.__cause__, tomllib.TOMLDecodeError)
+
     def test_headers_property(self, mock_pulp_client):
         """Test headers property."""
         assert mock_pulp_client.headers is None
@@ -194,6 +208,66 @@ class TestPulpClient:
             cert_tuple = client.cert
 
             assert cert_tuple == (str(cert_file), str(key_file))
+
+    def test_cert_property_with_base64_cert_and_key(self, mock_config, tmp_path):
+        """Test cert property decodes base64-encoded cert/key file content."""
+        import base64
+
+        config_file = tmp_path / "config.toml"
+        config_dir = config_file.parent
+        cert_file = config_dir / "cert.pem"
+        key_file = config_dir / "key.pem"
+
+        cert_pem = b"-----BEGIN CERTIFICATE-----\nMIIBkTCB+wIJAK\n-----END CERTIFICATE-----"
+        key_pem = b"-----BEGIN PRIVATE KEY-----\nMIIEvgIBADANBg\n-----END PRIVATE KEY-----"
+        cert_file.write_text(base64.b64encode(cert_pem).decode())
+        key_file.write_text(base64.b64encode(key_pem).decode())
+
+        config_with_relative = mock_config.copy()
+        config_with_relative["cert"] = "cert.pem"
+        config_with_relative["key"] = "key.pem"
+
+        with patch("pulp_tool.api.pulp_client.create_session_with_retry") as mock_create_session:
+            mock_session = Mock()
+            mock_create_session.return_value = mock_session
+
+            client = PulpClient(config_with_relative, config_path=config_file)
+            cert_tuple = client.cert
+
+            assert client._cert_paths is not None
+            assert cert_tuple == client._cert_paths
+            assert Path(cert_tuple[0]).exists() and Path(cert_tuple[1]).exists()
+            assert Path(cert_tuple[0]).read_bytes() == cert_pem
+            assert Path(cert_tuple[1]).read_bytes() == key_pem
+
+            client.close()
+            assert client._cert_temp_dir is None
+            assert client._cert_paths is None
+
+    def test_close_handles_oserror_on_cert_temp_cleanup(self, mock_config, tmp_path):
+        """Test close() catches OSError when cleaning up base64 cert temp dir."""
+        import base64
+
+        config_file = tmp_path / "config.toml"
+        cert_file = tmp_path / "cert.pem"
+        key_file = tmp_path / "key.pem"
+        cert_pem = b"-----BEGIN CERTIFICATE-----\nMIIBkTCB+wIJAK\n-----END CERTIFICATE-----"
+        key_pem = b"-----BEGIN PRIVATE KEY-----\nMIIEvgIBADANBg\n-----END PRIVATE KEY-----"
+        cert_file.write_text(base64.b64encode(cert_pem).decode())
+        key_file.write_text(base64.b64encode(key_pem).decode())
+        config_with_relative = mock_config.copy()
+        config_with_relative["cert"] = "cert.pem"
+        config_with_relative["key"] = "key.pem"
+
+        with patch("pulp_tool.api.pulp_client.create_session_with_retry") as mock_create_session:
+            mock_create_session.return_value = Mock()
+            client = PulpClient(config_with_relative, config_path=config_file)
+            _ = client.cert
+            assert client._cert_temp_dir is not None
+            client._cert_temp_dir.cleanup = Mock(side_effect=OSError("cleanup failed"))
+            client.close()
+            assert client._cert_temp_dir is None
+            assert client._cert_paths is None
 
     def test_cert_property_with_existing_relative_paths(self, mock_config, tmp_path):
         """Test cert property when relative paths exist in current directory."""

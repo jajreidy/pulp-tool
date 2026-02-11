@@ -4,7 +4,12 @@ import base64
 
 import pytest
 
-from pulp_tool.utils.config_utils import decode_base64_config, is_base64_config, load_config_content
+from pulp_tool.utils.config_utils import (
+    decode_base64_config,
+    is_base64_config,
+    load_config_content,
+    load_file_content_maybe_base64,
+)
 
 
 class TestDecodeBase64Config:
@@ -138,6 +143,19 @@ class TestLoadConfigContent:
         assert is_base64 is False
         assert content.decode("utf-8") == config_content
 
+    def test_load_from_file_containing_base64(self, tmp_path):
+        """Test load_config_content decodes base64 when file content is base64-encoded."""
+        config_file = tmp_path / "cli.toml"
+        config_content = '[cli]\nbase_url = "https://example.com"\ndomain = "test"'
+        base64_content = base64.b64encode(config_content.encode()).decode()
+        config_file.write_text(base64_content)
+
+        content, is_base64 = load_config_content(str(config_file))
+
+        # Source was a file path, so is_base64 is False; content is decoded TOML
+        assert is_base64 is False
+        assert content.decode("utf-8") == config_content
+
     def test_load_from_file_with_tilde(self, tmp_path, monkeypatch):
         """Test load_config_content handles tilde expansion."""
         config_file = tmp_path / "config.toml"
@@ -191,3 +209,64 @@ class TestLoadConfigContent:
 
         with pytest.raises(ValueError, match="Failed to decode base64 config"):
             load_config_content(invalid_base64)
+
+    def test_load_from_file_binary_content_returns_raw(self, tmp_path):
+        """Test load_config_content returns raw bytes when file is non-UTF-8 (UnicodeDecodeError path)."""
+        config_file = tmp_path / "config.toml"
+        config_file.write_bytes(b"\xff\xfe\x00\x80")
+
+        content, is_base64 = load_config_content(str(config_file))
+
+        assert is_base64 is False
+        assert content == b"\xff\xfe\x00\x80"
+
+
+class TestLoadFileContentMaybeBase64:
+    """Tests for load_file_content_maybe_base64 function."""
+
+    def test_load_raw_content_returns_as_is(self, tmp_path):
+        """Test file with raw PEM-like content is returned unchanged."""
+        pem_file = tmp_path / "cert.pem"
+        pem_content = b"-----BEGIN CERTIFICATE-----\nMIIBkTCB+wIJAK\n-----END CERTIFICATE-----"
+        pem_file.write_bytes(pem_content)
+
+        content, was_base64 = load_file_content_maybe_base64(pem_file)
+
+        assert was_base64 is False
+        assert content == pem_content
+
+    def test_load_base64_content_decodes(self, tmp_path):
+        """Test file containing base64-encoded content is decoded."""
+        encoded_file = tmp_path / "key.txt"
+        raw_content = b"-----BEGIN PRIVATE KEY-----\nMIIEvgIBADANBg\n-----END PRIVATE KEY-----"
+        base64_content = base64.b64encode(raw_content).decode()
+        encoded_file.write_text(base64_content)
+
+        content, was_base64 = load_file_content_maybe_base64(encoded_file)
+
+        assert was_base64 is True
+        assert content == raw_content
+
+    def test_load_file_not_found_raises(self):
+        """Test load_file_content_maybe_base64 raises FileNotFoundError for missing file."""
+        with pytest.raises(FileNotFoundError, match="File not found"):
+            load_file_content_maybe_base64("/nonexistent/cert.pem")
+
+    def test_accepts_path_string(self, tmp_path):
+        """Test path can be passed as string."""
+        f = tmp_path / "f.txt"
+        raw = b"-----BEGIN CERTIFICATE-----\nline\n-----END-----"
+        f.write_bytes(raw)
+        content, was_base64 = load_file_content_maybe_base64(str(f))
+        assert was_base64 is False
+        assert content == raw
+
+    def test_load_binary_content_returns_raw(self, tmp_path):
+        """Test file with non-UTF-8 binary content returns raw bytes (UnicodeDecodeError path)."""
+        binary_file = tmp_path / "binary.bin"
+        binary_file.write_bytes(b"\xff\xfe\x00\x80")
+
+        content, was_base64 = load_file_content_maybe_base64(binary_file)
+
+        assert was_base64 is False
+        assert content == b"\xff\xfe\x00\x80"
