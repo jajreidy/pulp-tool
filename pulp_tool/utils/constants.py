@@ -12,8 +12,8 @@ to eliminate magic numbers and strings.
 # Repository types supported by Pulp
 REPOSITORY_TYPES = ["rpms", "logs", "sbom", "artifacts"]
 
-# Supported CPU architectures
-SUPPORTED_ARCHITECTURES = ["x86_64", "aarch64", "s390x", "ppc64le", "noarch"]
+# Supported CPU architectures (including source RPMs as a logical 'src' arch)
+SUPPORTED_ARCHITECTURES = ["x86_64", "aarch64", "s390x", "ppc64le", "noarch", "src"]
 
 # Content types for filtering
 CONTENT_TYPES = ["rpm", "log", "sbom"]
