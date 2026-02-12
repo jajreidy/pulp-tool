@@ -241,6 +241,10 @@ class TestDetectArchFromRpmFilename:
         """Test detecting noarch architecture from RPM filename."""
         assert detect_arch_from_rpm_filename("/path/to/package-1.0.0-1.noarch.rpm") == "noarch"
 
+    def test_detect_arch_from_filename_src(self):
+        """Test detecting src 'architecture' from source RPM filename."""
+        assert detect_arch_from_rpm_filename("/path/to/package-1.0.0-1.src.rpm") == "src"
+
     def test_detect_arch_from_filename_no_match(self):
         """Test that None is returned when no architecture is found in filename."""
         assert detect_arch_from_rpm_filename("/path/to/package.rpm") is None
