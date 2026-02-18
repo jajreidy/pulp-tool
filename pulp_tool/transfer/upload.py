@@ -40,7 +40,7 @@ def _upload_sboms_and_logs(
 
         logging.info("Uploading %d SBOM file(s)", len(sbom_items))
         for name, artifact in sbom_items:
-            logging.debug("Uploading SBOM: %s", name)
+            logging.info("Uploading SBOM: %s", name)
             try:
                 pulp_client.create_file_content(
                     repositories.sbom_prn,
@@ -65,7 +65,7 @@ def _upload_sboms_and_logs(
 
         logging.info("Uploading %d log file(s)", len(log_items))
         for name, artifact in log_items:
-            logging.debug("Uploading log: %s", name)
+            logging.info("Uploading log: %s", name)
             try:
                 # Extract arch from labels for relative path construction
                 arch = artifact.labels.get("arch")

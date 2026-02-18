@@ -142,7 +142,7 @@ def upload_rpms_parallel(
 
         for future in as_completed(futures):
             rpm_path = futures[future]
-            logging.debug("Uploading RPM: %s", os.path.basename(rpm_path))
+            logging.info("Uploading RPM: %s", os.path.basename(rpm_path))
             try:
                 artifact_href = future.result()
                 artifacts.append(artifact_href)

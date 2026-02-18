@@ -340,7 +340,7 @@ class UploadOrchestrator:
         if context.file_files:
             logging.info("Uploading %d generic file(s)", len(context.file_files))
             for file_path in context.file_files:
-                logging.debug("Uploading file: %s", os.path.basename(file_path))
+                logging.info("Uploading file: %s", os.path.basename(file_path))
                 labels = create_labels(
                     context.build_id, "", context.namespace, context.parent_package, context.date_str
                 )
@@ -361,7 +361,7 @@ class UploadOrchestrator:
         if context.log_files:
             logging.info("Uploading %d log file(s)", len(context.log_files))
             for log_path in context.log_files:
-                logging.debug("Uploading log: %s", os.path.basename(log_path))
+                logging.info("Uploading log: %s", os.path.basename(log_path))
                 log_arch = context.arch or detect_arch_from_filepath(log_path)
                 if not log_arch:
                     logging.warning(ARCH_DETECT_WARNING_MSG, os.path.basename(log_path))
@@ -381,7 +381,7 @@ class UploadOrchestrator:
         if context.sbom_files:
             logging.info("Uploading %d SBOM file(s)", len(context.sbom_files))
             for sbom_path in context.sbom_files:
-                logging.debug("Uploading SBOM: %s", os.path.basename(sbom_path))
+                logging.info("Uploading SBOM: %s", os.path.basename(sbom_path))
                 sbom_created_resources = upload_sbom(
                     client, context, repositories.sbom_prn, context.date_str, results_model, sbom_path
                 )
