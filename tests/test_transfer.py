@@ -501,7 +501,7 @@ class TestUploadFunctionality:
         # Mock upload_rpms_parallel to return artifacts
         with (
             patch("pulp_tool.transfer.upload.upload_rpms_parallel") as mock_upload_rpms,
-            patch("pulp_tool.transfer.upload.logging") as mock_logging,
+            patch("pulp_tool.utils.error_handling.logging") as mock_logging,
             patch("builtins.open", mock_open(read_data=b"fake rpm content")),
         ):
             mock_upload_rpms.return_value = ["/pulp/api/v3/content/rpm/packages/123/"]
@@ -512,7 +512,7 @@ class TestUploadFunctionality:
             ):
                 _upload_rpms_to_repository(mock_pulp_client, pulled_artifacts, repositories, upload_info)
 
-            # Verify error was logged and added to upload_info
+            # Verify error was logged (via handle_generic_error) and added to upload_info
             mock_logging.error.assert_called()
             assert len(upload_info.upload_errors) > 0
 

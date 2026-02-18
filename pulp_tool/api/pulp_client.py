@@ -40,6 +40,7 @@ import httpx
 
 # Local imports
 from ..utils import create_session_with_retry
+from ..utils.constants import DEFAULT_CHUNK_SIZE, SUPPORTED_ARCHITECTURES
 from .auth import OAuth2ClientCredentialsAuth
 
 # Resource-based mixins
@@ -383,7 +384,7 @@ class PulpClient(
         url: str,
         params: Optional[Dict[str, Any]] = None,
         chunk_param: Optional[str] = None,
-        chunk_size: int = 50,
+        chunk_size: int = DEFAULT_CHUNK_SIZE,
         **kwargs,
     ) -> httpx.Response:
         """
@@ -483,7 +484,7 @@ class PulpClient(
         url: str,
         params: Optional[Dict[str, Any]] = None,
         chunk_param: Optional[str] = None,
-        chunk_size: int = 50,
+        chunk_size: int = DEFAULT_CHUNK_SIZE,
         **kwargs,
     ) -> httpx.Response:
         """
@@ -1038,13 +1039,11 @@ class PulpClient(
         relative_path: str, labels: Dict[str, str], distribution_urls: Dict[str, str]
     ) -> str:
         """Build distribution URL for file artifacts (logs, SBOM, etc.)."""
-        VALID_ARCHES = ["x86_64", "aarch64", "noarch", "ppc64le", "s390x"]
-
         # Check if relative_path contains arch prefix
         parts = relative_path.split("/", 1)
         if len(parts) == 2:
             arch, _ = parts
-            if arch in VALID_ARCHES:
+            if arch in SUPPORTED_ARCHITECTURES:
                 logs_url = distribution_urls.get("logs", "")
                 if logs_url:
                     return f"{logs_url}{relative_path}"

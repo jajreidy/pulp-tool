@@ -2,11 +2,14 @@
 Tests for PulpClient async methods.
 
 This module tests async methods that need coverage.
+Uses asyncio.run() so tests work without pytest-asyncio.
 """
 
+import asyncio
+
 import pytest
-from unittest.mock import Mock, patch
 import httpx
+from unittest.mock import Mock, patch
 
 from pulp_tool.api import PulpClient, OAuth2ClientCredentialsAuth
 
@@ -56,81 +59,66 @@ class TestPulpClientAsync:
         # When auth is provided in kwargs, setdefault won't override it
         assert kwargs["auth"] == other_auth
 
-    @pytest.mark.asyncio
-    async def test_async_get(self, mock_config):
+    def test_async_get(self, mock_config):
         """Test async_get method."""
         import respx
 
-        client = PulpClient(mock_config)
+        async def _run():
+            client = PulpClient(mock_config)
+            with respx.mock:
+                respx.post("https://sso.redhat.com/auth/realms/redhat-external/protocol/openid-connect/token").mock(
+                    return_value=httpx.Response(200, json={"access_token": "test-token", "expires_in": 3600})
+                )
+                respx.get("https://test.com/api").mock(return_value=httpx.Response(200, json={"status": "ok"}))
+                response = await client.async_get("https://test.com/api")
+                assert response.status_code == 200
+                assert response.json()["status"] == "ok"
+                if hasattr(client, "_async_session") and client._async_session:
+                    await client._async_session.aclose()
 
-        with respx.mock:
-            # Mock OAuth token endpoint
-            respx.post("https://sso.redhat.com/auth/realms/redhat-external/protocol/openid-connect/token").mock(
-                return_value=httpx.Response(200, json={"access_token": "test-token", "expires_in": 3600})
-            )
-            # Mock the actual API call
-            respx.get("https://test.com/api").mock(return_value=httpx.Response(200, json={"status": "ok"}))
+        asyncio.run(_run())
 
-            response = await client.async_get("https://test.com/api")
-
-            assert response.status_code == 200
-            assert response.json()["status"] == "ok"
-
-            # Clean up async session
-            if hasattr(client, "_async_session") and client._async_session:
-                await client._async_session.aclose()
-
-    @pytest.mark.asyncio
-    async def test_async_post(self, mock_config):
+    def test_async_post(self, mock_config):
         """Test async_post method."""
         import respx
 
-        client = PulpClient(mock_config)
+        async def _run():
+            client = PulpClient(mock_config)
+            with respx.mock:
+                respx.post("https://sso.redhat.com/auth/realms/redhat-external/protocol/openid-connect/token").mock(
+                    return_value=httpx.Response(200, json={"access_token": "test-token", "expires_in": 3600})
+                )
+                respx.post("https://test.com/api").mock(return_value=httpx.Response(201, json={"status": "created"}))
+                response = await client.async_post("https://test.com/api", json={"data": "test"})
+                assert response.status_code == 201
+                assert response.json()["status"] == "created"
+                if hasattr(client, "_async_session") and client._async_session:
+                    await client._async_session.aclose()
 
-        with respx.mock:
-            # Mock OAuth token endpoint
-            respx.post("https://sso.redhat.com/auth/realms/redhat-external/protocol/openid-connect/token").mock(
-                return_value=httpx.Response(200, json={"access_token": "test-token", "expires_in": 3600})
-            )
-            # Mock the actual API call
-            respx.post("https://test.com/api").mock(return_value=httpx.Response(201, json={"status": "created"}))
+        asyncio.run(_run())
 
-            response = await client.async_post("https://test.com/api", json={"data": "test"})
-
-            assert response.status_code == 201
-            assert response.json()["status"] == "created"
-
-            # Clean up async session
-            if hasattr(client, "_async_session") and client._async_session:
-                await client._async_session.aclose()
-
-    @pytest.mark.asyncio
-    async def test_async_get_rpm_by_pkg_ids(self, mock_config):
+    def test_async_get_rpm_by_pkg_ids(self, mock_config):
         """Test async_get_rpm_by_pkg_ids method."""
         import respx
 
-        client = PulpClient(mock_config)
+        async def _run():
+            client = PulpClient(mock_config)
+            with respx.mock:
+                respx.post("https://sso.redhat.com/auth/realms/redhat-external/protocol/openid-connect/token").mock(
+                    return_value=httpx.Response(200, json={"access_token": "test-token", "expires_in": 3600})
+                )
+                respx.get(
+                    "https://pulp.example.com/pulp/api/v3/test-domain/api/v3/content/rpm/packages/"
+                    "?pkgId__in=abcd1234%2Cefgh5678"
+                ).mock(return_value=httpx.Response(200, json={"results": [{"pkgId": "abcd1234"}]}))
+                pkg_ids = ["abcd1234", "efgh5678"]
+                response = await client.async_get_rpm_by_pkgIDs(pkg_ids)  # type: ignore[attr-defined]
+                assert response.status_code == 200
+                assert len(response.json()["results"]) == 1
+                if hasattr(client, "_async_session") and client._async_session:
+                    await client._async_session.aclose()
 
-        with respx.mock:
-            # Mock OAuth token endpoint
-            respx.post("https://sso.redhat.com/auth/realms/redhat-external/protocol/openid-connect/token").mock(
-                return_value=httpx.Response(200, json={"access_token": "test-token", "expires_in": 3600})
-            )
-            # Mock the actual API call
-            respx.get(
-                "https://pulp.example.com/pulp/api/v3/test-domain/api/v3/content/rpm/packages/"
-                "?pkgId__in=abcd1234%2Cefgh5678"
-            ).mock(return_value=httpx.Response(200, json={"results": [{"pkgId": "abcd1234"}]}))
-
-            pkg_ids = ["abcd1234", "efgh5678"]
-            response = await client.async_get_rpm_by_pkgIDs(pkg_ids)  # type: ignore[attr-defined]
-
-            assert response.status_code == 200
-            assert len(response.json()["results"]) == 1
-
-            # Clean up async session
-            if hasattr(client, "_async_session") and client._async_session:
-                await client._async_session.aclose()
+        asyncio.run(_run())
 
 
 class TestPulpClientErrorPaths:

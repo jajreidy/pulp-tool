@@ -128,6 +128,9 @@ INVALID_REPO_CHARS = ["/", "\\", ":", "*", "?", '"', "<", ">", "|"]
 # Default build ID fallback when none can be determined
 DEFAULT_BUILD_ID = "rok-storage"
 
+# Message when architecture cannot be detected for an RPM/file (use with os.path.basename for %s)
+ARCH_DETECT_WARNING_MSG = "Skipping %s: Could not detect architecture. Use --arch to specify explicitly."
+
 # ============================================================================
 # HTTP Status Code Groups
 # ============================================================================
@@ -207,6 +210,7 @@ __all__ = [
     # Validation
     "INVALID_REPO_CHARS",
     "DEFAULT_BUILD_ID",
+    "ARCH_DETECT_WARNING_MSG",
     # HTTP Status Codes
     "HTTP_CLIENT_ERROR_MIN",
     "HTTP_CLIENT_ERROR_MAX",

@@ -8,13 +8,13 @@ and other artifacts to Pulp repositories.
 import glob
 import logging
 import os
-import traceback
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
 import httpx
 
 from ..models.results import RpmUploadResult, PulpResultsModel
 from ..models.context import UploadContext
+from .error_handling import handle_generic_error
 from .validation import validate_file_path
 from .rpm_operations import upload_rpms_parallel
 
@@ -24,7 +24,6 @@ if TYPE_CHECKING:
 # Constants used in this module
 RPM_FILE_PATTERN = "*.rpm"
 LOG_FILE_PATTERN = "*.log"
-DEFAULT_MAX_WORKERS = 4
 
 
 def create_labels(build_id: str, arch: str, namespace: str, parent_package: Optional[str], date: str) -> Dict[str, str]:
@@ -114,7 +113,7 @@ def _upload_logs_sequential(
     """
     logging.info("Uploading %d log file(s) for %s", len(logs), arch)
     for log in logs:
-        logging.warning("Uploading log: %s", os.path.basename(log))
+        logging.debug("Uploading log: %s", os.path.basename(log))
         upload_log(client, file_repository_prn, log, build_id=build_id, labels=labels, arch=arch)
 
 
@@ -171,8 +170,7 @@ def upload_artifacts_to_repository(
             logging.debug("Successfully uploaded %s: %s", file_type, artifact_name)
 
         except (httpx.HTTPError, ValueError, FileNotFoundError, KeyError) as e:
-            logging.error("Failed to upload %s %s: %s", file_type, artifact_name, e)
-            logging.error("Traceback: %s", traceback.format_exc())
+            handle_generic_error(e, f"upload {file_type} {artifact_name}")
             errors.append(f"{file_type} {artifact_name}: {e}")
 
     return upload_count, errors
