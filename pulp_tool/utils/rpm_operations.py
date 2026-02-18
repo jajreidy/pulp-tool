@@ -11,9 +11,10 @@ import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any, Dict, Generator, List, Optional, Tuple, Union
 
-# Constants used in this module
+from .constants import DEFAULT_MAX_WORKERS
+
+# Batch size for RPM upload batching (distinct from DEFAULT_CHUNK_SIZE used for API request line size)
 BATCH_SIZE = 50
-DEFAULT_MAX_WORKERS = 4
 
 
 def _create_batches(items: List[str], batch_size: int = BATCH_SIZE) -> Generator[List[str], None, None]:
@@ -141,7 +142,7 @@ def upload_rpms_parallel(
 
         for future in as_completed(futures):
             rpm_path = futures[future]
-            logging.warning("Uploading RPM: %s", os.path.basename(rpm_path))
+            logging.debug("Uploading RPM: %s", os.path.basename(rpm_path))
             try:
                 artifact_href = future.result()
                 artifacts.append(artifact_href)

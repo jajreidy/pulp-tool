@@ -152,16 +152,12 @@ class TestUploadOrchestratorCollectArchitectureResults:
 
         future_to_arch = {mock_future: "x86_64"}
 
-        with (
-            patch("pulp_tool.utils.upload_orchestrator.logging") as mock_logging,
-            patch("pulp_tool.utils.upload_orchestrator.traceback") as mock_traceback,
-        ):
+        with (patch("pulp_tool.utils.upload_orchestrator.handle_generic_error") as mock_handle_error,):
             with pytest.raises(ValueError, match="Upload failed"):
                 orchestrator._collect_architecture_results(future_to_arch)
 
-            # Verify error logging
-            mock_logging.error.assert_called()
-            mock_traceback.format_exc.assert_called()
+            mock_handle_error.assert_called_once()
+            assert mock_handle_error.call_args[0][1] == "process architecture x86_64"
 
     def test_collect_architecture_results_logs_processed(self):
         """Test _collect_architecture_results logs processed architectures (lines 134-135)."""
@@ -469,6 +465,56 @@ class TestUploadOrchestratorProcessUploads:
             # Verify logging still occurs
             assert mock_logging.info.call_count >= 1
 
+    def test_process_uploads_root_level_rpms(self):
+        """Test process_uploads uploads root-level RPMs when present in rpm_path (lines 241-265)."""
+        orchestrator = UploadOrchestrator()
+
+        args = UploadRpmContext(
+            build_id="test-build",
+            date_str="2024-01-01 00:00:00",
+            namespace="test-ns",
+            parent_package="test-pkg",
+            rpm_path="/test/rpms",
+            sbom_path="/test/sbom.json",
+        )
+        mock_client = Mock()
+        repositories = RepositoryRefs(
+            rpms_href="/test/rpm-href",
+            rpms_prn="",
+            logs_href="",
+            logs_prn="logs-prn",
+            sbom_href="",
+            sbom_prn="sbom-prn",
+            artifacts_href="",
+            artifacts_prn="",
+        )
+
+        mock_processed_uploads: Dict[str, Dict[str, list[str]]] = {"x86_64": {"created_resources": []}}
+        root_rpm_files = ["/test/rpms/pkg.noarch.rpm"]
+
+        with (
+            patch.object(orchestrator, "process_architecture_uploads", return_value=mock_processed_uploads),
+            patch("pulp_tool.utils.upload_orchestrator.glob.glob", return_value=root_rpm_files),
+            patch("pulp_tool.utils.upload_orchestrator.os.path.isfile", return_value=True),
+            patch(
+                "pulp_tool.utils.upload_orchestrator.group_rpm_paths_by_arch",
+                return_value={"noarch": root_rpm_files},
+            ),
+            patch(
+                "pulp_tool.utils.upload_orchestrator.upload_rpms",
+                return_value=["/rpm/resource/1"],
+            ) as mock_upload_rpms,
+            patch("pulp_tool.services.upload_service.upload_sbom", return_value=[]),
+            patch("pulp_tool.services.upload_service.collect_results", return_value="https://example.com/results.json"),
+        ):
+            result = orchestrator.process_uploads(mock_client, args, repositories)
+
+            assert result == "https://example.com/results.json"
+            mock_upload_rpms.assert_called_once()
+            call_pos, call_kw = mock_upload_rpms.call_args
+            assert call_pos[3] == "noarch"  # arch is 4th positional arg
+            assert call_kw["rpm_repository_href"] == "/test/rpm-href"
+
 
 class TestUploadOrchestratorProcessFileUploads:
     """Tests for UploadOrchestrator.process_file_uploads() method."""
@@ -548,9 +594,9 @@ class TestUploadOrchestratorProcessFileUploads:
         )
 
         with (
-            patch("pulp_tool.utils.upload_orchestrator.detect_arch_from_filepath", side_effect=["x86_64", None]),
+            patch("pulp_tool.utils.artifact_detection.detect_arch_from_filepath", side_effect=["x86_64", None]),
             patch(
-                "pulp_tool.utils.upload_orchestrator.detect_arch_from_rpm_filename",
+                "pulp_tool.utils.artifact_detection.detect_arch_from_rpm_filename",
                 side_effect=["aarch64", None],
             ),
             patch(
@@ -592,18 +638,18 @@ class TestUploadOrchestratorProcessFileUploads:
         )
 
         with (
-            patch("pulp_tool.utils.upload_orchestrator.detect_arch_from_filepath", return_value=None),
-            patch("pulp_tool.utils.upload_orchestrator.detect_arch_from_rpm_filename", return_value=None),
+            patch("pulp_tool.utils.artifact_detection.detect_arch_from_filepath", return_value=None),
+            patch("pulp_tool.utils.artifact_detection.detect_arch_from_rpm_filename", return_value=None),
             patch("pulp_tool.utils.upload_orchestrator.upload_rpms") as mock_upload_rpms,
             patch("pulp_tool.services.upload_service.collect_results", return_value="https://example.com/results.json"),
-            patch("pulp_tool.utils.upload_orchestrator.logging") as mock_logging,
+            patch("pulp_tool.utils.artifact_detection.logging") as mock_logging,
         ):
             result = orchestrator.process_file_uploads(mock_client, context, repositories)
 
             assert result == "https://example.com/results.json"
             # Should not be called since RPM was skipped
             mock_upload_rpms.assert_not_called()
-            # Should log warning
+            # Warning is logged from artifact_detection when group_rpm_paths_by_arch skips a path
             mock_logging.warning.assert_called()
 
     def test_process_file_uploads_rpms_with_provided_arch(self):
@@ -672,7 +718,7 @@ class TestUploadOrchestratorProcessFileUploads:
         )
 
         with (
-            patch("pulp_tool.utils.upload_orchestrator.detect_arch_from_filepath", return_value="x86_64"),
+            patch("pulp_tool.utils.artifact_detection.detect_arch_from_filepath", return_value="x86_64"),
             patch(
                 "pulp_tool.utils.upload_orchestrator.upload_log",
                 return_value=["/log/resource/1"],
@@ -715,7 +761,7 @@ class TestUploadOrchestratorProcessFileUploads:
         )
 
         with (
-            patch("pulp_tool.utils.upload_orchestrator.detect_arch_from_filepath", return_value=None),
+            patch("pulp_tool.utils.artifact_detection.detect_arch_from_filepath", return_value=None),
             patch("pulp_tool.utils.upload_orchestrator.upload_log") as mock_upload_log,
             patch(
                 "pulp_tool.services.upload_service.collect_results",
@@ -804,9 +850,9 @@ class TestUploadOrchestratorProcessFileUploads:
         )
 
         with (
-            patch("pulp_tool.utils.upload_orchestrator.detect_arch_from_filepath", return_value=None),
+            patch("pulp_tool.utils.artifact_detection.detect_arch_from_filepath", return_value=None),
             patch(
-                "pulp_tool.utils.upload_orchestrator.detect_arch_from_rpm_filename",
+                "pulp_tool.utils.artifact_detection.detect_arch_from_rpm_filename",
                 side_effect=["x86_64", "aarch64"],
             ),
             patch(

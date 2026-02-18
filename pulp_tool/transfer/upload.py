@@ -5,11 +5,11 @@ This module handles uploading downloaded artifacts to destination Pulp repositor
 """
 
 import logging
-import traceback
 
 import httpx
 
 from ..api import PulpClient
+from ..utils.error_handling import handle_generic_error
 from ..models.context import TransferContext
 from ..models.results import PulpResultsModel
 from ..models.repository import RepositoryRefs
@@ -40,7 +40,7 @@ def _upload_sboms_and_logs(
 
         logging.info("Uploading %d SBOM file(s)", len(sbom_items))
         for name, artifact in sbom_items:
-            logging.warning("Uploading SBOM: %s", name)
+            logging.debug("Uploading SBOM: %s", name)
             try:
                 pulp_client.create_file_content(
                     repositories.sbom_prn,
@@ -65,7 +65,7 @@ def _upload_sboms_and_logs(
 
         logging.info("Uploading %d log file(s)", len(log_items))
         for name, artifact in log_items:
-            logging.warning("Uploading log: %s", name)
+            logging.debug("Uploading log: %s", name)
             try:
                 # Extract arch from labels for relative path construction
                 arch = artifact.labels.get("arch")
@@ -122,8 +122,7 @@ def _upload_rpms_to_repository(
             pulp_client.wait_for_finished_task(add_task.pulp_href)
             upload_info.uploaded_counts.rpms = len(rpm_artifacts)
         except (httpx.HTTPError, ValueError, KeyError) as e:
-            logging.error("Failed to add RPMs to repository: %s", e)
-            logging.error("Traceback: %s", traceback.format_exc())
+            handle_generic_error(e, "add RPMs to repository")
             upload_info.add_error(f"RPM repository addition: {e}")
 
 

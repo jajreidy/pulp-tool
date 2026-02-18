@@ -11,7 +11,7 @@ import logging
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 from ..models.artifacts import ArtifactMetadata
-from .constants import SUPPORTED_ARCHITECTURES
+from .constants import ARCH_DETECT_WARNING_MSG, SUPPORTED_ARCHITECTURES
 
 
 def detect_artifact_type(artifact_name: str) -> Optional[str]:
@@ -210,6 +210,43 @@ def detect_arch_from_rpm_filename(rpm_path: str) -> Optional[str]:
     return None
 
 
+def group_rpm_paths_by_arch(
+    rpm_paths: List[str],
+    *,
+    explicit_arch: Optional[str] = None,
+) -> Dict[str, List[str]]:
+    """
+    Group RPM file paths by detected or explicit architecture.
+
+    Paths that cannot be assigned an architecture are skipped with a warning.
+
+    Args:
+        rpm_paths: List of paths to RPM files.
+        explicit_arch: If set, use this architecture for all paths; otherwise detect per path.
+
+    Returns:
+        Dictionary mapping architecture name to list of RPM paths.
+
+    Example:
+        >>> group_rpm_paths_by_arch(["/path/pkg.x86_64.rpm", "/path/pkg.noarch.rpm"])
+        {'x86_64': ['/path/pkg.x86_64.rpm'], 'noarch': ['/path/pkg.noarch.rpm']}
+    """
+    rpms_by_arch: Dict[str, List[str]] = {}
+    for fp in rpm_paths:
+        if explicit_arch:
+            arch = explicit_arch
+        else:
+            detected = detect_arch_from_filepath(fp) or detect_arch_from_rpm_filename(fp)
+            if not detected:
+                logging.warning(ARCH_DETECT_WARNING_MSG, os.path.basename(fp))
+                continue
+            arch = detected
+        if arch not in rpms_by_arch:
+            rpms_by_arch[arch] = []
+        rpms_by_arch[arch].append(fp)
+    return rpms_by_arch
+
+
 __all__ = [
     "detect_artifact_type",
     "build_artifact_url",
@@ -217,4 +254,5 @@ __all__ = [
     "categorize_artifacts_by_type",
     "detect_arch_from_filepath",
     "detect_arch_from_rpm_filename",
+    "group_rpm_paths_by_arch",
 ]

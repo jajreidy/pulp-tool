@@ -10,6 +10,7 @@ from pulp_tool.utils.artifact_detection import (
     detect_arch_from_rpm_filename,
     detect_artifact_type,
     extract_architecture_from_metadata,
+    group_rpm_paths_by_arch,
 )
 
 
@@ -259,3 +260,39 @@ class TestDetectArchFromRpmFilename:
     def test_detect_arch_from_filename_with_underscores(self):
         """Test that architectures with underscores work correctly."""
         assert detect_arch_from_rpm_filename("/path/to/pack_age-1.0.0-1.x86_64.rpm") == "x86_64"
+
+
+class TestGroupRpmPathsByArch:
+    """Tests for group_rpm_paths_by_arch function."""
+
+    def test_groups_by_detected_arch(self):
+        """Test grouping RPMs by detected architecture from path/filename."""
+        paths = [
+            "/path/to/x86_64/package.rpm",
+            "/path/to/package-1.0.0-1.aarch64.rpm",
+            "/path/to/noarch/foo.rpm",
+        ]
+        result = group_rpm_paths_by_arch(paths)
+        assert set(result.keys()) == {"x86_64", "aarch64", "noarch"}
+        assert result["x86_64"] == ["/path/to/x86_64/package.rpm"]
+        assert result["aarch64"] == ["/path/to/package-1.0.0-1.aarch64.rpm"]
+        assert result["noarch"] == ["/path/to/noarch/foo.rpm"]
+
+    def test_explicit_arch_applies_to_all(self):
+        """Test that explicit_arch is used for all paths."""
+        paths = ["/path/package1.rpm", "/path/package2.rpm"]
+        result = group_rpm_paths_by_arch(paths, explicit_arch="noarch")
+        assert result == {"noarch": ["/path/package1.rpm", "/path/package2.rpm"]}
+
+    def test_skips_undetected_and_logs_warning(self):
+        """Test that paths with undetectable arch are skipped and warning is logged."""
+        paths = ["/path/to/package.rpm"]  # No arch in path or filename
+        with patch("pulp_tool.utils.artifact_detection.logging") as mock_logging:
+            result = group_rpm_paths_by_arch(paths)
+        assert result == {}
+        mock_logging.warning.assert_called_once()
+
+    def test_empty_list_returns_empty_dict(self):
+        """Test that empty input returns empty dict."""
+        assert group_rpm_paths_by_arch([]) == {}
+        assert group_rpm_paths_by_arch([], explicit_arch="x86_64") == {}

@@ -5,9 +5,9 @@ This module handles orchestrating upload workflows including
 architecture processing and result collection.
 """
 
+import glob
 import logging
 import os
-import traceback
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any, Dict, List, Optional, TYPE_CHECKING
 
@@ -15,10 +15,11 @@ from ..models.context import UploadRpmContext, UploadFilesContext
 from ..models.repository import RepositoryRefs
 from ..models.results import PulpResultsModel
 
-from .constants import ARCHITECTURE_THREAD_PREFIX, SUPPORTED_ARCHITECTURES
-from .uploads import upload_log, upload_rpms, upload_rpms_logs, create_labels
+from .constants import ARCHITECTURE_THREAD_PREFIX, ARCH_DETECT_WARNING_MSG, SUPPORTED_ARCHITECTURES
+from .error_handling import handle_generic_error
+from .uploads import upload_log, upload_rpms, upload_rpms_logs, create_labels, RPM_FILE_PATTERN
 from .validation import validate_file_path
-from .artifact_detection import detect_arch_from_filepath, detect_arch_from_rpm_filename
+from .artifact_detection import detect_arch_from_filepath, group_rpm_paths_by_arch
 
 if TYPE_CHECKING:
     from ..api.pulp_client import PulpClient
@@ -129,8 +130,7 @@ class UploadOrchestrator:
                     len(result.created_resources),
                 )
             except Exception as e:
-                logging.error("Failed to process architecture %s: %s", arch, e)
-                logging.error("Traceback: %s", traceback.format_exc())
+                handle_generic_error(e, f"process architecture {arch}")
                 raise
 
         logging.debug("Processed architectures: %s", ", ".join(processed_archs.keys()))
@@ -234,9 +234,35 @@ class UploadOrchestrator:
         )
 
         # Collect all created resources from add_content operations
-        created_resources = []
+        created_resources: List[str] = []
         for upload in processed_uploads.values():
             created_resources.extend(upload.get("created_resources", []))
+
+        # Always search the base rpm_path for root-level RPMs (e.g. .src.rpm, .noarch.rpm).
+        # OCI/oras layouts often put these in the root while logs live in arch subdirs (e.g. aarch64/).
+        if args.rpm_path:
+            rpm_glob_path = os.path.join(args.rpm_path, RPM_FILE_PATTERN)
+            root_rpm_files = [p for p in glob.glob(rpm_glob_path) if os.path.isfile(p)]
+            if root_rpm_files:
+                logging.info(
+                    "Found %d RPM(s) in base path %s (root-level), uploading by detected architecture",
+                    len(root_rpm_files),
+                    args.rpm_path,
+                )
+                rpms_by_arch = group_rpm_paths_by_arch(root_rpm_files)
+                for arch, rpm_list in rpms_by_arch.items():
+                    logging.info("Uploading %d root-level RPM(s) for architecture %s", len(rpm_list), arch)
+                    created_resources.extend(
+                        upload_rpms(
+                            rpm_list,
+                            args,
+                            client,
+                            arch,
+                            rpm_repository_href=repositories.rpms_href,
+                            date=date_str,
+                            results_model=results_model,
+                        )
+                    )
 
         # Upload SBOM and capture its created resources - updates results_model internally
         # Only upload SBOM if sbom_path is provided
@@ -295,25 +321,7 @@ class UploadOrchestrator:
         # Upload RPMs
         if context.rpm_files:
             logging.info("Uploading %d RPM file(s)", len(context.rpm_files))
-
-            # Group RPMs by architecture
-            rpms_by_arch: Dict[str, List[str]] = {}
-            for rpm_path in context.rpm_files:
-                # Determine architecture: use provided arch, or try to detect from filename/path
-                arch = context.arch
-                if not arch:
-                    arch = detect_arch_from_filepath(rpm_path) or detect_arch_from_rpm_filename(rpm_path)
-                    if not arch:
-                        logging.warning(
-                            "Skipping %s: Could not detect architecture. "
-                            "Use --arch to specify architecture explicitly.",
-                            os.path.basename(rpm_path),
-                        )
-                        continue  # Skip this RPM and continue with others
-
-                if arch not in rpms_by_arch:
-                    rpms_by_arch[arch] = []
-                rpms_by_arch[arch].append(rpm_path)
+            rpms_by_arch = group_rpm_paths_by_arch(context.rpm_files, explicit_arch=context.arch)
 
             # Upload RPMs for each architecture
             for arch, rpm_list in rpms_by_arch.items():
@@ -332,7 +340,7 @@ class UploadOrchestrator:
         if context.file_files:
             logging.info("Uploading %d generic file(s)", len(context.file_files))
             for file_path in context.file_files:
-                logging.warning("Uploading file: %s", os.path.basename(file_path))
+                logging.debug("Uploading file: %s", os.path.basename(file_path))
                 labels = create_labels(
                     context.build_id, "", context.namespace, context.parent_package, context.date_str
                 )
@@ -347,40 +355,33 @@ class UploadOrchestrator:
                 task_response = client.wait_for_finished_task(task_href)
                 if task_response.created_resources:
                     created_resources.extend(task_response.created_resources)
-
-            results_model.uploaded_counts.files += len(task_response.created_resources)
+                results_model.uploaded_counts.files += 1
 
         # Upload logs
         if context.log_files:
             logging.info("Uploading %d log file(s)", len(context.log_files))
-            log_created_resources = []
             for log_path in context.log_files:
-                logging.warning("Uploading log: %s", os.path.basename(log_path))
-                # For logs, try to detect arch from path or use provided arch
-                arch = context.arch or detect_arch_from_filepath(log_path)
-                if not arch:
-                    logging.warning(
-                        "Skipping %s: Could not detect architecture. " "Use --arch to specify architecture explicitly.",
-                        os.path.basename(log_path),
-                    )
-                    continue  # Skip this log and continue with others
+                logging.debug("Uploading log: %s", os.path.basename(log_path))
+                log_arch = context.arch or detect_arch_from_filepath(log_path)
+                if not log_arch:
+                    logging.warning(ARCH_DETECT_WARNING_MSG, os.path.basename(log_path))
+                    continue
 
                 labels = create_labels(
-                    context.build_id, arch, context.namespace, context.parent_package, context.date_str
+                    context.build_id, log_arch, context.namespace, context.parent_package, context.date_str
                 )
 
                 log_created_resources = upload_log(
-                    client, repositories.logs_prn, log_path, build_id=context.build_id, labels=labels, arch=arch
+                    client, repositories.logs_prn, log_path, build_id=context.build_id, labels=labels, arch=log_arch
                 )
                 created_resources.extend(log_created_resources)
-
-            results_model.uploaded_counts.logs += len(log_created_resources)
+                results_model.uploaded_counts.logs += 1
 
         # Upload SBOMs
         if context.sbom_files:
             logging.info("Uploading %d SBOM file(s)", len(context.sbom_files))
             for sbom_path in context.sbom_files:
-                logging.warning("Uploading SBOM: %s", os.path.basename(sbom_path))
+                logging.debug("Uploading SBOM: %s", os.path.basename(sbom_path))
                 sbom_created_resources = upload_sbom(
                     client, context, repositories.sbom_prn, context.date_str, results_model, sbom_path
                 )
