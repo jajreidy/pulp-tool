@@ -26,11 +26,18 @@ class TestGetArtifactSavePath:
             assert path == os.path.join(tmpdir, "logs", "x86_64", "build.log")
             assert os.path.exists(os.path.dirname(path))
 
-    def test_get_artifact_save_path_log_without_base_dir(self):
-        """Test get_artifact_save_path for log files without base_dir."""
-        path = get_artifact_save_path("build.log", "x86_64", "log")
+    def test_get_artifact_save_path_log_without_base_dir(self, tmp_path):
+        """Test get_artifact_save_path for log files without base_dir.
 
-        assert path == os.path.join("logs", "x86_64", "build.log")
+        Run in tmp_path so the created logs/ directory is cleaned up.
+        """
+        orig_cwd = os.getcwd()
+        try:
+            os.chdir(tmp_path)
+            path = get_artifact_save_path("build.log", "x86_64", "log")
+            assert path == os.path.join("logs", "x86_64", "build.log")
+        finally:
+            os.chdir(orig_cwd)
 
     def test_get_artifact_save_path_rpm_with_base_dir(self):
         """Test get_artifact_save_path for RPM files with base_dir (line 46)."""

@@ -113,7 +113,7 @@ def _upload_logs_sequential(
     """
     logging.info("Uploading %d log file(s) for %s", len(logs), arch)
     for log in logs:
-        logging.debug("Uploading log: %s", os.path.basename(log))
+        logging.info("Uploading log: %s", os.path.basename(log))
         upload_log(client, file_repository_prn, log, build_id=build_id, labels=labels, arch=arch)
 
 
@@ -137,7 +137,7 @@ def upload_artifacts_to_repository(
 
     for artifact_name, artifact_info in artifacts.items():
         try:
-            logging.debug("Uploading %s: %s", file_type, artifact_name)
+            logging.info("Uploading %s: %s", file_type, artifact_name)
 
             # Support both dict and ArtifactFile objects
             if isinstance(artifact_info, dict):
