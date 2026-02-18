@@ -1,6 +1,6 @@
 # Makefile for pulp-tool development tasks
 
-.PHONY: help install install-dev test lint format check clean docs
+.PHONY: help install install-dev test lint format check clean
 
 # Default target
 help:
@@ -12,7 +12,6 @@ help:
 	@echo "  make format       - Format code with Black"
 	@echo "  make check        - Run all checks (lint + test)"
 	@echo "  make clean        - Clean build artifacts"
-	@echo "  make docs         - Build documentation (if Sphinx configured)"
 
 # Installation
 install:
@@ -70,16 +69,6 @@ clean:
 	find . -type d -name __pycache__ -exec rm -r {} + 2>/dev/null || true
 	find . -type f -name "*.pyc" -delete
 	find . -type f -name "*.pyo" -delete
-
-# Documentation
-docs:
-	cd docs && $(MAKE) html
-
-docs-clean:
-	cd docs && $(MAKE) clean
-
-docs-serve:
-	cd docs/_build/html && python3 -m http.server 8000
 
 # Development helpers
 setup: install-dev
