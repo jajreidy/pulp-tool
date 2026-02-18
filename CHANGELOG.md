@@ -23,12 +23,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - DistributionClient for artifact downloads
 - Support for RPM, log, and SBOM file management
 - OAuth2 authentication with automatic token refresh
-- Comprehensive test suite with 82%+ coverage
+- Comprehensive test suite with 85%+ coverage
 
 ### Changed
 - Consolidated all dependencies into pyproject.toml
 - Improved type safety across the codebase
 - Enhanced error handling and logging
+- Per-file upload progress: "Uploading X: filename" now logged at INFO so progress is visible at default verbosity
+- README: Makefile-first development workflow, pre-commit, fixed typos and duplicate Create Repository section
+- CONTRIBUTING: recommend `make install-dev`, pre-commit run twice, `make test` and 100% diff coverage for new code
+
+### Removed
+- Documentation GitHub workflow (`.github/workflows/docs.yml`)
+- Makefile targets: `docs`, `docs-clean`, `docs-serve`
 
 ### Fixed
 - Fixed type annotation issues in transfer.py

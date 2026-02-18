@@ -300,6 +300,32 @@ The `scripts/check-all.sh` script runs all checks including tests:
 
 This is useful before creating pull requests.
 
+### 8. Update CHANGELOG.md for Merge Requests
+
+**Required**: Every merge request (MR) that introduces user-facing or notable changes must update `CHANGELOG.md`. This is part of the PR checklist in CONTRIBUTING.md.
+
+- **When to update**: Add entries for new features, behavior changes, fixes, removals, or anything users or maintainers should see in release notes. Trivial typo-only or internal refactors may omit CHANGELOG if there is no user-visible effect.
+- **Where to add entries**: Under the `## [Unreleased]` section at the top of `CHANGELOG.md`.
+- **Format**: Follow [Keep a Changelog](https://keepachangelog.com/en/1.0.0/). Use these subsections as needed:
+  - **Added** - New features or capabilities
+  - **Changed** - Changes in existing behavior or defaults
+  - **Deprecated** - Soon-to-be removed features
+  - **Removed** - Removed features or workflows
+  - **Fixed** - Bug fixes
+  - **Security** - Security-related changes
+- **Style**: One line per change. Use past tense or imperative (e.g. "Added X", "Fixed Y"). Be concise but clear enough for release notes.
+- **Scope**: Include only changes in the current MR; maintainers will consolidate when cutting a release.
+
+Example addition under `[Unreleased]`:
+
+```markdown
+### Added
+- New --dry-run option for upload command
+
+### Fixed
+- Handle missing artifact metadata in transfer without crashing
+```
+
 ## Common Issues and Solutions
 
 ### Black Formatting Conflicts
@@ -345,6 +371,7 @@ The CI/CD pipeline uses `diff-cover` to check only new/changed lines, so you mus
 - **Flake8 config**: `.flake8`
 - **Comprehensive check script**: `scripts/check-all.sh`
 - **Contributing guidelines**: `CONTRIBUTING.md`
+- **Changelog**: `CHANGELOG.md` (Keep a Changelog format; update under `[Unreleased]` for every MR with notable changes)
 
 ## Summary
 
@@ -358,7 +385,8 @@ The CI/CD pipeline uses `diff-cover` to check only new/changed lines, so you mus
 6. ✅ Run `make test` to run **ALL tests** and verify **100% coverage for new changes**
 7. ✅ Fix any test failures
 8. ✅ Re-run `make test` if fixes were made
-9. ✅ Fix any issues before considering changes complete
+9. ✅ **Update CHANGELOG.md** for merge requests: add entries under `[Unreleased]` (Added/Changed/Fixed/Removed) for user-facing or notable changes
+10. ✅ Fix any issues before considering changes complete
 
 **Critical Requirements**:
 - **Pre-commit hooks must be run twice** - second run ensures all issues are truly resolved

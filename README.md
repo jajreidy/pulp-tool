@@ -48,14 +48,14 @@ pulp-tool \
 ```
 
 ```bash
-pulp-tool
+pulp-tool \
   --build-id my-build-123 \
   --namespace my-namespace \
   upload-files \
   --parent-package my-package \
   --rpm /path/to/rpm1 \
   --rpm /path/to/rpm2 \
-  --file /path/to/genertic/file \
+  --file /path/to/generic/file \
   --log /path/to/log \
   --sbom /path/to/sbom \
   --arch x86_64 \
@@ -92,7 +92,7 @@ pulp-tool get-repo-md \
 
 #### Create Repository
 
-``` bash
+```bash
 # Using CLI options
 pulp-tool create-repository \
   --repository-name my-new-repo \
@@ -375,19 +375,19 @@ Upload individual files to pulp repositories.
 
 **Optional Arguments:**
 - `--arch`: Architecture for RPM files (e.g., 'x86_64', 'aarch64'). If not provided, will try to detect from RPM file
-- `--artifact-results"`: Comma-separated paths for Konflux artifact results location (url_path,digest_path)
+- `--artifact-results`: Comma-separated paths for Konflux artifact results location (url_path,digest_path)
 - `--sbom-results`: Path to write SBOM results
 
 **Example:**
 ```bash
-pulp-tool
+pulp-tool \
   --build-id my-build-123 \
   --namespace my-namespace \
   upload-files \
   --parent-package my-package \
   --rpm /path/to/rpm1 \
   --rpm /path/to/rpm2 \
-  --file /path/to/genertic/file \
+  --file /path/to/generic/file \
   --log /path/to/log \
   --sbom /path/to/sbom \
   --arch x86_64 \
@@ -505,61 +505,6 @@ pulp-tool \
   --packages /api/pulp/.../ \
   --base-path my-repo-path \
   --skip-publish
-```
-
-### Create Repository Command
-Creates a new repository using user defined paramters.
-
-**Required Arguments:**
-- `--repository-name`
-- `--packages`
-- `--base-path`
-
-  ***Or***
-
-- `-j, --json-data`
-
-**Optional Arguments:**
-- Repository Options:
-  - `--compression-type`
-  - `--checksum-type`
-  - `--skip-publish`
-- Distribution Options:
-  - `generate-repo-config`
-
-**Example:**
-``` bash
-# Using CLI options
-pulp-tool create-repository \
-  --repository-name my-new-repo \
-  --packages '<comma separated list of pulp HREFs>' \
-  --compression-type gz \
-  --checksum-type sha256 \
-  --skip-publish \
-  --base-path my-new-repo/path \
-  --generate-repo-config
-
-# Using JSON config
-pulp-tool create-repository \
-  --json-data \
-  '{
-    "name": "my-new-repo",
-    "packages": [
-      {
-        "pulp_href": "<pulp content HREF>"
-      }
-    ],
-    "repository_options":{
-      "autopublish": true,
-      "checksum_type": <"unknown", "md5", "sha1", "sha224", "sha256", "sha384", "sha512">,
-      "compression_type": <"zstd", "gz">
-    },
-    "distribution_options": {
-      "name": "my-new-repo",
-      "base_path": "my-new-repo/path",
-      "generate_repo_config": true
-    }
-  }'
 ```
 
 ### Environment Variables
@@ -750,22 +695,38 @@ Specialized client for downloading artifacts from Pulp distributions using certi
 ```bash
 git clone https://github.com/konflux/pulp-tool.git
 cd pulp-tool
-pip install -e ".[dev]"
+make install-dev
 ```
+
+This installs the package with dev dependencies and sets up pre-commit hooks.
+
+### Makefile Targets
+
+Common tasks use the project Makefile:
+
+```bash
+make test          # Run all tests with coverage (required 85%+)
+make lint          # Run all linters (black, flake8, pylint, mypy)
+make format        # Format code with Black
+make check         # Lint and test
+make clean         # Remove build artifacts and caches
+```
+
+Before committing, run `pre-commit run --all-files` (and fix any issues, then run again). See [CONTRIBUTING.md](CONTRIBUTING.md) for the full workflow.
 
 ### Running Tests
 
 ```bash
-# Run all tests with coverage
-pytest
+# Run all tests with coverage (preferred)
+make test
+
+# Or with pytest directly
+pytest -v --tb=short --cov=pulp_tool --cov-report=term-missing --cov-fail-under=85
 
 # Run specific test file
-pytest tests/test_cli.py
+pytest tests/test_cli.py -v
 
-# Run with verbose output
-pytest -v
-
-# Run specific test markers
+# Run by marker
 pytest -m unit
 pytest -m integration
 ```
@@ -779,43 +740,23 @@ Code coverage is tracked using [Codecov](https://codecov.io/gh/konflux/pulp-tool
 - **View Coverage**: Check the [Codecov dashboard](https://codecov.io/gh/konflux/pulp-tool) for detailed coverage reports
 
 ```bash
-# Generate coverage report locally
-pytest --cov=pulp_tool --cov-report=html --cov-report=term
-
-# View HTML report
-open htmlcov/index.html
+make test          # Generates htmlcov/ and coverage.xml
+# View HTML report: open htmlcov/index.html
 ```
 
-### Code Formatting
+### Code Formatting and Linting
 
 ```bash
-# Format code with Black
-black pulp_tool/
-
-# Check formatting without changes
-black --check pulp_tool/
+make format        # Format with Black
+make lint          # Check formatting and run flake8, pylint, mypy
 ```
 
-### Linting
-
-```bash
-# Pylint (should be 10.00/10)
-pylint pulp_tool/
-
-# Flake8
-flake8 pulp_tool/
-
-# Type checking with mypy
-mypy pulp_tool/
-```
+Individual tools: `black`, `flake8`, `pylint --errors-only`, `mypy` (see `Makefile` and `pyproject.toml`).
 
 ### Building the Package
 
 ```bash
-# Build distribution packages
 python -m build
-
-# Install locally for testing
 pip install -e .
 ```
 

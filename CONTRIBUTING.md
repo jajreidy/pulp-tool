@@ -19,16 +19,11 @@ Thank you for your interest in contributing to Pulp Tool! This document provides
    cd pulp-tool
    ```
 
-3. Install the package in development mode with all dependencies:
+3. Install the package in development mode and set up pre-commit hooks:
    ```bash
-   pip install -e ".[dev]"
+   make install-dev
    ```
-
-4. Install pre-commit hooks (recommended):
-   ```bash
-   pip install pre-commit
-   pre-commit install
-   ```
+   This runs `pip install -e ".[dev]"` and `pre-commit install`.
 
 ### Using Development Scripts
 
@@ -65,10 +60,12 @@ We use [Black](https://black.readthedocs.io/) for code formatting with a line le
 
 ```bash
 # Format code
-black pulp_tool/ tests/
+make format
+# or: black pulp_tool/ tests/
 
 # Check formatting without changes
-black --check pulp_tool/ tests/
+make lint
+# or: black --check pulp_tool/ tests/
 ```
 
 ### Linting
@@ -86,7 +83,7 @@ make lint
 # Or individually:
 flake8 pulp_tool/ tests/
 pylint pulp_tool/ --errors-only
-mypy pulp_tool/
+mypy pulp_tool/ --show-error-codes
 ```
 
 ### Type Annotations
@@ -114,17 +111,14 @@ def my_function(client: "PulpClient", value: Optional[str] = None) -> bool:
 ### Running Tests
 
 ```bash
-# Run all tests
-pytest
+# Run all tests with coverage (preferred; enforces 85%+)
+make test
 
-# Run with coverage
-pytest --cov=pulp_tool --cov-report=html
+# Or with pytest directly
+pytest -v --tb=short --cov=pulp_tool --cov-report=term-missing --cov-fail-under=85
 
 # Run specific test file
-pytest tests/test_cli.py
-
-# Run with verbose output
-pytest -v
+pytest tests/test_cli.py -v
 
 # Run specific test markers
 pytest -m unit
@@ -134,7 +128,8 @@ pytest -m integration
 ### Test Requirements
 
 - All new code must include tests
-- Test coverage must remain above 85%
+- Overall test coverage must remain at or above 85%
+- New and changed lines must have 100% coverage (enforced in CI via diff coverage)
 - Tests should be fast and isolated
 - Use fixtures from `tests/conftest.py` when possible
 - Mark slow tests with `@pytest.mark.slow`
@@ -169,20 +164,20 @@ def test_upload_content_success():
 ### Before Submitting
 
 1. **Update CHANGELOG.md**: Add an entry describing your changes
-2. **Update documentation**: If adding features, update README.md or create docs
-3. **Run all checks**: Ensure `make check` passes
-4. **Write tests**: Add tests for new functionality
+2. **Update documentation**: If adding features, update README.md as needed
+3. **Run all checks**: Ensure `make check` passes (or run `make lint`, then `pre-commit run --all-files` twice, then `make test`)
+4. **Write tests**: Add tests for new functionality (new/changed code requires 100% diff coverage)
 5. **Update type hints**: Ensure all functions have proper type annotations
 
 ### PR Checklist
 
 - [ ] Code follows the project's style guidelines
-- [ ] All tests pass (`pytest`)
+- [ ] All tests pass (`make test`)
 - [ ] All linters pass (`make lint`)
-- [ ] Type checking passes (`mypy pulp_tool/`)
-- [ ] Test coverage is maintained or improved
+- [ ] Pre-commit hooks pass (`pre-commit run --all-files`, run twice after fixing issues)
+- [ ] Test coverage is maintained or improved (85%+ overall, 100% for new/changed lines)
 - [ ] CHANGELOG.md is updated
-- [ ] Documentation is updated if needed
+- [ ] Documentation (e.g. README.md) is updated if needed
 - [ ] Commits follow the commit message conventions
 
 ### Commit Messages
