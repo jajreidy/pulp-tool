@@ -1,6 +1,6 @@
 # Dockerfile for pulp-tool
 # Base image: Fedora 42
-FROM registry.fedoraproject.org/fedora:45@sha256:aa876fe181029ed960791834c8d35e673e91364c24e3972e386558131cb63d76
+FROM registry.fedoraproject.org/fedora:45@sha256:d6ba8c875958447d0c42020a54e87b9f25464bacbe2aa60d75be7a005465675e
 
 # Install Python 3 and pip
 RUN dnf install -y python3 python3-pip jq && dnf clean all
