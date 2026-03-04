@@ -10,7 +10,7 @@ import httpx
 
 from ..api import PulpClient
 from ..utils.error_handling import handle_generic_error
-from ..models.context import TransferContext
+from ..models.context import PullContext
 from ..models.results import PulpResultsModel
 from ..models.repository import RepositoryRefs
 from ..models.artifacts import PulledArtifacts
@@ -38,9 +38,9 @@ def _upload_sboms_and_logs(
         upload_count = 0
         errors = []
 
-        logging.info("Uploading %d SBOM file(s)", len(sbom_items))
+        logging.warning("Uploading %d SBOM file(s)", len(sbom_items))
         for name, artifact in sbom_items:
-            logging.info("Uploading SBOM: %s", name)
+            logging.warning("Uploading SBOM: %s", name)
             try:
                 pulp_client.create_file_content(
                     repositories.sbom_prn,
@@ -63,9 +63,9 @@ def _upload_sboms_and_logs(
         upload_count = 0
         errors = []
 
-        logging.info("Uploading %d log file(s)", len(log_items))
+        logging.warning("Uploading %d log file(s)", len(log_items))
         for name, artifact in log_items:
-            logging.info("Uploading log: %s", name)
+            logging.warning("Uploading log: %s", name)
             try:
                 # Extract arch from labels for relative path construction
                 arch = artifact.labels.get("arch")
@@ -109,7 +109,7 @@ def _upload_rpms_to_repository(
         for artifact_info in pulled_artifacts.rpms.values()
     ]
 
-    logging.info("Uploading %d RPM file(s)", len(rpm_infos))
+    logging.warning("Uploading %d RPM file(s)", len(rpm_infos))
 
     # Upload all RPMs in parallel using the consolidated function
     rpm_artifacts = upload_rpms_parallel(pulp_client, rpm_infos)
@@ -127,7 +127,7 @@ def _upload_rpms_to_repository(
 
 
 def upload_downloaded_files_to_pulp(
-    pulp_client: PulpClient, pulled_artifacts: PulledArtifacts, args: TransferContext
+    pulp_client: PulpClient, pulled_artifacts: PulledArtifacts, args: PullContext
 ) -> PulpResultsModel:
     """
     Upload downloaded files to the appropriate Pulp repositories.
@@ -135,7 +135,7 @@ def upload_downloaded_files_to_pulp(
     Args:
         pulp_client: PulpClient instance for API interactions
         pulled_artifacts: Dictionary containing downloaded artifacts organized by type
-        args: Transfer context with command arguments
+        args: Pull context with command arguments
 
     Returns:
         PulpResultsModel containing upload information including repository details

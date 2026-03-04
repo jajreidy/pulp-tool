@@ -111,9 +111,9 @@ def _upload_logs_sequential(
         labels: Labels to attach to the uploaded content
         arch: Architecture for the uploaded logs
     """
-    logging.info("Uploading %d log file(s) for %s", len(logs), arch)
+    logging.warning("Uploading %d log file(s) for %s", len(logs), arch)
     for log in logs:
-        logging.info("Uploading log: %s", os.path.basename(log))
+        logging.warning("Uploading log: %s", os.path.basename(log))
         upload_log(client, file_repository_prn, log, build_id=build_id, labels=labels, arch=arch)
 
 
@@ -137,7 +137,7 @@ def upload_artifacts_to_repository(
 
     for artifact_name, artifact_info in artifacts.items():
         try:
-            logging.info("Uploading %s: %s", file_type, artifact_name)
+            logging.warning("Uploading %s: %s", file_type, artifact_name)
 
             # Support both dict and ArtifactFile objects
             if isinstance(artifact_info, dict):
@@ -207,7 +207,7 @@ def upload_rpms(
         logging.debug("No new RPMs to upload for %s", arch)
         return []
 
-    logging.info("Uploading %d RPMs for %s", len(rpms), arch)
+    logging.warning("Uploading %d RPMs for %s", len(rpms), arch)
     labels = create_labels(context.build_id, arch, context.namespace, context.parent_package, date)
 
     # Upload RPMs in parallel
@@ -270,7 +270,7 @@ def upload_rpms_logs(
         logging.debug("No RPMs or logs found in %s", rpm_path)
         return RpmUploadResult()
 
-    logging.info("Processing %s: %d RPMs, %d logs", arch, len(rpms), len(logs))
+    logging.warning("Processing %s: %d RPMs, %d logs", arch, len(rpms), len(logs))
     labels = create_labels(context.build_id, arch, context.namespace, context.parent_package, date)
 
     # Store created resources from add_content operations
@@ -284,7 +284,7 @@ def upload_rpms_logs(
 
     # Upload logs sequentially
     if logs:
-        logging.info("Uploading %d logs for %s", len(logs), arch)
+        logging.warning("Uploading %d logs for %s", len(logs), arch)
         _upload_logs_sequential(
             client, logs, file_repository_prn=file_repository_prn, build_id=context.build_id, labels=labels, arch=arch
         )

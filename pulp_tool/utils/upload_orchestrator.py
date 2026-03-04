@@ -244,14 +244,14 @@ class UploadOrchestrator:
             rpm_glob_path = os.path.join(args.rpm_path, RPM_FILE_PATTERN)
             root_rpm_files = [p for p in glob.glob(rpm_glob_path) if os.path.isfile(p)]
             if root_rpm_files:
-                logging.info(
+                logging.warning(
                     "Found %d RPM(s) in base path %s (root-level), uploading by detected architecture",
                     len(root_rpm_files),
                     args.rpm_path,
                 )
                 rpms_by_arch = group_rpm_paths_by_arch(root_rpm_files)
                 for arch, rpm_list in rpms_by_arch.items():
-                    logging.info("Uploading %d root-level RPM(s) for architecture %s", len(rpm_list), arch)
+                    logging.warning("Uploading %d root-level RPM(s) for architecture %s", len(rpm_list), arch)
                     created_resources.extend(
                         upload_rpms(
                             rpm_list,
@@ -320,7 +320,7 @@ class UploadOrchestrator:
 
         # Upload RPMs
         if context.rpm_files:
-            logging.info("Uploading %d RPM file(s)", len(context.rpm_files))
+            logging.warning("Uploading %d RPM file(s)", len(context.rpm_files))
             rpms_by_arch = group_rpm_paths_by_arch(context.rpm_files, explicit_arch=context.arch)
 
             # Upload RPMs for each architecture
@@ -338,9 +338,9 @@ class UploadOrchestrator:
 
         # Upload generic files
         if context.file_files:
-            logging.info("Uploading %d generic file(s)", len(context.file_files))
+            logging.warning("Uploading %d generic file(s)", len(context.file_files))
             for file_path in context.file_files:
-                logging.info("Uploading file: %s", os.path.basename(file_path))
+                logging.warning("Uploading file: %s", os.path.basename(file_path))
                 labels = create_labels(
                     context.build_id, "", context.namespace, context.parent_package, context.date_str
                 )
@@ -359,9 +359,9 @@ class UploadOrchestrator:
 
         # Upload logs
         if context.log_files:
-            logging.info("Uploading %d log file(s)", len(context.log_files))
+            logging.warning("Uploading %d log file(s)", len(context.log_files))
             for log_path in context.log_files:
-                logging.info("Uploading log: %s", os.path.basename(log_path))
+                logging.warning("Uploading log: %s", os.path.basename(log_path))
                 log_arch = context.arch or detect_arch_from_filepath(log_path)
                 if not log_arch:
                     logging.warning(ARCH_DETECT_WARNING_MSG, os.path.basename(log_path))
@@ -379,9 +379,9 @@ class UploadOrchestrator:
 
         # Upload SBOMs
         if context.sbom_files:
-            logging.info("Uploading %d SBOM file(s)", len(context.sbom_files))
+            logging.warning("Uploading %d SBOM file(s)", len(context.sbom_files))
             for sbom_path in context.sbom_files:
-                logging.info("Uploading SBOM: %s", os.path.basename(sbom_path))
+                logging.warning("Uploading SBOM: %s", os.path.basename(sbom_path))
                 sbom_created_resources = upload_sbom(
                     client, context, repositories.sbom_prn, context.date_str, results_model, sbom_path
                 )

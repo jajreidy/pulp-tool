@@ -51,15 +51,15 @@ class UploadRpmContext(UploadContext):
     sbom_path: Optional[str] = None
 
 
-class TransferContext(KonfluxBaseModel):
+class PullContext(KonfluxBaseModel):
     """
-    Context information for transfer operations.
+    Context information for pull operations.
 
     Attributes:
         artifact_location: Path or URL to artifact metadata (can be generated from namespace+build_id)
         namespace: Optional namespace for auto-generating artifact URL (requires build_id and config)
         key_path: Optional path to SSL private key (required for remote URLs, can come from config)
-        config: Optional path to Pulp config file
+        config: Path to Pulp config file (from --transfer-dest or --config, used for upload dest and cert/key)
         build_id: Optional build identifier (can be used for override or with namespace for URL generation)
         debug: Verbosity level (0=WARNING, 1=INFO, 2=DEBUG, 3+=DEBUG with HTTP logs)
         max_workers: Maximum number of concurrent workers
@@ -159,7 +159,7 @@ class UploadFilesContext(UploadContext):
 __all__ = [
     "UploadContext",
     "UploadRpmContext",
-    "TransferContext",
+    "PullContext",
     "ArchUploadConfig",
     "UploadCallbacks",
     "UploadFilesContext",

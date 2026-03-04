@@ -2,26 +2,26 @@
 
 from unittest.mock import Mock, patch
 
-from pulp_tool.services.transfer_service import TransferService
+from pulp_tool.services.pull_service import PullService
 from pulp_tool.services.upload_service import UploadService
-from pulp_tool.models.context import TransferContext, UploadRpmContext
+from pulp_tool.models.context import PullContext, UploadRpmContext
 from pulp_tool.models.artifacts import ArtifactData, ArtifactJsonResponse
 
 
-class TestTransferService:
-    """Test TransferService class."""
+class TestPullService:
+    """Test PullService class."""
 
-    def test_transfer_service_init(self):
-        """Test TransferService initialization."""
-        service = TransferService()
+    def test_pull_service_init(self):
+        """Test PullService initialization."""
+        service = PullService()
         assert service is not None
 
-    @patch("pulp_tool.services.transfer_service.load_and_validate_artifacts")
-    @patch("pulp_tool.services.transfer_service.logging")
+    @patch("pulp_tool.services.pull_service.load_and_validate_artifacts")
+    @patch("pulp_tool.services.pull_service.logging")
     def test_load_artifacts(self, mock_logging, mock_load):
         """Test load_artifacts method."""
-        service = TransferService()
-        context = TransferContext(artifact_location="/test/path.json")
+        service = PullService()
+        context = PullContext(artifact_location="/test/path.json")
 
         mock_artifact_data = ArtifactData(
             artifact_json=ArtifactJsonResponse(artifacts={}, distributions={}),
@@ -36,12 +36,12 @@ class TestTransferService:
         # Verify logging calls were made
         assert mock_logging.info.call_count >= 2
 
-    @patch("pulp_tool.services.transfer_service.download_artifacts_concurrently")
-    @patch("pulp_tool.services.transfer_service.logging")
+    @patch("pulp_tool.services.pull_service.download_artifacts_concurrently")
+    @patch("pulp_tool.services.pull_service.logging")
     def test_download_artifacts(self, mock_logging, mock_download):
         """Test download_artifacts method."""
-        service = TransferService()
-        context = TransferContext(artifact_location="/test/path.json")
+        service = PullService()
+        context = PullContext(artifact_location="/test/path.json")
 
         mock_artifact_data = ArtifactData(
             artifact_json=ArtifactJsonResponse(artifacts={}, distributions={}),
@@ -62,12 +62,12 @@ class TestTransferService:
         # Verify logging calls were made
         assert mock_logging.info.call_count >= 2
 
-    @patch("pulp_tool.services.transfer_service.upload_downloaded_files_to_pulp")
-    @patch("pulp_tool.services.transfer_service.logging")
+    @patch("pulp_tool.services.pull_service.upload_downloaded_files_to_pulp")
+    @patch("pulp_tool.services.pull_service.logging")
     def test_upload_artifacts(self, mock_logging, mock_upload):
         """Test upload_artifacts method."""
-        service = TransferService()
-        context = TransferContext(artifact_location="/test/path.json")
+        service = PullService()
+        context = PullContext(artifact_location="/test/path.json")
 
         mock_client = Mock()
         mock_pulled_artifacts = Mock()
@@ -101,12 +101,12 @@ class TestTransferService:
         # Verify logging calls were made
         assert mock_logging.info.call_count >= 2
 
-    @patch("pulp_tool.services.transfer_service.setup_repositories_if_needed")
-    @patch("pulp_tool.services.transfer_service.logging")
+    @patch("pulp_tool.services.pull_service.setup_repositories_if_needed")
+    @patch("pulp_tool.services.pull_service.logging")
     def test_setup_destination_repositories_with_config(self, mock_logging, mock_setup):
         """Test setup_destination_repositories with config."""
-        service = TransferService()
-        context = TransferContext(artifact_location="/test/path.json", config="/test/config.toml")
+        service = PullService()
+        context = PullContext(artifact_location="/test/path.json", config="/test/config.toml")
 
         mock_client = Mock()
         mock_setup.return_value = mock_client
@@ -118,11 +118,11 @@ class TestTransferService:
         # Verify logging calls were made
         assert mock_logging.info.call_count >= 1
 
-    @patch("pulp_tool.services.transfer_service.logging")
+    @patch("pulp_tool.services.pull_service.logging")
     def test_setup_destination_repositories_without_config(self, mock_logging):
         """Test setup_destination_repositories without config."""
-        service = TransferService()
-        context = TransferContext(artifact_location="/test/path.json", config=None)
+        service = PullService()
+        context = PullContext(artifact_location="/test/path.json", config=None)
 
         result = service.setup_destination_repositories(context)
 
@@ -130,11 +130,11 @@ class TestTransferService:
         # Verify debug logging was called
         mock_logging.debug.assert_called_once()
 
-    @patch("pulp_tool.services.transfer_service.generate_transfer_report")
+    @patch("pulp_tool.services.pull_service.generate_pull_report")
     def test_generate_report(self, mock_report):
         """Test generate_report method."""
-        service = TransferService()
-        context = TransferContext(artifact_location="/test/path.json")
+        service = PullService()
+        context = PullContext(artifact_location="/test/path.json")
 
         mock_pulled_artifacts = Mock()
 

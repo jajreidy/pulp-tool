@@ -66,28 +66,16 @@ pulp-tool \
 #### Download Artifacts
 
 ```bash
-# Using config file for cert/key
-pulp-tool \
-  --config ~/.config/pulp/cli.toml \
-  transfer \
-  --artifact-location /path/to/artifacts.json
+# Using --transfer-dest for cert/key and upload destination
+pulp-tool pull \
+  --artifact-location /path/to/artifacts.json \
+  --transfer-dest ~/.config/pulp/cli.toml
 
 # Using CLI options for cert/key
-pulp-tool transfer \
+pulp-tool pull \
   --artifact-location /path/to/artifacts.json \
   --cert-path /path/to/cert.pem \
   --key-path /path/to/key.pem
-```
-
-#### Download Repository Configuration File
-
-```bash
-# No config file needed! Use base_url and namespace directly
-pulp-tool get-repo-md \
-  --base-url https://pulp.example.com \
-  --namespace my-tenant \
-  --build-id my-build-123 \
-  --repo_type rpms
 ```
 
 #### Create Repository
@@ -131,7 +119,7 @@ pulp-tool create-repository \
 ```bash
 pulp-tool --help              # General help
 pulp-tool upload --help       # Upload command help
-pulp-tool transfer --help     # Transfer command help
+pulp-tool pull --help         # Pull command help
 pulp-tool create-repository --help  # Create repository help
 pulp-tool --version           # Show version
 ```
@@ -177,7 +165,7 @@ The package uses Pydantic for type-safe data handling:
 from pulp_tool.models import (
     RepositoryRefs,
     UploadContext,
-    TransferContext,
+    PullContext,
     ArtifactMetadata,
     PulpResultsModel
 )
@@ -284,7 +272,7 @@ verbose = 0
 
 ## CLI Reference
 
-The `pulp-tool` command provides a modern Click-based interface with four main subcommands: `upload`, `upload-files`, `transfer`, and `create-repository`.
+The `pulp-tool` command provides a modern Click-based interface with four main subcommands: `upload`, `upload-files`, `pull`, and `create-repository`.
 
 ### Upload Command
 
@@ -395,7 +383,7 @@ pulp-tool \
   --sbom-results /path/to/write/sbom-results
 ```
 
-### Transfer Command
+### Pull Command
 
 Download artifacts from Pulp distributions and optionally re-upload to Pulp repositories.
 
@@ -403,16 +391,16 @@ Download artifacts from Pulp distributions and optionally re-upload to Pulp repo
 - `--artifact-location`: Path to local artifact metadata JSON file or HTTP URL. Mutually exclusive with `--build-id` + `--namespace`.
 
 **Optional Arguments (conditionally required):**
-- `--build-id` + `--namespace`: Alternative to `--artifact-location`. Both must be provided together, and `--config` is required. The artifact location will be auto-generated from these values.
-- `--cert-path`: Path to SSL certificate file for authentication (optional, can come from config)
-- `--key-path`: Path to SSL private key file for authentication (optional, can come from config)
-- `--config`: Path to Pulp CLI config file (required when using `--build-id` + `--namespace`, optional otherwise. If supplied, will transfer to this config domain and use cert/key from config)
-- `--content-types`: Comma-separated list of content types to transfer (rpm, log, sbom). If not specified, all types are transferred.
-- `--archs`: Comma-separated list of architectures to transfer (e.g., x86_64,aarch64,noarch). If not specified, all architectures are transferred.
+- `--build-id` + `--namespace`: Alternative to `--artifact-location`. Both must be provided together. Either `--transfer-dest` or `--config` is required. The artifact location will be auto-generated from these values.
+- `--cert-path`: Path to SSL certificate file for authentication (optional, can come from --transfer-dest or --config)
+- `--key-path`: Path to SSL private key file for authentication (optional, can come from --transfer-dest or --config)
+- `--transfer-dest`: Path to Pulp config file for transfer destination (required when using `--build-id` + `--namespace` unless `--config` is used, optional otherwise. If supplied, will upload to this config domain and use cert/key from config)
+- `--content-types`: Comma-separated list of content types to pull (rpm, log, sbom). If not specified, all types are pulled.
+- `--archs`: Comma-separated list of architectures to pull (e.g., x86_64,aarch64,noarch). If not specified, all architectures are pulled.
 - `--max-workers`: Maximum number of concurrent download threads (default: 4)
 - `-d, --debug`: Increase verbosity (use `-d` for INFO, `-dd` for DEBUG, `-ddd` for DEBUG with HTTP logs)
 
-**Note:** For remote URLs (`http://` or `https://`), both `--cert-path` and `--key-path` are required (or must be provided via `--config`).
+**Note:** For remote URLs (`http://` or `https://`), both `--cert-path` and `--key-path` are required (or must be provided via `--transfer-dest` or `--config`).
 
 **File Path Behavior:**
 When downloading artifacts, files are saved with the following structure:
@@ -422,40 +410,46 @@ When downloading artifacts, files are saved with the following structure:
 
 **Example:**
 ```bash
-# Download all artifacts (cert/key from config file)
-pulp-tool \
-  --config ~/.config/pulp/cli.toml \
+# Download all artifacts (cert/key from --transfer-dest config)
+pulp-tool pull \
+  --artifact-location https://example.com/artifacts.json \
+  --transfer-dest ~/.config/pulp/cli.toml \
   --max-workers 4 \
-  -dd \
-  transfer \
-  --artifact-location https://example.com/artifacts.json
+  -dd
 
 # Download all artifacts (cert/key from CLI options)
-pulp-tool \
-  --max-workers 4 \
-  -dd \
-  transfer \
+pulp-tool pull \
   --artifact-location https://example.com/artifacts.json \
   --cert-path /etc/pki/tls/certs/client.cert \
-  --key-path /etc/pki/tls/private/client.key
+  --key-path /etc/pki/tls/private/client.key \
+  --max-workers 4 \
+  -dd
 
 # Download only RPMs for specific architectures
-pulp-tool \
-  --config ~/.config/pulp/cli.toml \
-  transfer \
+pulp-tool pull \
   --artifact-location https://example.com/artifacts.json \
+  --transfer-dest ~/.config/pulp/cli.toml \
   --cert-path /etc/pki/tls/certs/client.cert \
   --key-path /etc/pki/tls/private/client.key \
   --content-types rpm \
   --archs x86_64,aarch64
 
 # Download using build-id + namespace (artifact location auto-generated)
+# Using --transfer-dest
+pulp-tool \
+  --build-id my-build-123 \
+  --namespace my-namespace \
+  pull \
+  --transfer-dest ~/.config/pulp/cli.toml \
+  --max-workers 4
+
+# Or using group-level --config
 pulp-tool \
   --config ~/.config/pulp/cli.toml \
   --build-id my-build-123 \
   --namespace my-namespace \
-  --max-workers 4 \
-  transfer
+  pull \
+  --max-workers 4
 ```
 
 ### Create Repository Command
@@ -663,7 +657,7 @@ Specialized client for downloading artifacts from Pulp distributions using certi
   - RPM files: saved to current folder
   - SBOM files: saved to current folder
   - Log files: saved to `logs/<arch>/` directory
-- `pull_data_async()`: Asynchronously download artifacts (used internally by transfer command)
+- `pull_data_async()`: Asynchronously download artifacts (used internally by pull command)
 - Handles SSL/TLS with client certificates
 - Returns httpx Response objects for metadata, file paths for downloaded files
 
@@ -683,7 +677,7 @@ Specialized client for downloading artifacts from Pulp distributions using certi
 
 - `RepositoryRefs`: References to repositories (rpms_href, logs_href, sbom_href, etc.)
 - `UploadContext`: Type-safe context for upload operations
-- `TransferContext`: Type-safe context for transfer operations
+- `PullContext`: Type-safe context for pull operations
 - `ArtifactMetadata`: Artifact metadata with labels and digests
 - `PulpResultsModel`: Unified upload tracking and results building
 - `PulledArtifacts`: Downloaded artifact organization

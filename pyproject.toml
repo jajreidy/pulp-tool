@@ -171,7 +171,7 @@ module = "pulp_tool.utils.*"
 disable_error_code = ["attr-defined"]
 
 [[tool.mypy.overrides]]
-module = "pulp_tool.transfer.*"
+module = "pulp_tool.pull.*"
 disable_error_code = ["attr-defined"]
 
 [[tool.mypy.overrides]]
