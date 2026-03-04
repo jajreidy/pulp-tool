@@ -22,7 +22,7 @@ from pulp_tool.models.repository import RepositoryRefs
 from pulp_tool.models.context import (
     UploadContext,
     UploadRpmContext,
-    TransferContext,
+    PullContext,
 )
 from pulp_tool.models.artifacts import (
     DownloadTask,
@@ -154,12 +154,12 @@ class TestUploadRpmContext:
         assert context.sbom_results == "/path/to/sbom_results.txt"
 
 
-class TestTransferContext:
-    """Test TransferContext model."""
+class TestPullContext:
+    """Test PullContext model."""
 
-    def test_create_transfer_context_minimal(self):
-        """Test creating TransferContext with minimal required fields."""
-        context = TransferContext(
+    def test_create_pull_context_minimal(self):
+        """Test creating PullContext with minimal required fields."""
+        context = PullContext(
             artifact_location="https://example.com/artifacts.json",
         )
 
@@ -170,9 +170,9 @@ class TestTransferContext:
         assert context.max_workers == 10
         assert context.debug == 0
 
-    def test_create_transfer_context_full(self):
-        """Test creating TransferContext with all fields."""
-        context = TransferContext(
+    def test_create_pull_context_full(self):
+        """Test creating PullContext with all fields."""
+        context = PullContext(
             artifact_location="https://example.com/artifacts.json",
             key_path="/path/to/key.pem",
             config="/path/to/config.toml",
@@ -800,7 +800,7 @@ class TestModelValidation:
 
     def test_default_values(self):
         """Test that default values work correctly."""
-        context = TransferContext(
+        context = PullContext(
             artifact_location="test",
             key_path="/path/to/key.pem",
         )

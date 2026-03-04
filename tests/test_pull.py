@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Tests for pulp_transfer.py module.
+Tests for pulp_tool.pull module.
 """
 
 import json
@@ -18,7 +18,7 @@ from httpx import HTTPError
 from pulp_tool.api import DistributionClient
 from pulp_tool.models.artifacts import ArtifactFile, PulledArtifacts
 from pulp_tool.models.results import PulpResultsModel
-from pulp_tool.transfer import (
+from pulp_tool.pull import (
     _categorize_artifacts,
     download_artifacts_concurrently,
     load_and_validate_artifacts,
@@ -26,7 +26,7 @@ from pulp_tool.transfer import (
     setup_repositories_if_needed,
     upload_downloaded_files_to_pulp,
 )
-from pulp_tool.transfer.reporting import (
+from pulp_tool.pull.reporting import (
     _calculate_artifact_totals,
     _extract_artifact_info,
     _format_download_summary,
@@ -37,11 +37,11 @@ from pulp_tool.transfer.reporting import (
     _log_pulp_upload_info,
     _log_single_artifact,
     _log_storage_summary,
-    _log_transfer_summary,
+    _log_pull_summary,
     _log_upload_summary,
-    generate_transfer_report,
+    generate_pull_report,
 )
-from pulp_tool.transfer.upload import (
+from pulp_tool.pull.upload import (
     _upload_rpms_to_repository,
     _upload_sboms_and_logs,
 )
@@ -206,9 +206,9 @@ class TestRepositoryManagement:
         args.build_id = "test-build"
 
         with (
-            patch("pulp_tool.transfer.download.PulpClient.create_from_config_file") as mock_create,
-            patch("pulp_tool.transfer.download.determine_build_id", return_value="test-build"),
-            patch("pulp_tool.transfer.download.PulpHelper") as mock_helper,
+            patch("pulp_tool.pull.download.PulpClient.create_from_config_file") as mock_create,
+            patch("pulp_tool.pull.download.determine_build_id", return_value="test-build"),
+            patch("pulp_tool.pull.download.PulpHelper") as mock_helper,
         ):
 
             mock_client = Mock()
@@ -441,7 +441,7 @@ class TestUploadFunctionality:
         # Mock create_file_content method to raise an exception
         with (
             patch.object(mock_pulp_client, "create_file_content", side_effect=ValueError("SBOM upload failed")),
-            patch("pulp_tool.transfer.upload.logging") as mock_logging,
+            patch("pulp_tool.pull.upload.logging") as mock_logging,
         ):
             _upload_sboms_and_logs(mock_pulp_client, pulled_artifacts, repositories, upload_info)
 
@@ -471,7 +471,7 @@ class TestUploadFunctionality:
         # Mock create_file_content method to raise an exception
         with (
             patch.object(mock_pulp_client, "create_file_content", side_effect=ValueError("Log upload failed")),
-            patch("pulp_tool.transfer.upload.logging") as mock_logging,
+            patch("pulp_tool.pull.upload.logging") as mock_logging,
         ):
             _upload_sboms_and_logs(mock_pulp_client, pulled_artifacts, repositories, upload_info)
 
@@ -500,7 +500,7 @@ class TestUploadFunctionality:
 
         # Mock upload_rpms_parallel to return artifacts
         with (
-            patch("pulp_tool.transfer.upload.upload_rpms_parallel") as mock_upload_rpms,
+            patch("pulp_tool.pull.upload.upload_rpms_parallel") as mock_upload_rpms,
             patch("pulp_tool.utils.error_handling.logging") as mock_logging,
             patch("builtins.open", mock_open(read_data=b"fake rpm content")),
         ):
@@ -649,8 +649,8 @@ class TestUploadFunctionality:
 
             with (
                 patch("pulp_tool.utils.determine_build_id", return_value="test"),
-                patch("pulp_tool.transfer.upload._upload_sboms_and_logs") as mock_upload_sboms,
-                patch("pulp_tool.transfer.upload._upload_rpms_to_repository") as mock_upload_rpms,
+                patch("pulp_tool.pull.upload._upload_sboms_and_logs") as mock_upload_sboms,
+                patch("pulp_tool.pull.upload._upload_rpms_to_repository") as mock_upload_rpms,
                 patch.object(mock_pulp_client, "wait_for_finished_task") as mock_wait,
                 patch("pulp_tool.utils.PulpHelper.setup_repositories", return_value=mock_repositories),
             ):
@@ -667,16 +667,16 @@ class TestUploadFunctionality:
 class TestLoggingAndReporting:
     """Test logging and reporting functionality."""
 
-    def test_log_transfer_summary(self):
-        """Test transfer summary logging."""
+    def test_log_pull_summary(self):
+        """Test pull summary logging."""
         args = Mock()
         args.artifact_location = "test.json"
         args.max_workers = 10
-        with patch("pulp_tool.transfer.reporting.logging") as mock_logging:
-            _log_transfer_summary(10, 2, args)
+        with patch("pulp_tool.pull.reporting.logging") as mock_logging:
+            _log_pull_summary(10, 2, args)
 
             # Check the concise summary message (with failures)
-            mock_logging.info.assert_called_once_with("Transfer: %d/%d successful (%d failed)", 10, 12, 2)
+            mock_logging.info.assert_called_once_with("Pull: %d/%d successful (%d failed)", 10, 12, 2)
             # Check DEBUG messages for details
             mock_logging.debug.assert_any_call("Source: %s", "test.json")
             mock_logging.debug.assert_any_call("Max workers: %d", 10)
@@ -740,7 +740,7 @@ class TestLoggingAndReporting:
         pulled_artifacts.sboms["test1.sbom"] = ArtifactFile(file="/tmp/test1.sbom", labels={})
         pulled_artifacts.sboms["test2.sbom"] = ArtifactFile(file="/tmp/test2.sbom", labels={})
 
-        with patch("pulp_tool.transfer.reporting.logging") as mock_logging:
+        with patch("pulp_tool.pull.reporting.logging") as mock_logging:
 
             _log_storage_summary(total_files, pulled_artifacts)
 
@@ -768,7 +768,7 @@ class TestLoggingAndReporting:
         upload_info.add_error("Error 1")
         upload_info.add_error("Error 2")
 
-        with patch("pulp_tool.transfer.reporting.logging") as mock_logging:
+        with patch("pulp_tool.pull.reporting.logging") as mock_logging:
             _log_pulp_upload_info(upload_info)
 
             # Check concise INFO message
@@ -785,7 +785,7 @@ class TestLoggingAndReporting:
 
     def test_log_pulp_upload_info_without_upload_info(self):
         """Test logging Pulp upload info when upload_info is None."""
-        with patch("pulp_tool.transfer.reporting.logging") as mock_logging:
+        with patch("pulp_tool.pull.reporting.logging") as mock_logging:
             _log_pulp_upload_info(None)
 
             # When upload_info is None, nothing is logged
@@ -802,7 +802,7 @@ class TestLoggingAndReporting:
             "test2.rpm", "/tmp/test2.rpm", {"build_id": "build2", "namespace": "ns2", "arch": "aarch64"}
         )
 
-        with patch("pulp_tool.transfer.reporting.logging") as mock_logging:
+        with patch("pulp_tool.pull.reporting.logging") as mock_logging:
             _log_build_information(pulled_artifacts)
 
             # Build information now uses DEBUG level
@@ -816,7 +816,7 @@ class TestLoggingAndReporting:
         pulled_artifacts = PulledArtifacts()
         pulled_artifacts.add_rpm("test1.rpm", "/tmp/test1.rpm", {"build_id": "build1"})
 
-        with patch("pulp_tool.transfer.reporting.logging") as mock_logging:
+        with patch("pulp_tool.pull.reporting.logging") as mock_logging:
             _log_build_information(pulled_artifacts)
 
             # Should not log architectures if empty
@@ -841,7 +841,7 @@ class TestLoggingAndReporting:
         upload_info.uploaded_counts.sboms = 0
         upload_info.uploaded_counts.logs = 0
 
-        with patch("pulp_tool.transfer.reporting.logging") as mock_logging:
+        with patch("pulp_tool.pull.reporting.logging") as mock_logging:
             _log_upload_summary(upload_info)
 
             # Should log warning and return early
@@ -868,7 +868,7 @@ class TestLoggingAndReporting:
         upload_info.uploaded_counts.sboms = 2  # Plural
         upload_info.uploaded_counts.logs = 1  # Singular
 
-        with patch("pulp_tool.transfer.reporting.logging") as mock_logging:
+        with patch("pulp_tool.pull.reporting.logging") as mock_logging:
             _log_upload_summary(upload_info)
 
             # Should log warning with parts and domain
@@ -896,7 +896,7 @@ class TestLoggingAndReporting:
         upload_info = PulpResultsModel(build_id="test-build", repositories=repositories)
         upload_info.uploaded_counts.rpms = 1
 
-        with patch("pulp_tool.transfer.reporting.logging") as mock_logging:
+        with patch("pulp_tool.pull.reporting.logging") as mock_logging:
             _log_upload_summary(upload_info)
 
             # Should extract domain from PRN
@@ -919,23 +919,23 @@ class TestLoggingAndReporting:
         upload_info = PulpResultsModel(build_id="test-build", repositories=repositories)
         upload_info.uploaded_counts.rpms = 1
 
-        with patch("pulp_tool.transfer.reporting.logging") as mock_logging:
+        with patch("pulp_tool.pull.reporting.logging") as mock_logging:
             _log_upload_summary(upload_info)
 
             call_args = mock_logging.warning.call_args[0]
             assert call_args[2] == "unknown"
 
-    def test_log_transfer_summary_no_failures(self):
-        """Test _log_transfer_summary with no failures (line 59)."""
+    def test_log_pull_summary_no_failures(self):
+        """Test _log_pull_summary with no failures (line 59)."""
         args = Mock()
         args.artifact_location = "test.json"
         args.max_workers = 10
 
-        with patch("pulp_tool.transfer.reporting.logging") as mock_logging:
-            _log_transfer_summary(10, 0, args)
+        with patch("pulp_tool.pull.reporting.logging") as mock_logging:
+            _log_pull_summary(10, 0, args)
 
             # Should use the no-failures message
-            mock_logging.info.assert_any_call("Transfer: %d artifacts successful", 10)
+            mock_logging.info.assert_any_call("Pull: %d artifacts successful", 10)
 
     def test_format_file_size_zero(self):
         """Test _format_file_size with 0 bytes (line 98)."""
@@ -959,7 +959,7 @@ class TestLoggingAndReporting:
             labels={"build_id": "test-build", "arch": "x86_64", "namespace": "test-ns"},
         )
 
-        with patch("pulp_tool.transfer.reporting.logging") as mock_logging, patch("os.path.getsize", return_value=1024):
+        with patch("pulp_tool.pull.reporting.logging") as mock_logging, patch("os.path.getsize", return_value=1024):
             file_size = _log_single_artifact("test.rpm", artifact_data)
 
             assert file_size == 1024
@@ -974,7 +974,7 @@ class TestLoggingAndReporting:
         """Test _log_single_artifact without labels (lines 144-146)."""
         artifact_data = ArtifactFile(file="/tmp/test.rpm", labels={})
 
-        with patch("pulp_tool.transfer.reporting.logging") as mock_logging, patch("os.path.getsize", return_value=512):
+        with patch("pulp_tool.pull.reporting.logging") as mock_logging, patch("os.path.getsize", return_value=512):
             file_size = _log_single_artifact("test.rpm", artifact_data)
 
             assert file_size == 512
@@ -988,7 +988,7 @@ class TestLoggingAndReporting:
         pulled_artifacts.add_rpm("test1.rpm", "/tmp/test1.rpm", {})
         pulled_artifacts.add_rpm("test2.rpm", "/tmp/test2.rpm", {})
 
-        with patch("pulp_tool.transfer.reporting._log_single_artifact") as mock_log:
+        with patch("pulp_tool.pull.reporting._log_single_artifact") as mock_log:
             mock_log.side_effect = [1024, 2048]  # Return sizes for two artifacts
 
             total_files, total_size = _calculate_artifact_totals(pulled_artifacts)
@@ -1021,9 +1021,9 @@ class TestLoggingAndReporting:
         pulled_artifacts.add_rpm("test.rpm", "/tmp/test.rpm", {})
 
         with (
-            patch("pulp_tool.transfer.reporting._calculate_artifact_totals", return_value=(1, 1024)),
-            patch("pulp_tool.transfer.reporting._format_download_summary", return_value="Downloaded: 1 RPM (1.0 KB)"),
-            patch("pulp_tool.transfer.reporting.logging") as mock_logging,
+            patch("pulp_tool.pull.reporting._calculate_artifact_totals", return_value=(1, 1024)),
+            patch("pulp_tool.pull.reporting._format_download_summary", return_value="Downloaded: 1 RPM (1.0 KB)"),
+            patch("pulp_tool.pull.reporting.logging") as mock_logging,
         ):
             total_files, total_size = _log_artifacts_downloaded(pulled_artifacts)
 
@@ -1035,7 +1035,7 @@ class TestLoggingAndReporting:
         """Test _log_storage_summary with zero files (line 254)."""
         pulled_artifacts = PulledArtifacts()
 
-        with patch("pulp_tool.transfer.reporting.logging") as mock_logging:
+        with patch("pulp_tool.pull.reporting.logging") as mock_logging:
             _log_storage_summary(0, pulled_artifacts)
 
             # Should return early without logging
@@ -1059,14 +1059,14 @@ class TestLoggingAndReporting:
         upload_info.uploaded_counts.sboms = 0
         upload_info.uploaded_counts.logs = 0
 
-        with patch("pulp_tool.transfer.reporting.logging") as mock_logging:
+        with patch("pulp_tool.pull.reporting.logging") as mock_logging:
             _log_pulp_upload_info(upload_info)
 
             # Should log "No files uploaded to Pulp"
             mock_logging.info.assert_any_call("No files uploaded to Pulp")
 
-    def test_generate_transfer_report(self):
-        """Test generate_transfer_report (lines 330-334, 336)."""
+    def test_generate_pull_report(self):
+        """Test generate_pull_report (lines 330-334, 336)."""
         pulled_artifacts = PulledArtifacts()
         pulled_artifacts.add_rpm("test.rpm", "/tmp/test.rpm", {"build_id": "test-build"})
 
@@ -1075,21 +1075,21 @@ class TestLoggingAndReporting:
         args.max_workers = 4
 
         with (
-            patch("pulp_tool.transfer.reporting._log_transfer_summary") as mock_transfer,
-            patch("pulp_tool.transfer.reporting._log_artifacts_downloaded", return_value=(1, 1024)) as mock_artifacts,
-            patch("pulp_tool.transfer.reporting._log_storage_summary") as mock_storage,
-            patch("pulp_tool.transfer.reporting._log_pulp_upload_info") as mock_upload,
-            patch("pulp_tool.transfer.reporting._log_build_information") as mock_build,
-            patch("pulp_tool.transfer.reporting.logging") as mock_logging,
+            patch("pulp_tool.pull.reporting._log_pull_summary") as mock_transfer,
+            patch("pulp_tool.pull.reporting._log_artifacts_downloaded", return_value=(1, 1024)) as mock_artifacts,
+            patch("pulp_tool.pull.reporting._log_storage_summary") as mock_storage,
+            patch("pulp_tool.pull.reporting._log_pulp_upload_info") as mock_upload,
+            patch("pulp_tool.pull.reporting._log_build_information") as mock_build,
+            patch("pulp_tool.pull.reporting.logging") as mock_logging,
         ):
-            generate_transfer_report(pulled_artifacts, 1, 0, args, None)
+            generate_pull_report(pulled_artifacts, 1, 0, args, None)
 
             mock_transfer.assert_called_once_with(1, 0, args)
             mock_artifacts.assert_called_once_with(pulled_artifacts)
             mock_storage.assert_called_once_with(1, pulled_artifacts)
             mock_upload.assert_called_once_with(None)
             mock_build.assert_called_once_with(pulled_artifacts)
-            mock_logging.info.assert_any_call("Transfer completed successfully")
+            mock_logging.info.assert_any_call("Pull completed successfully")
 
 
 class TestClientInitialization:
@@ -1109,7 +1109,7 @@ class TestClientInitialization:
 
         mock_client = Mock()
 
-        with patch("pulp_tool.transfer.load_artifact_metadata") as mock_load:
+        with patch("pulp_tool.pull.load_artifact_metadata") as mock_load:
             mock_load.side_effect = FileNotFoundError("File not found")
 
             with pytest.raises(FileNotFoundError):
@@ -1140,7 +1140,7 @@ class TestClientInitialization:
             artifacts_href="/pulp/api/v3/repositories/file/file/",
         )
 
-        with patch("pulp_tool.transfer.upload.PulpHelper") as mock_helper:
+        with patch("pulp_tool.pull.upload.PulpHelper") as mock_helper:
             mock_helper_instance = Mock()
             mock_helper_instance.setup_repositories.return_value = mock_repos
             mock_helper.return_value = mock_helper_instance
@@ -1150,7 +1150,7 @@ class TestClientInitialization:
 
 
 class TestTransferHelpers:
-    """Test transfer helper functions."""
+    """Test pull helper functions."""
 
     def test_categorize_artifacts(self):
         """Test artifact categorization by type."""
@@ -1212,22 +1212,22 @@ class TestSetupRepositories:
 
     def test_setup_repositories_adds_konflux_prefix(self, tmp_path, mock_config):
         """Test setup_repositories_if_needed adds konflux- prefix to domain."""
-        from pulp_tool.models.context import TransferContext
+        from pulp_tool.models.context import PullContext
 
         # Create config file with domain that doesn't have konflux- prefix
         config_file = tmp_path / "config.toml"
         config_file.write_text('[cli]\nbase_url = "https://pulp.example.com"\ndomain = "test-domain"')
 
-        args = TransferContext(
+        args = PullContext(
             config=str(config_file),
             build_id="test-build",
             namespace="test-namespace",
         )
 
         with (
-            patch("pulp_tool.transfer.download.PulpClient") as mock_client_class,
-            patch("pulp_tool.transfer.download.PulpHelper") as mock_helper_class,
-            patch("pulp_tool.transfer.download.logging") as mock_logging,
+            patch("pulp_tool.pull.download.PulpClient") as mock_client_class,
+            patch("pulp_tool.pull.download.PulpHelper") as mock_helper_class,
+            patch("pulp_tool.pull.download.logging") as mock_logging,
         ):
             mock_client = Mock()
             mock_client_class.create_from_config_file.return_value = mock_client
@@ -1249,22 +1249,22 @@ class TestSetupRepositories:
 
     def test_setup_repositories_preserves_existing_konflux_prefix(self, tmp_path, mock_config):
         """Test setup_repositories_if_needed preserves existing konflux- prefix."""
-        from pulp_tool.models.context import TransferContext
+        from pulp_tool.models.context import PullContext
 
         # Create config file with domain that already has konflux- prefix
         config_file = tmp_path / "config.toml"
         config_file.write_text('[cli]\nbase_url = "https://pulp.example.com"\ndomain = "konflux-test-domain"')
 
-        args = TransferContext(
+        args = PullContext(
             config=str(config_file),
             build_id="test-build",
             namespace="test-namespace",
         )
 
         with (
-            patch("pulp_tool.transfer.download.PulpClient") as mock_client_class,
-            patch("pulp_tool.transfer.download.PulpHelper") as mock_helper_class,
-            patch("pulp_tool.transfer.download.logging") as mock_logging,
+            patch("pulp_tool.pull.download.PulpClient") as mock_client_class,
+            patch("pulp_tool.pull.download.PulpHelper") as mock_helper_class,
+            patch("pulp_tool.pull.download.logging") as mock_logging,
         ):
             mock_client = Mock()
             mock_client_class.create_from_config_file.return_value = mock_client
@@ -1291,10 +1291,10 @@ class TestSetupRepositories:
         artifact_json = {"parent_package": "test-package"}
 
         with (
-            patch("pulp_tool.transfer.download.PulpClient.create_from_config_file") as mock_create,
-            patch("pulp_tool.transfer.download.determine_build_id", return_value="test-build"),
-            patch("pulp_tool.transfer.download.extract_metadata_from_artifact_json") as mock_extract,
-            patch("pulp_tool.transfer.download.PulpHelper") as mock_helper,
+            patch("pulp_tool.pull.download.PulpClient.create_from_config_file") as mock_create,
+            patch("pulp_tool.pull.download.determine_build_id", return_value="test-build"),
+            patch("pulp_tool.pull.download.extract_metadata_from_artifact_json") as mock_extract,
+            patch("pulp_tool.pull.download.PulpHelper") as mock_helper,
         ):
             mock_client = Mock()
             mock_create.return_value = mock_client

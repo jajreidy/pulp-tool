@@ -126,12 +126,12 @@ def upload_rpms_parallel(
         # Convert to tuple style for uniform processing
         # Type cast since we know rpms_to_upload is List[str] here
         rpm_infos = [(rpm_path, labels, arch) for rpm_path in rpms_to_upload]  # type: ignore
-        logging.info("Uploading %d RPM file(s) for %s", len(rpms_to_upload), arch)
+        logging.warning("Uploading %d RPM file(s) for %s", len(rpms_to_upload), arch)
     else:
         # New style - already in tuple format
         # Type cast since we know rpms_to_upload is List[Tuple[...]] here
         rpm_infos = rpms_to_upload  # type: ignore
-        logging.info("Uploading %d RPM file(s)", len(rpms_to_upload))
+        logging.warning("Uploading %d RPM file(s)", len(rpms_to_upload))
 
     artifacts = []
     with ThreadPoolExecutor(thread_name_prefix="upload_rpms", max_workers=DEFAULT_MAX_WORKERS) as executor:
@@ -142,7 +142,7 @@ def upload_rpms_parallel(
 
         for future in as_completed(futures):
             rpm_path = futures[future]
-            logging.info("Uploading RPM: %s", os.path.basename(rpm_path))
+            logging.warning("Uploading RPM: %s", os.path.basename(rpm_path))
             try:
                 artifact_href = future.result()
                 artifacts.append(artifact_href)

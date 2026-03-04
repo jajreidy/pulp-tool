@@ -1,7 +1,7 @@
 """
-Transfer service for high-level transfer operations.
+Pull service for high-level pull operations.
 
-This module provides a service layer that orchestrates transfer operations,
+This module provides a service layer that orchestrates pull operations,
 abstracting the complexity of downloading and optionally re-uploading artifacts.
 """
 
@@ -9,40 +9,38 @@ import logging
 from typing import Optional, TYPE_CHECKING
 
 from ..models.artifacts import ArtifactData, PulledArtifacts
-from ..models.context import TransferContext
+from ..models.context import PullContext
 from ..models.results import PulpResultsModel
 
 if TYPE_CHECKING:
     from ..api import DistributionClient, PulpClient
 
-from ..transfer import (
+from ..pull import (
     download_artifacts_concurrently,
-    generate_transfer_report,
+    generate_pull_report,
     load_and_validate_artifacts,
     setup_repositories_if_needed,
     upload_downloaded_files_to_pulp,
 )
 
 
-class TransferService:
+class PullService:
     """
-    High-level service for transfer operations.
+    High-level service for pull operations.
 
     This service provides a clean interface for downloading artifacts
     and optionally re-uploading them to destination repositories.
     """
 
     def __init__(self) -> None:
-        """Initialize the transfer service."""
+        """Initialize the pull service."""
 
-    def load_artifacts(
-        self, context: TransferContext, distribution_client: Optional["DistributionClient"]
-    ) -> ArtifactData:
+    def load_artifacts(self, context: PullContext, distribution_client: Optional["DistributionClient"]) -> ArtifactData:
         """
         Load and validate artifact metadata.
 
         Args:
-            context: Transfer context with artifact location
+            context: Pull context with artifact location
             distribution_client: Optional DistributionClient for remote URLs
 
         Returns:
@@ -60,7 +58,7 @@ class TransferService:
         self,
         artifact_data: ArtifactData,
         distribution_client: Optional["DistributionClient"],
-        context: TransferContext,
+        context: PullContext,
         max_workers: int,
     ) -> tuple[PulledArtifacts, int, int]:
         """
@@ -69,7 +67,7 @@ class TransferService:
         Args:
             artifact_data: Artifact metadata
             distribution_client: DistributionClient for downloading (required)
-            context: Transfer context with filters
+            context: Pull context with filters
             max_workers: Maximum number of concurrent workers
 
         Returns:
@@ -95,7 +93,7 @@ class TransferService:
         self,
         pulp_client: "PulpClient",
         pulled_artifacts: PulledArtifacts,
-        context: TransferContext,
+        context: PullContext,
     ) -> Optional[PulpResultsModel]:
         """
         Upload downloaded artifacts to Pulp repositories.
@@ -103,7 +101,7 @@ class TransferService:
         Args:
             pulp_client: PulpClient instance for destination repositories
             pulled_artifacts: Downloaded artifacts to upload
-            context: Transfer context with configuration
+            context: Pull context with configuration
 
         Returns:
             PulpResultsModel containing upload information, or None if upload skipped
@@ -114,13 +112,13 @@ class TransferService:
         return upload_info
 
     def setup_destination_repositories(
-        self, context: TransferContext, artifact_json: Optional[dict] = None
+        self, context: PullContext, artifact_json: Optional[dict] = None
     ) -> Optional["PulpClient"]:
         """
         Set up destination repositories if configuration is provided.
 
         Args:
-            context: Transfer context with configuration
+            context: Pull context with configuration
             artifact_json: Optional artifact metadata
 
         Returns:
@@ -141,20 +139,20 @@ class TransferService:
         pulled_artifacts: PulledArtifacts,
         completed: int,
         failed: int,
-        context: TransferContext,
+        context: PullContext,
         upload_info: Optional[PulpResultsModel] = None,
     ) -> None:
         """
-        Generate and display transfer report.
+        Generate and display pull report.
 
         Args:
             pulled_artifacts: Downloaded artifacts
             completed: Number of successful downloads
             failed: Number of failed downloads
-            context: Transfer context
+            context: Pull context
             upload_info: Optional upload information
         """
-        generate_transfer_report(pulled_artifacts, completed, failed, context, upload_info)
+        generate_pull_report(pulled_artifacts, completed, failed, context, upload_info)
 
 
-__all__ = ["TransferService"]
+__all__ = ["PullService"]

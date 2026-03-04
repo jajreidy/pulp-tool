@@ -1,8 +1,8 @@
 """
-Download operations for transferring artifacts from Pulp.
+Download operations for pulling artifacts from Pulp.
 
 This module handles downloading artifacts, loading metadata, and setting up
-repositories for transfer operations.
+repositories for pull operations.
 """
 
 import json
@@ -15,7 +15,7 @@ import httpx
 from ..api import DistributionClient, PulpClient
 from ..models.artifacts import ArtifactData, ArtifactJsonResponse, ArtifactMetadata, DownloadTask
 from ..models.results import DownloadResult
-from ..models.context import TransferContext
+from ..models.context import PullContext
 from ..utils import PulpHelper, determine_build_id, extract_metadata_from_artifact_json
 from ..utils.artifact_detection import categorize_artifacts_by_type
 from ..utils.config_manager import ConfigManager
@@ -88,12 +88,12 @@ def load_artifact_metadata(artifact_location: str, distribution_client: Optional
         raise
 
 
-def setup_repositories_if_needed(args: TransferContext, artifact_json=None) -> Optional[PulpClient]:
+def setup_repositories_if_needed(args: PullContext, artifact_json=None) -> Optional[PulpClient]:
     """
     Set up repositories using PulpClient if configuration is provided.
 
     Args:
-        args: Transfer context with command arguments
+        args: Pull context with command arguments
         artifact_json: Optional artifact metadata to extract build_id from
 
     Returns:
@@ -105,16 +105,16 @@ def setup_repositories_if_needed(args: TransferContext, artifact_json=None) -> O
 
     try:
         # Initialize Pulp client - domain will be read from config file
-        # Note: Transfer uses the DESTINATION domain from config, not the SOURCE domain from artifact_json
-        # For transfer operations, add "konflux-" prefix to the domain if not already present
+        # Note: Pull uses the DESTINATION domain from config, not the SOURCE domain from artifact_json
+        # For pull operations, add "konflux-" prefix to the domain if not already present
         config_manager = ConfigManager(args.config)
         config_manager.load()
         domain = config_manager.get("cli.domain", "")
         if domain and not domain.startswith("konflux-"):
             domain = f"konflux-{domain}"
-            logging.debug("Added 'konflux-' prefix to domain for transfer: %s", domain)
+            logging.debug("Added 'konflux-' prefix to domain for pull: %s", domain)
         elif domain:
-            logging.debug("Using domain for transfer (already has 'konflux-' prefix or empty): %s", domain)
+            logging.debug("Using domain for pull (already has 'konflux-' prefix or empty): %s", domain)
         client = PulpClient.create_from_config_file(path=args.config, domain=domain if domain else None)
 
         # Extract parent_package from artifact_json for proper distribution base_path
@@ -140,13 +140,11 @@ def setup_repositories_if_needed(args: TransferContext, artifact_json=None) -> O
         return None
 
 
-def load_and_validate_artifacts(
-    args: TransferContext, distribution_client: Optional[DistributionClient]
-) -> ArtifactData:
+def load_and_validate_artifacts(args: PullContext, distribution_client: Optional[DistributionClient]) -> ArtifactData:
     """Load artifact metadata and validate it contains artifacts.
 
     Args:
-        args: Transfer context with command arguments
+        args: Pull context with command arguments
         distribution_client: DistributionClient for loading metadata
 
     Returns:

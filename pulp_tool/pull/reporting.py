@@ -1,8 +1,8 @@
 """
-Reporting and logging utilities for transfer operations.
+Reporting and logging utilities for pull operations.
 
 This module provides comprehensive reporting and logging functions for
-transfer operations including download summaries, upload information,
+pull operations including download summaries, upload information,
 and build metadata.
 """
 
@@ -11,7 +11,7 @@ import os
 from typing import Any, Dict, Optional, Tuple, Union
 
 from ..models.artifacts import ArtifactFile, ArtifactMetadata, PulledArtifacts
-from ..models.context import TransferContext
+from ..models.context import PullContext
 from ..models.results import PulpResultsModel
 
 
@@ -50,13 +50,13 @@ def _log_upload_summary(upload_info: PulpResultsModel) -> None:
     )
 
 
-def _log_transfer_summary(completed: int, failed: int, args: TransferContext) -> None:
-    """Log transfer summary and source information."""
+def _log_pull_summary(completed: int, failed: int, args: PullContext) -> None:
+    """Log pull summary and source information."""
     total = completed + failed
     if failed > 0:
-        logging.info("Transfer: %d/%d successful (%d failed)", completed, total, failed)
+        logging.info("Pull: %d/%d successful (%d failed)", completed, total, failed)
     else:
-        logging.info("Transfer: %d artifacts successful", completed)
+        logging.info("Pull: %d artifacts successful", completed)
 
     logging.debug("Source: %s", args.artifact_location)
     logging.debug("Max workers: %d", args.max_workers)
@@ -310,34 +310,34 @@ def _log_build_information(pulled_artifacts: PulledArtifacts) -> None:
         logging.debug("Namespaces: %s", ", ".join(sorted(namespaces)))
 
 
-def generate_transfer_report(
+def generate_pull_report(
     pulled_artifacts: PulledArtifacts,
     completed: int,
     failed: int,
-    args: TransferContext,
+    args: PullContext,
     upload_info: Optional[PulpResultsModel] = None,
 ) -> None:
     """
-    Generate and display a comprehensive report of what was transferred and where it was stored.
+    Generate and display a comprehensive report of what was pulled and where it was stored.
 
     Args:
         pulled_artifacts: Dictionary containing all pulled artifacts organized by type
         completed: Number of successfully downloaded artifacts
         failed: Number of failed downloads
-        args: Transfer context with command arguments
+        args: Pull context with command arguments
         upload_info: Optional dictionary containing upload information from Pulp
     """
-    _log_transfer_summary(completed, failed, args)
+    _log_pull_summary(completed, failed, args)
     total_files, _ = _log_artifacts_downloaded(pulled_artifacts)
     _log_storage_summary(total_files, pulled_artifacts)
     _log_pulp_upload_info(upload_info)
     _log_build_information(pulled_artifacts)
 
-    logging.info("Transfer completed successfully")
+    logging.info("Pull completed successfully")
 
 
 __all__ = [
-    "generate_transfer_report",
+    "generate_pull_report",
     "_log_upload_summary",
     "_format_file_size",
 ]

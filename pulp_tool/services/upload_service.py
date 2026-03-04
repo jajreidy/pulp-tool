@@ -141,7 +141,7 @@ def upload_sbom(
         logging.error("SBOM file not found: %s", sbom_path)
         return []
 
-    logging.info("Uploading SBOM: %s", sbom_path)
+    logging.warning("Uploading SBOM: %s", sbom_path)
     labels = create_labels(context.build_id, "", context.namespace, context.parent_package, date)
     validate_file_path(sbom_path, "SBOM")
 

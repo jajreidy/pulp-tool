@@ -1,7 +1,7 @@
 """
-Transfer command for Pulp Tool CLI.
+Pull command for Pulp Tool CLI.
 
-This module provides the transfer command for downloading artifacts and optionally re-uploading to Pulp.
+This module provides the pull command for downloading artifacts and optionally re-uploading to Pulp.
 """
 
 import logging
@@ -13,10 +13,10 @@ import click
 import httpx
 
 from ..api import DistributionClient
-from ..models.context import TransferContext
-from ..transfer import (
+from ..models.context import PullContext
+from ..pull import (
     download_artifacts_concurrently,
-    generate_transfer_report,
+    generate_pull_report,
     load_and_validate_artifacts,
     setup_repositories_if_needed,
     upload_downloaded_files_to_pulp,
@@ -33,46 +33,55 @@ from ..utils.error_handling import handle_generic_error, handle_http_error
 )
 @click.option(
     "--content-types",
-    help=(
-        "Comma-separated list of content types to transfer (rpm,log,sbom). "
-        "If not specified, all types are transferred."
-    ),
+    help=("Comma-separated list of content types to pull (rpm,log,sbom). " "If not specified, all types are pulled."),
 )
 @click.option(
     "--archs",
     help=(
-        "Comma-separated list of architectures to transfer (e.g., x86_64,aarch64,noarch). "
-        "If not specified, all architectures are transferred."
+        "Comma-separated list of architectures to pull (e.g., x86_64,aarch64,noarch). "
+        "If not specified, all architectures are pulled."
     ),
 )
 @click.option(
     "--cert-path",
     type=click.Path(exists=True),
-    help="Path to SSL certificate file for authentication (optional, can come from config)",
+    help="Path to SSL certificate file for authentication (optional, can come from --transfer-dest or --config)",
 )
 @click.option(
     "--key-path",
     type=click.Path(exists=True),
-    help="Path to SSL private key file for authentication (optional, can come from config)",
+    help="Path to SSL private key file for authentication (optional, can come from --transfer-dest or --config)",
+)
+@click.option(
+    "--transfer-dest",
+    type=str,
+    help=(
+        "Path to Pulp config file for transfer destination "
+        "(required for --build-id + --namespace unless --config is used, optional for upload)"
+    ),
 )
 @click.pass_context
-def transfer(  # pylint: disable=too-many-positional-arguments
+def pull(  # pylint: disable=too-many-positional-arguments
     ctx: click.Context,
     artifact_location: Optional[str],
     content_types: Optional[str],
     archs: Optional[str],
     cert_path: Optional[str],
     key_path: Optional[str],
+    transfer_dest: Optional[str],
 ) -> None:
     """Download artifacts and optionally re-upload to Pulp repositories."""
     # Get shared options from context
-    namespace = ctx.obj["namespace"]
     config = ctx.obj["config"]
+    namespace = ctx.obj["namespace"]
     build_id = ctx.obj["build_id"]
     debug = ctx.obj["debug"]
     max_workers = ctx.obj["max_workers"]
 
     setup_logging(debug)
+
+    # Config can come from --transfer-dest or group-level --config (--transfer-dest takes precedence)
+    config_path = transfer_dest or config
 
     # Validate mutually exclusive options
     if artifact_location and (namespace or build_id):
@@ -86,12 +95,12 @@ def transfer(  # pylint: disable=too-many-positional-arguments
             click.echo("Error: Both --build-id and --namespace must be provided together", err=True)
             sys.exit(1)
 
-        if not config:
-            click.echo("Error: --config is required when using --build-id and --namespace", err=True)
+        if not config_path:
+            click.echo("Error: --transfer-dest or --config is required when using --build-id and --namespace", err=True)
             sys.exit(1)
 
         # Load config to get base_url
-        config_manager = ConfigManager(config)
+        config_manager = ConfigManager(config_path)
         config_manager.load()
         base_url = config_manager.get("cli.base_url")
 
@@ -107,10 +116,10 @@ def transfer(  # pylint: disable=too-many-positional-arguments
     content_types_list = [ct.strip() for ct in content_types.split(",")] if content_types else None
     archs_list = [arch.strip() for arch in archs.split(",")] if archs else None
 
-    # Get certificate paths from config if not provided via CLI
-    if config and (not cert_path or not key_path):
+    # Get certificate paths from config (--transfer-dest or --config) if not provided via CLI
+    if config_path and (not cert_path or not key_path):
         try:
-            config_manager = ConfigManager(config)
+            config_manager = ConfigManager(config_path)
             config_manager.load()
             if not cert_path:
                 loaded_cert = config_manager.get("cli.cert")
@@ -141,16 +150,16 @@ def transfer(  # pylint: disable=too-many-positional-arguments
     if is_remote and (not cert_path or not key_path):
         logging.error(
             "Certificate and key paths are required when artifact_location is a remote URL. "
-            "Provide them via --config, --cert-path, or --key-path."
+            "Provide them via --transfer-dest, --config, --cert-path, or --key-path."
         )
         sys.exit(1)
 
     # Create context object
-    args = TransferContext(
+    args = PullContext(
         artifact_location=artifact_location,
         namespace=namespace,
         key_path=key_path,
-        config=config,
+        config=config_path,
         build_id=build_id,
         debug=debug,
         max_workers=max_workers,
@@ -192,8 +201,8 @@ def transfer(  # pylint: disable=too-many-positional-arguments
         else:
             logging.info("No Pulp client available, skipping upload to repositories")
 
-        # Generate and display transfer report
-        generate_transfer_report(
+        # Generate and display pull report
+        generate_pull_report(
             download_result.pulled_artifacts, download_result.completed, download_result.failed, args, upload_info
         )
 
@@ -213,7 +222,7 @@ def transfer(  # pylint: disable=too-many-positional-arguments
             error_messages.append(f"{error_count} upload error(s) occurred")
 
         if has_errors:
-            logging.error("Transfer completed with errors:")
+            logging.error("Pull completed with errors:")
             for msg in error_messages:
                 logging.error("  - %s", msg)
             sys.exit(1)
@@ -221,10 +230,10 @@ def transfer(  # pylint: disable=too-many-positional-arguments
         logging.info("All operations completed successfully")
 
     except httpx.HTTPError as e:
-        handle_http_error(e, "transfer operation")
+        handle_http_error(e, "pull operation")
         sys.exit(1)
     except Exception as e:
-        handle_generic_error(e, "transfer operation")
+        handle_generic_error(e, "pull operation")
         sys.exit(1)
     finally:
         # Ensure pulp client session is properly closed if it was created
@@ -236,4 +245,4 @@ def transfer(  # pylint: disable=too-many-positional-arguments
             logging.debug("Distribution client session closed")
 
 
-__all__ = ["transfer"]
+__all__ = ["pull"]

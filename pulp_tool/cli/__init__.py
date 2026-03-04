@@ -9,7 +9,7 @@ from typing import Any, Callable, Optional, TypeVar
 
 import click
 
-from . import create_repository, transfer, upload, upload_files
+from . import create_repository, pull, upload, upload_files
 from .._version import __version__
 
 F = TypeVar("F", bound=Callable[..., Any])
@@ -82,7 +82,7 @@ def cli(
     debug: int,
     max_workers: int,
 ) -> None:
-    """Pulp Tool - Upload and transfer artifacts to/from Pulp repositories."""
+    """Pulp Tool - Upload and pull artifacts to/from Pulp repositories."""
     # Store shared options in context for subcommands to access
     ctx.ensure_object(dict)
     # Config can be a file path or base64-encoded content - pass directly to downstream code
@@ -96,7 +96,7 @@ def cli(
 # Register subcommands
 cli.add_command(upload.upload)
 cli.add_command(upload_files.upload_files)
-cli.add_command(transfer.transfer)
+cli.add_command(pull.pull)
 cli.add_command(create_repository.create_repository)
 
 

@@ -39,7 +39,7 @@ class TestCLIHelp:
         assert result.exit_code == 0
         assert "Pulp Tool" in result.output
         assert "upload" in result.output
-        assert "transfer" in result.output
+        assert "pull" in result.output
         assert "create-repository" in result.output
         # Check group-level options
         assert "--config" in result.output
@@ -55,7 +55,7 @@ class TestCLIHelp:
         assert result.exit_code == 0
         assert "Pulp Tool" in result.output
         assert "upload" in result.output
-        assert "transfer" in result.output
+        assert "pull" in result.output
         assert "create-repository" in result.output
         assert "-h, --help" in result.output
 
@@ -86,15 +86,16 @@ class TestCLIHelp:
         assert "--artifact-results" in result.output
         assert "--sbom-results" in result.output
 
-    def test_transfer_help(self):
-        """Test transfer command help output."""
+    def test_pull_help(self):
+        """Test pull command help output."""
         runner = CliRunner()
-        result = runner.invoke(cli, ["transfer", "--help"])
+        result = runner.invoke(cli, ["pull", "--help"])
         assert result.exit_code == 0
         assert "Download artifacts" in result.output
         assert "--artifact-location" in result.output
         assert "--content-types" in result.output
         assert "--archs" in result.output
+        assert "--transfer-dest" in result.output
         # Group-level options are not shown in command help
 
     def test_create_repository_help(self):
@@ -124,10 +125,10 @@ class TestCLIValidation:
         assert result.exit_code != 0
         assert "Missing option" in result.output or "required" in result.output.lower()
 
-    def test_transfer_missing_required_args(self):
-        """Test transfer command with missing required arguments."""
+    def test_pull_missing_required_args(self):
+        """Test pull command with missing required arguments."""
         runner = CliRunner()
-        result = runner.invoke(cli, ["transfer"], catch_exceptions=False, standalone_mode=False)
+        result = runner.invoke(cli, ["pull"], catch_exceptions=False, standalone_mode=False)
         assert result.exit_code != 0
 
     def test_create_repository_missing_required_args(self):
@@ -1476,32 +1477,32 @@ class TestUploadFilesCommand:
             assert "Use --artifact-results" in result.output
 
 
-class TestTransferCommand:
-    """Test transfer command functionality."""
+class TestPullCommand:
+    """Test pull command functionality."""
 
-    def test_transfer_missing_artifact_location_and_build_id(self):
-        """Test transfer with neither artifact_location nor build_id provided."""
+    def test_pull_missing_artifact_location_and_build_id(self):
+        """Test pull with neither artifact_location nor build_id provided."""
         runner = CliRunner()
-        result = runner.invoke(cli, ["transfer"])
+        result = runner.invoke(cli, ["pull"])
         assert result.exit_code == 1
         assert "Either --artifact-location OR" in result.output
 
-    def test_transfer_build_id_without_namespace(self):
-        """Test transfer with build_id but no namespace."""
+    def test_pull_build_id_without_namespace(self):
+        """Test pull with build_id but no namespace."""
         runner = CliRunner()
-        result = runner.invoke(cli, ["--build-id", "test-build", "transfer"])
+        result = runner.invoke(cli, ["--build-id", "test-build", "pull"])
         assert result.exit_code == 1
         assert "Both --build-id and --namespace must be provided" in result.output
 
-    def test_transfer_build_id_without_config(self):
-        """Test transfer with build_id+namespace but no config."""
+    def test_pull_build_id_without_config(self):
+        """Test pull with build_id+namespace but no --transfer-dest or --config."""
         runner = CliRunner()
-        result = runner.invoke(cli, ["--build-id", "test-build", "--namespace", "test-ns", "transfer"])
+        result = runner.invoke(cli, ["--build-id", "test-build", "--namespace", "test-ns", "pull"])
         assert result.exit_code == 1
-        assert "--config is required" in result.output
+        assert "transfer-dest" in result.output.lower() or "config" in result.output.lower()
 
-    def test_transfer_conflicting_options(self):
-        """Test transfer with both artifact_location and build_id."""
+    def test_pull_conflicting_options(self):
+        """Test pull with both artifact_location and build_id."""
         runner = CliRunner()
         result = runner.invoke(
             cli,
@@ -1510,7 +1511,7 @@ class TestTransferCommand:
                 "test-build",
                 "--namespace",
                 "test-ns",
-                "transfer",
+                "pull",
                 "--artifact-location",
                 "http://example.com/artifact.json",
             ],
@@ -1518,10 +1519,10 @@ class TestTransferCommand:
         assert result.exit_code == 1
         assert "Cannot use --artifact-location with --build-id" in result.output
 
-    @patch("pulp_tool.cli.transfer.load_and_validate_artifacts")
-    @patch("pulp_tool.cli.transfer.setup_repositories_if_needed")
-    @patch("pulp_tool.cli.transfer.download_artifacts_concurrently")
-    @patch("pulp_tool.cli.transfer.generate_transfer_report")
+    @patch("pulp_tool.cli.pull.load_and_validate_artifacts")
+    @patch("pulp_tool.cli.pull.setup_repositories_if_needed")
+    @patch("pulp_tool.cli.pull.download_artifacts_concurrently")
+    @patch("pulp_tool.cli.pull.generate_pull_report")
     def test_transfer_with_local_file(self, mock_report, mock_download, mock_setup, mock_load):
         """Test transfer with local artifact file."""
         runner = CliRunner()
@@ -1548,17 +1549,17 @@ class TestTransferCommand:
             mock_result.failed = 0
             mock_download.return_value = mock_result
 
-            result = runner.invoke(cli, ["transfer", "--artifact-location", artifact_path])
+            result = runner.invoke(cli, ["pull", "--artifact-location", artifact_path])
 
             assert result.exit_code == 0
         finally:
             os.unlink(artifact_path)
 
-    @patch("pulp_tool.cli.transfer.DistributionClient")
-    @patch("pulp_tool.cli.transfer.load_and_validate_artifacts")
-    @patch("pulp_tool.cli.transfer.setup_repositories_if_needed")
-    @patch("pulp_tool.cli.transfer.download_artifacts_concurrently")
-    @patch("pulp_tool.cli.transfer.generate_transfer_report")
+    @patch("pulp_tool.cli.pull.DistributionClient")
+    @patch("pulp_tool.cli.pull.load_and_validate_artifacts")
+    @patch("pulp_tool.cli.pull.setup_repositories_if_needed")
+    @patch("pulp_tool.cli.pull.download_artifacts_concurrently")
+    @patch("pulp_tool.cli.pull.generate_pull_report")
     def test_transfer_with_remote_url(self, mock_report, mock_download, mock_setup, mock_load, mock_dist_client):
         """Test transfer with remote artifact URL."""
         runner = CliRunner()
@@ -1601,9 +1602,7 @@ class TestTransferCommand:
             result = runner.invoke(
                 cli,
                 [
-                    "--config",
-                    str(config_path),
-                    "transfer",
+                    "pull",
                     "--artifact-location",
                     "https://example.com/artifact.json",
                     "--cert-path",
@@ -1615,11 +1614,11 @@ class TestTransferCommand:
 
             assert result.exit_code == 0
 
-    @patch("pulp_tool.cli.transfer.DistributionClient")
-    @patch("pulp_tool.cli.transfer.load_and_validate_artifacts")
-    @patch("pulp_tool.cli.transfer.setup_repositories_if_needed")
-    @patch("pulp_tool.cli.transfer.download_artifacts_concurrently")
-    @patch("pulp_tool.cli.transfer.generate_transfer_report")
+    @patch("pulp_tool.cli.pull.DistributionClient")
+    @patch("pulp_tool.cli.pull.load_and_validate_artifacts")
+    @patch("pulp_tool.cli.pull.setup_repositories_if_needed")
+    @patch("pulp_tool.cli.pull.download_artifacts_concurrently")
+    @patch("pulp_tool.cli.pull.generate_pull_report")
     def test_transfer_with_key_from_config(self, mock_report, mock_download, mock_setup, mock_load, mock_dist_client):
         """Test transfer with key_path loaded from config when not provided via CLI."""
         runner = CliRunner()
@@ -1659,21 +1658,21 @@ class TestTransferCommand:
             mock_result.failed = 0
             mock_download.return_value = mock_result
 
-            # Don't provide --key-path, should be loaded from config
+            # Don't provide --key-path, should be loaded from --transfer-dest config
             result = runner.invoke(
                 cli,
                 [
-                    "--config",
-                    str(config_path),
-                    "transfer",
+                    "pull",
                     "--artifact-location",
                     "https://example.com/artifact.json",
+                    "--transfer-dest",
+                    str(config_path),
                 ],
             )
 
             assert result.exit_code == 0
 
-    @patch("pulp_tool.cli.transfer.load_and_validate_artifacts")
+    @patch("pulp_tool.cli.pull.load_and_validate_artifacts")
     def test_transfer_config_load_exception(self, mock_load):
         """Test transfer when config file loading raises an exception."""
         runner = CliRunner()
@@ -1686,11 +1685,11 @@ class TestTransferCommand:
             result = runner.invoke(
                 cli,
                 [
-                    "--config",
-                    str(config_path),
-                    "transfer",
+                    "pull",
                     "--artifact-location",
                     "https://example.com/artifact.json",
+                    "--transfer-dest",
+                    str(config_path),
                 ],
             )
 
@@ -1698,18 +1697,18 @@ class TestTransferCommand:
             assert result.exit_code == 1
             mock_load.assert_not_called()
 
-    @patch("pulp_tool.cli.transfer.load_and_validate_artifacts")
+    @patch("pulp_tool.cli.pull.load_and_validate_artifacts")
     def test_transfer_remote_url_without_certs(self, mock_load):
         """Test transfer with remote URL but missing certificates."""
         runner = CliRunner()
 
-        result = runner.invoke(cli, ["transfer", "--artifact-location", "https://example.com/artifact.json"])
+        result = runner.invoke(cli, ["pull", "--artifact-location", "https://example.com/artifact.json"])
 
         assert result.exit_code == 1
         # Check the error was logged
         mock_load.assert_not_called()  # Should fail before loading artifacts
 
-    @patch("pulp_tool.cli.transfer.load_and_validate_artifacts")
+    @patch("pulp_tool.cli.pull.load_and_validate_artifacts")
     def test_transfer_http_error(self, mock_load):
         """Test transfer with HTTP error."""
         runner = CliRunner()
@@ -1721,16 +1720,16 @@ class TestTransferCommand:
             artifact_path = artifact_file.name
 
         try:
-            result = runner.invoke(cli, ["transfer", "--artifact-location", artifact_path])
+            result = runner.invoke(cli, ["pull", "--artifact-location", artifact_path])
 
             assert result.exit_code == 1
         finally:
             os.unlink(artifact_path)
 
-    @patch("pulp_tool.cli.transfer.load_and_validate_artifacts")
-    @patch("pulp_tool.cli.transfer.setup_repositories_if_needed")
-    @patch("pulp_tool.cli.transfer.download_artifacts_concurrently")
-    @patch("pulp_tool.cli.transfer.generate_transfer_report")
+    @patch("pulp_tool.cli.pull.load_and_validate_artifacts")
+    @patch("pulp_tool.cli.pull.setup_repositories_if_needed")
+    @patch("pulp_tool.cli.pull.download_artifacts_concurrently")
+    @patch("pulp_tool.cli.pull.generate_pull_report")
     def test_transfer_with_content_type_filter(self, mock_report, mock_download, mock_setup, mock_load):
         """Test transfer with --content-types filter."""
         runner = CliRunner()
@@ -1757,7 +1756,7 @@ class TestTransferCommand:
             mock_result.failed = 0
             mock_download.return_value = mock_result
 
-            result = runner.invoke(cli, ["transfer", "--artifact-location", artifact_path, "--content-types", "rpm"])
+            result = runner.invoke(cli, ["pull", "--artifact-location", artifact_path, "--content-types", "rpm"])
 
             assert result.exit_code == 0
             # Verify download_artifacts_concurrently was called with content_types filter
@@ -1770,10 +1769,10 @@ class TestTransferCommand:
         finally:
             os.unlink(artifact_path)
 
-    @patch("pulp_tool.cli.transfer.load_and_validate_artifacts")
-    @patch("pulp_tool.cli.transfer.setup_repositories_if_needed")
-    @patch("pulp_tool.cli.transfer.download_artifacts_concurrently")
-    @patch("pulp_tool.cli.transfer.generate_transfer_report")
+    @patch("pulp_tool.cli.pull.load_and_validate_artifacts")
+    @patch("pulp_tool.cli.pull.setup_repositories_if_needed")
+    @patch("pulp_tool.cli.pull.download_artifacts_concurrently")
+    @patch("pulp_tool.cli.pull.generate_pull_report")
     def test_transfer_with_arch_filter(self, mock_report, mock_download, mock_setup, mock_load):
         """Test transfer with --archs filter."""
         runner = CliRunner()
@@ -1800,7 +1799,7 @@ class TestTransferCommand:
             mock_result.failed = 0
             mock_download.return_value = mock_result
 
-            result = runner.invoke(cli, ["transfer", "--artifact-location", artifact_path, "--archs", "x86_64"])
+            result = runner.invoke(cli, ["pull", "--artifact-location", artifact_path, "--archs", "x86_64"])
 
             assert result.exit_code == 0
             # Verify download_artifacts_concurrently was called with archs filter
@@ -1811,10 +1810,10 @@ class TestTransferCommand:
         finally:
             os.unlink(artifact_path)
 
-    @patch("pulp_tool.cli.transfer.load_and_validate_artifacts")
-    @patch("pulp_tool.cli.transfer.setup_repositories_if_needed")
-    @patch("pulp_tool.cli.transfer.download_artifacts_concurrently")
-    @patch("pulp_tool.cli.transfer.generate_transfer_report")
+    @patch("pulp_tool.cli.pull.load_and_validate_artifacts")
+    @patch("pulp_tool.cli.pull.setup_repositories_if_needed")
+    @patch("pulp_tool.cli.pull.download_artifacts_concurrently")
+    @patch("pulp_tool.cli.pull.generate_pull_report")
     def test_transfer_with_multiple_filters(self, mock_report, mock_download, mock_setup, mock_load):
         """Test transfer with combined --content-types and --archs filters."""
         runner = CliRunner()
@@ -1844,7 +1843,7 @@ class TestTransferCommand:
             result = runner.invoke(
                 cli,
                 [
-                    "transfer",
+                    "pull",
                     "--artifact-location",
                     artifact_path,
                     "--content-types",
@@ -1863,10 +1862,10 @@ class TestTransferCommand:
         finally:
             os.unlink(artifact_path)
 
-    @patch("pulp_tool.cli.transfer.load_and_validate_artifacts")
-    @patch("pulp_tool.cli.transfer.setup_repositories_if_needed")
-    @patch("pulp_tool.cli.transfer.download_artifacts_concurrently")
-    @patch("pulp_tool.cli.transfer.generate_transfer_report")
+    @patch("pulp_tool.cli.pull.load_and_validate_artifacts")
+    @patch("pulp_tool.cli.pull.setup_repositories_if_needed")
+    @patch("pulp_tool.cli.pull.download_artifacts_concurrently")
+    @patch("pulp_tool.cli.pull.generate_pull_report")
     def test_transfer_without_filters(self, mock_report, mock_download, mock_setup, mock_load):
         """Test transfer without filters transfers all artifacts."""
         runner = CliRunner()
@@ -1893,7 +1892,7 @@ class TestTransferCommand:
             mock_result.failed = 0
             mock_download.return_value = mock_result
 
-            result = runner.invoke(cli, ["transfer", "--artifact-location", artifact_path])
+            result = runner.invoke(cli, ["pull", "--artifact-location", artifact_path])
 
             assert result.exit_code == 0
             # Verify download_artifacts_concurrently was called with None filters
@@ -1913,9 +1912,7 @@ class TestTransferCommand:
             artifact_path = artifact_file.name
 
         try:
-            result = runner.invoke(
-                cli, ["transfer", "--artifact-location", artifact_path, "--content-types", "invalid"]
-            )
+            result = runner.invoke(cli, ["pull", "--artifact-location", artifact_path, "--content-types", "invalid"])
 
             assert result.exit_code == 1
             # Pydantic validation error message contains the error
@@ -1924,12 +1921,12 @@ class TestTransferCommand:
         finally:
             os.unlink(artifact_path)
 
-    @patch("pulp_tool.cli.transfer.DistributionClient")
-    @patch("pulp_tool.cli.transfer.load_and_validate_artifacts")
-    @patch("pulp_tool.cli.transfer.setup_repositories_if_needed")
-    @patch("pulp_tool.cli.transfer.download_artifacts_concurrently")
-    @patch("pulp_tool.cli.transfer.generate_transfer_report")
-    @patch("pulp_tool.cli.transfer.upload_downloaded_files_to_pulp")
+    @patch("pulp_tool.cli.pull.DistributionClient")
+    @patch("pulp_tool.cli.pull.load_and_validate_artifacts")
+    @patch("pulp_tool.cli.pull.setup_repositories_if_needed")
+    @patch("pulp_tool.cli.pull.download_artifacts_concurrently")
+    @patch("pulp_tool.cli.pull.generate_pull_report")
+    @patch("pulp_tool.cli.pull.upload_downloaded_files_to_pulp")
     def test_transfer_with_build_id_namespace(
         self, mock_upload, mock_report, mock_download, mock_setup, mock_load, mock_dist_client
     ):
@@ -1974,13 +1971,13 @@ class TestTransferCommand:
             result = runner.invoke(
                 cli,
                 [
-                    "--config",
-                    str(config_path),
                     "--build-id",
                     "test-build",
                     "--namespace",
                     "test-ns",
-                    "transfer",
+                    "pull",
+                    "--transfer-dest",
+                    str(config_path),
                 ],
             )
 
@@ -1988,11 +1985,73 @@ class TestTransferCommand:
             # Verify ConfigManager was used to load base_url
             mock_load.assert_called_once()
 
-    @patch("pulp_tool.cli.transfer.load_and_validate_artifacts")
-    @patch("pulp_tool.cli.transfer.setup_repositories_if_needed")
-    @patch("pulp_tool.cli.transfer.download_artifacts_concurrently")
-    @patch("pulp_tool.cli.transfer.generate_transfer_report")
-    @patch("pulp_tool.cli.transfer.upload_downloaded_files_to_pulp")
+    @patch("pulp_tool.cli.pull.DistributionClient")
+    @patch("pulp_tool.cli.pull.load_and_validate_artifacts")
+    @patch("pulp_tool.cli.pull.setup_repositories_if_needed")
+    @patch("pulp_tool.cli.pull.download_artifacts_concurrently")
+    @patch("pulp_tool.cli.pull.generate_pull_report")
+    @patch("pulp_tool.cli.pull.upload_downloaded_files_to_pulp")
+    def test_pull_with_build_id_namespace_using_config(
+        self, mock_upload, mock_report, mock_download, mock_setup, mock_load, mock_dist_client
+    ):
+        """Test pull with build_id and namespace using group-level --config instead of --transfer-dest."""
+        runner = CliRunner()
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cert_path = Path(tmpdir) / "cert.pem"
+            cert_path.write_text("cert")
+            key_path = Path(tmpdir) / "key.pem"
+            key_path.write_text("key")
+
+            config_path = Path(tmpdir) / "config.toml"
+            config_path.write_text(
+                f'[cli]\nbase_url = "https://pulp.example.com"\ncert = "{cert_path}"\nkey = "{key_path}"'
+            )
+
+            mock_dist_client_instance = Mock()
+            mock_dist_client_instance.session = Mock()
+            mock_dist_client_instance.session.close = Mock()
+            mock_dist_client.return_value = mock_dist_client_instance
+
+            from pulp_tool.models.artifacts import ArtifactData, ArtifactJsonResponse, ArtifactMetadata
+
+            mock_artifact_data = ArtifactData(
+                artifact_json=ArtifactJsonResponse(
+                    artifacts={"test.rpm": ArtifactMetadata(labels={"build_id": "test"})}, distributions={}
+                ),
+                artifacts={"test.rpm": ArtifactMetadata(labels={"build_id": "test"})},
+            )
+            mock_load.return_value = mock_artifact_data
+            mock_setup.return_value = None
+
+            mock_result = Mock()
+            mock_result.pulled_artifacts = Mock()
+            mock_result.completed = 0
+            mock_result.failed = 0
+            mock_download.return_value = mock_result
+
+            # Use --config instead of --transfer-dest
+            result = runner.invoke(
+                cli,
+                [
+                    "--config",
+                    str(config_path),
+                    "--build-id",
+                    "test-build",
+                    "--namespace",
+                    "test-ns",
+                    "pull",
+                ],
+            )
+
+            assert result.exit_code == 0
+            mock_load.assert_called_once()
+
+    @patch("pulp_tool.cli.pull.load_and_validate_artifacts")
+    @patch("pulp_tool.cli.pull.setup_repositories_if_needed")
+    @patch("pulp_tool.cli.pull.download_artifacts_concurrently")
+    @patch("pulp_tool.cli.pull.generate_pull_report")
+    @patch("pulp_tool.cli.pull.upload_downloaded_files_to_pulp")
     def test_transfer_with_upload(self, mock_upload, mock_report, mock_download, mock_setup, mock_load):
         """Test transfer with pulp_client triggers upload."""
         runner = CliRunner()
@@ -2047,18 +2106,18 @@ class TestTransferCommand:
             mock_upload_info.upload_errors = []
             mock_upload.return_value = mock_upload_info
 
-            result = runner.invoke(cli, ["transfer", "--artifact-location", artifact_path])
+            result = runner.invoke(cli, ["pull", "--artifact-location", artifact_path])
 
             assert result.exit_code == 0
             mock_upload.assert_called_once()
         finally:
             os.unlink(artifact_path)
 
-    @patch("pulp_tool.cli.transfer.load_and_validate_artifacts")
-    @patch("pulp_tool.cli.transfer.setup_repositories_if_needed")
-    @patch("pulp_tool.cli.transfer.download_artifacts_concurrently")
-    @patch("pulp_tool.cli.transfer.generate_transfer_report")
-    @patch("pulp_tool.cli.transfer.upload_downloaded_files_to_pulp")
+    @patch("pulp_tool.cli.pull.load_and_validate_artifacts")
+    @patch("pulp_tool.cli.pull.setup_repositories_if_needed")
+    @patch("pulp_tool.cli.pull.download_artifacts_concurrently")
+    @patch("pulp_tool.cli.pull.generate_pull_report")
+    @patch("pulp_tool.cli.pull.upload_downloaded_files_to_pulp")
     def test_transfer_with_download_failures(self, mock_upload, mock_report, mock_download, mock_setup, mock_load):
         """Test transfer with download failures exits with error."""
         runner = CliRunner()
@@ -2085,17 +2144,17 @@ class TestTransferCommand:
             mock_result.failed = 1  # One failure
             mock_download.return_value = mock_result
 
-            result = runner.invoke(cli, ["transfer", "--artifact-location", artifact_path])
+            result = runner.invoke(cli, ["pull", "--artifact-location", artifact_path])
 
             assert result.exit_code == 1
         finally:
             os.unlink(artifact_path)
 
-    @patch("pulp_tool.cli.transfer.load_and_validate_artifacts")
-    @patch("pulp_tool.cli.transfer.setup_repositories_if_needed")
-    @patch("pulp_tool.cli.transfer.download_artifacts_concurrently")
-    @patch("pulp_tool.cli.transfer.generate_transfer_report")
-    @patch("pulp_tool.cli.transfer.upload_downloaded_files_to_pulp")
+    @patch("pulp_tool.cli.pull.load_and_validate_artifacts")
+    @patch("pulp_tool.cli.pull.setup_repositories_if_needed")
+    @patch("pulp_tool.cli.pull.download_artifacts_concurrently")
+    @patch("pulp_tool.cli.pull.generate_pull_report")
+    @patch("pulp_tool.cli.pull.upload_downloaded_files_to_pulp")
     def test_transfer_with_upload_errors(self, mock_upload, mock_report, mock_download, mock_setup, mock_load):
         """Test transfer with upload errors exits with error."""
         runner = CliRunner()
@@ -2150,13 +2209,13 @@ class TestTransferCommand:
             mock_upload_info.upload_errors = ["Error 1", "Error 2"]
             mock_upload.return_value = mock_upload_info
 
-            result = runner.invoke(cli, ["transfer", "--artifact-location", artifact_path])
+            result = runner.invoke(cli, ["pull", "--artifact-location", artifact_path])
 
             assert result.exit_code == 1
         finally:
             os.unlink(artifact_path)
 
-    @patch("pulp_tool.cli.transfer.load_and_validate_artifacts")
+    @patch("pulp_tool.cli.pull.load_and_validate_artifacts")
     def test_transfer_generic_exception(self, mock_load):
         """Test transfer with generic exception."""
         runner = CliRunner()
@@ -2168,16 +2227,16 @@ class TestTransferCommand:
             artifact_path = artifact_file.name
 
         try:
-            result = runner.invoke(cli, ["transfer", "--artifact-location", artifact_path])
+            result = runner.invoke(cli, ["pull", "--artifact-location", artifact_path])
 
             assert result.exit_code == 1
         finally:
             os.unlink(artifact_path)
 
-    @patch("pulp_tool.cli.transfer.load_and_validate_artifacts")
-    @patch("pulp_tool.cli.transfer.setup_repositories_if_needed")
-    @patch("pulp_tool.cli.transfer.download_artifacts_concurrently")
-    @patch("pulp_tool.cli.transfer.generate_transfer_report")
+    @patch("pulp_tool.cli.pull.load_and_validate_artifacts")
+    @patch("pulp_tool.cli.pull.setup_repositories_if_needed")
+    @patch("pulp_tool.cli.pull.download_artifacts_concurrently")
+    @patch("pulp_tool.cli.pull.generate_pull_report")
     def test_transfer_finally_block_cleanup(self, mock_report, mock_download, mock_setup, mock_load):
         """Test transfer finally block cleans up clients."""
         runner = CliRunner()
@@ -2208,7 +2267,7 @@ class TestTransferCommand:
             mock_result.failed = 0
             mock_download.return_value = mock_result
 
-            result = runner.invoke(cli, ["transfer", "--artifact-location", artifact_path])
+            result = runner.invoke(cli, ["pull", "--artifact-location", artifact_path])
 
             assert result.exit_code == 0
         finally:
