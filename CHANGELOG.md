@@ -8,6 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- `codecov.yml` configuration file with `unit-tests` flag and carryforward enabled
+
+### Fixed
+- Renamed Codecov flag from `unittests` to `unit-tests` for consistency
+
+### Added
 - Comprehensive type annotations for all function arguments
 - Pre-commit hooks for code quality checks
 - CHANGELOG.md following Keep a Changelog format
