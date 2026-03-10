@@ -10,6 +10,7 @@ import json
 from pulp_tool.services.upload_service import (
     upload_sbom,
     _serialize_results_to_json,
+    _save_results_to_folder,
     _upload_and_get_results_url,
     _extract_results_url,
     _handle_artifact_results,
@@ -276,6 +277,181 @@ class TestCollectResults:
             # Verify get_distribution_urls was called
             mock_helper.get_distribution_urls.assert_called_once_with("test-build")
             assert result == "https://example.com/results.json"
+
+    def test_collect_results_saves_to_folder_when_artifact_results_is_folder(
+        self, mock_pulp_client, httpx_mock, tmp_path
+    ):
+        """Test that collect_results saves locally when artifact_results is a folder path."""
+        output_dir = tmp_path / "output"
+        context = UploadRpmContext(
+            build_id="test-build",
+            date_str="2024-01-01",
+            namespace="test-ns",
+            parent_package="test-pkg",
+            rpm_path="/tmp/rpms",
+            sbom_path=None,
+            artifact_results=str(output_dir),
+            sbom_results=None,
+        )
+        repositories = RepositoryRefs(
+            rpms_href="/rpms/",
+            rpms_prn="rpms-prn",
+            logs_href="/logs/",
+            logs_prn="logs-prn",
+            sbom_href="/sbom/",
+            sbom_prn="sbom-prn",
+            artifacts_href="/artifacts/",
+            artifacts_prn="artifacts-prn",
+        )
+        results_model = PulpResultsModel(build_id="test-build", repositories=repositories)
+
+        with patch("pulp_tool.services.upload_service._gather_and_validate_content") as mock_gather:
+            mock_gather.return_value = Mock(content_results=[], file_results=[], log_results=[], sbom_results=[])
+            with patch("pulp_tool.services.upload_service._build_artifact_map", return_value={}):
+                with patch("pulp_tool.services.upload_service._populate_results_model"):
+                    with patch("pulp_tool.services.upload_service._add_distributions_to_results"):
+                        with patch(
+                            "pulp_tool.services.upload_service._serialize_results_to_json",
+                            return_value='{"artifacts": {}, "distributions": {}}',
+                        ):
+                            result = collect_results(mock_pulp_client, context, "2024-01-01", results_model)
+
+        assert result is not None
+        assert "pulp_results.json" in result
+        assert (output_dir / "pulp_results.json").exists()
+        assert (output_dir / "pulp_results.json").read_text() == '{"artifacts": {}, "distributions": {}}'
+
+    def test_collect_results_saves_minimal_when_no_content_and_folder_mode(
+        self, mock_pulp_client, httpx_mock, tmp_path
+    ):
+        """Test that collect_results creates minimal pulp_results.json when no content and folder mode."""
+        output_dir = tmp_path / "output"
+        context = UploadRpmContext(
+            build_id="test-build",
+            date_str="2024-01-01",
+            namespace="test-ns",
+            parent_package="test-pkg",
+            rpm_path="/tmp/rpms",
+            sbom_path=None,
+            artifact_results=str(output_dir),
+            sbom_results=None,
+        )
+        repositories = RepositoryRefs(
+            rpms_href="/rpms/",
+            rpms_prn="rpms-prn",
+            logs_href="/logs/",
+            logs_prn="logs-prn",
+            sbom_href="/sbom/",
+            sbom_prn="sbom-prn",
+            artifacts_href="/artifacts/",
+            artifacts_prn="artifacts-prn",
+        )
+        results_model = PulpResultsModel(build_id="test-build", repositories=repositories)
+
+        with patch("pulp_tool.services.upload_service._gather_and_validate_content", return_value=None):
+            with patch("pulp_tool.services.upload_service._add_distributions_to_results"):
+                result = collect_results(mock_pulp_client, context, "2024-01-01", results_model)
+
+        assert result is not None
+        assert (output_dir / "pulp_results.json").exists()
+        content = json.loads((output_dir / "pulp_results.json").read_text())
+        assert content["artifacts"] == {}
+        assert "distributions" in content
+
+
+class TestSaveResultsToFolder:
+    """Test _save_results_to_folder function."""
+
+    def test_save_results_to_folder_success(self, tmp_path):
+        """Test saving results JSON to a folder."""
+        output_dir = tmp_path / "results"
+        context = UploadRpmContext(
+            build_id="test-build",
+            date_str="2024-01-01",
+            namespace="test-ns",
+            parent_package="test-pkg",
+            rpm_path="/tmp/rpms",
+            sbom_path=None,
+            artifact_results=str(output_dir),
+            sbom_results=None,
+        )
+        json_content = '{"artifacts": {}, "distributions": {}}'
+
+        result = _save_results_to_folder(str(output_dir), json_content, context)
+
+        assert result is not None
+        assert (output_dir / "pulp_results.json").exists()
+        assert (output_dir / "pulp_results.json").read_text() == json_content
+
+    def test_save_results_to_folder_creates_parents(self, tmp_path):
+        """Test that nested folder path is created."""
+        output_dir = tmp_path / "a" / "b" / "c"
+        context = UploadRpmContext(
+            build_id="test-build",
+            date_str="2024-01-01",
+            namespace="test-ns",
+            parent_package="test-pkg",
+            rpm_path="/tmp/rpms",
+            sbom_path=None,
+            artifact_results=str(output_dir),
+            sbom_results=None,
+        )
+        json_content = '{"test": true}'
+
+        result = _save_results_to_folder(str(output_dir), json_content, context)
+
+        assert result is not None
+        assert (output_dir / "pulp_results.json").exists()
+
+    def test_save_results_to_folder_with_sbom_results(self, tmp_path):
+        """Test that sbom_results is handled when saving to folder."""
+        output_dir = tmp_path / "results"
+        sbom_results_file = tmp_path / "sbom_results.txt"
+        context = UploadRpmContext(
+            build_id="test-build",
+            date_str="2024-01-01",
+            namespace="test-ns",
+            parent_package="test-pkg",
+            rpm_path="/tmp/rpms",
+            sbom_path=None,
+            artifact_results=str(output_dir),
+            sbom_results=str(sbom_results_file),
+        )
+        json_content = json.dumps(
+            {
+                "artifacts": {
+                    "sbom.json": {"url": "https://pulp.example/sbom.json", "labels": {}},
+                },
+                "distributions": {},
+            }
+        )
+
+        result = _save_results_to_folder(str(output_dir), json_content, context)
+
+        assert result is not None
+        assert (output_dir / "pulp_results.json").exists()
+        assert sbom_results_file.exists()
+        assert sbom_results_file.read_text() == "https://pulp.example/sbom.json"
+
+    def test_save_results_to_folder_handles_io_error(self, tmp_path):
+        """Test that OSError/IOError during save returns None."""
+        output_dir = tmp_path / "results"
+        context = UploadRpmContext(
+            build_id="test-build",
+            date_str="2024-01-01",
+            namespace="test-ns",
+            parent_package="test-pkg",
+            rpm_path="/tmp/rpms",
+            sbom_path=None,
+            artifact_results=str(output_dir),
+            sbom_results=None,
+        )
+        json_content = '{"artifacts": {}, "distributions": {}}'
+
+        with patch("builtins.open", side_effect=IOError("Permission denied")):
+            result = _save_results_to_folder(str(output_dir), json_content, context)
+
+        assert result is None
 
 
 class TestHandleArtifactResults:

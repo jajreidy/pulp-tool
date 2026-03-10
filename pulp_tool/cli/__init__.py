@@ -9,7 +9,7 @@ from typing import Any, Callable, Optional, TypeVar
 
 import click
 
-from . import create_repository, pull, upload, upload_files
+from . import create_repository, pull, search_by, upload, upload_files
 from .._version import __version__
 
 F = TypeVar("F", bound=Callable[..., Any])
@@ -97,6 +97,7 @@ def cli(
 cli.add_command(upload.upload)
 cli.add_command(upload_files.upload_files)
 cli.add_command(pull.pull)
+cli.add_command(search_by.search_by)
 cli.add_command(create_repository.create_repository)
 
 

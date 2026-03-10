@@ -61,6 +61,93 @@ def _calculate_sha256_checksum(file_path: str) -> str:
     return sha256_hash.hexdigest()
 
 
+def parse_rpm_filename_to_nvr(filename: str) -> Optional[Tuple[str, str, str]]:
+    """
+    Parse RPM filename into name, version, and release (NVR).
+
+    Uses the same right-to-left parsing algorithm as rpmUtils.miscutils.splitFilename
+    (from Yum/DNF, used by the Pulp ecosystem). Format: [epoch:]name-version-release.arch
+    See: https://github.com/rpm-software-management/yum/blob/master/rpmUtils/miscutils.py
+
+    Handles filenames like name-version-release.arch.rpm (e.g.
+    osci-internal-test-package-0.2.0-257.el10.src.rpm) and paths
+    (e.g. x86_64/pkg-1.0-1.x86_64.rpm).
+
+    Args:
+        filename: RPM filename or path (e.g. pkg-1.0-1.el8.x86_64.rpm)
+
+    Returns:
+        Tuple of (name, version, release) or None if unparseable
+
+    Example:
+        >>> parse_rpm_filename_to_nvr("osci-internal-test-package-0.2.0-257.el10.src.rpm")
+        ('osci-internal-test-package', '0.2.0', '257.el10')
+    """
+    basename = os.path.basename(filename)
+    if not basename.lower().endswith(".rpm"):
+        return None
+    stem = basename[:-4]  # strip .rpm
+
+    # Right-to-left parsing (rpmUtils splitFilename): find arch, then release, then version
+    arch_index = stem.rfind(".")
+    if arch_index >= 0:
+        nvr_part = stem[:arch_index]
+    else:
+        nvr_part = stem
+
+    rel_index = nvr_part.rfind("-")
+    if rel_index < 0:
+        return None
+    release = nvr_part[rel_index + 1 :]
+    part_before_rel = nvr_part[:rel_index]
+
+    ver_index = part_before_rel.rfind("-")
+    if ver_index < 0:
+        return None
+    version = part_before_rel[ver_index + 1 :]
+
+    # Epoch: only "epoch:name-version-release" (epoch at start, before first '-')
+    epoch_index = nvr_part.find(":")
+    if epoch_index >= 0 and epoch_index < nvr_part.find("-") and nvr_part[:epoch_index].isdigit():
+        name = nvr_part[epoch_index + 1 : ver_index]
+    else:
+        name = part_before_rel[:ver_index]
+
+    if not name or not version or not release:
+        return None
+    return (name, version, release)
+
+
+def parse_rpm_filename_to_nvra(filename: str) -> Optional[Tuple[str, str, str, str]]:
+    """
+    Parse RPM filename into name, version, release, and architecture (NVRA).
+
+    Same algorithm as parse_rpm_filename_to_nvr but also extracts architecture
+    (e.g. x86_64, aarch64, src, noarch) from the filename.
+
+    Args:
+        filename: RPM filename or path (e.g. pkg-1.0-1.el8.x86_64.rpm)
+
+    Returns:
+        Tuple of (name, version, release, arch) or None if unparseable
+
+    Example:
+        >>> parse_rpm_filename_to_nvra("pkg-1.0-1.x86_64.rpm")
+        ('pkg', '1.0', '1', 'x86_64')
+        >>> parse_rpm_filename_to_nvra("pkg-1.0-1.aarch64.rpm")
+        ('pkg', '1.0', '1', 'aarch64')
+    """
+    nvr = parse_rpm_filename_to_nvr(filename)
+    if nvr is None:
+        return None
+    name, version, release = nvr
+    basename = os.path.basename(filename)
+    stem = basename[:-4]  # strip .rpm
+    arch_index = stem.rfind(".")
+    arch = stem[arch_index + 1 :] if arch_index >= 0 else "noarch"
+    return (name, version, release, arch)
+
+
 def _get_nvra(result: Dict[str, Any]) -> str:
     """
     Get Name-Version-Release-Architecture (NVRA) from Pulp response.
@@ -154,5 +241,7 @@ def upload_rpms_parallel(
 
 
 __all__ = [
+    "parse_rpm_filename_to_nvr",
+    "parse_rpm_filename_to_nvra",
     "upload_rpms_parallel",
 ]

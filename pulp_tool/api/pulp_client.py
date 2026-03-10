@@ -23,6 +23,7 @@ Key Features:
 """
 
 # Standard library imports
+import asyncio
 import json
 import logging
 import os
@@ -41,6 +42,7 @@ import httpx
 # Local imports
 from ..utils import create_session_with_retry
 from ..utils.constants import DEFAULT_CHUNK_SIZE, SUPPORTED_ARCHITECTURES
+from ..utils.rpm_operations import parse_rpm_filename_to_nvr
 from .auth import OAuth2ClientCredentialsAuth
 
 # Resource-based mixins
@@ -65,6 +67,19 @@ DEFAULT_TIMEOUT = 120
 
 # Cache TTL (time-to-live) in seconds for GET request caching
 CACHE_TTL = 300  # 5 minutes
+
+# Placeholder request for synthetic responses (httpx.raise_for_status requires it)
+_EMPTY_RESPONSE_REQUEST = httpx.Request("GET", "https://placeholder/")
+
+
+def _dedupe_results_by_pulp_href(results: List[Any]) -> List[Any]:
+    """Deduplicate RPM result dicts by pulp_href. Later entries overwrite earlier."""
+    seen: Dict[str, Any] = {}
+    for r in results:
+        href = r.get("pulp_href") if isinstance(r, dict) else None
+        if href:
+            seen[href] = r
+    return list(seen.values())
 
 
 # ============================================================================
@@ -371,6 +386,27 @@ class PulpClient(
             await self._async_session.aclose()
             logging.debug("PulpClient async session closed and connections released")
 
+    def _run_async(self, coro) -> Any:
+        """
+        Run async coroutine and clear cached async session afterward.
+
+        Prevents 'Event loop is closed' when multiple sync wrappers call asyncio.run()
+        in sequence (e.g. search-by with checksums + filenames + signed_by).
+        Each asyncio.run() creates and closes a loop; the cached httpx.AsyncClient
+        becomes bound to a closed loop. Clearing the session ensures the next call
+        creates a fresh client for the new loop.
+        """
+
+        async def _run_with_cleanup() -> Any:
+            try:
+                return await coro
+            finally:
+                if self._async_session and not self._async_session.is_closed:
+                    await self._async_session.aclose()
+                self._async_session = None
+
+        return asyncio.run(_run_with_cleanup())
+
     def __enter__(self) -> "PulpClient":
         """Context manager entry."""
         return self
@@ -504,22 +540,7 @@ class PulpClient(
             # No event loop running, safe to create one
             pass
 
-        # Run the async version in a new event loop
-        # Handle the case where the loop might be closed by creating a new one
-        try:
-            return asyncio.run(self._chunked_get_async(url, params, chunk_param, chunk_size, **kwargs))
-        except RuntimeError as e:
-            if "Event loop is closed" in str(e):
-                # Create and set a new event loop
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
-                try:
-                    return loop.run_until_complete(
-                        self._chunked_get_async(url, params, chunk_param, chunk_size, **kwargs)
-                    )
-                finally:
-                    loop.close()
-            raise
+        return self._run_async(self._chunked_get_async(url, params, chunk_param, chunk_size, **kwargs))
 
     @classmethod
     def create_from_config_file(cls, path: Optional[str] = None, domain: Optional[str] = None) -> "PulpClient":
@@ -562,25 +583,46 @@ class PulpClient(
         return None
 
     @property
-    def auth(self) -> OAuth2ClientCredentialsAuth:
+    def auth(self) -> Union[OAuth2ClientCredentialsAuth, httpx.BasicAuth]:
         """
         Get authentication credentials.
 
+        Supports OAuth2 (client_id/client_secret) or Basic Auth (username/password).
+        OAuth2 is preferred when both credential types are present.
+
         Returns:
-            OAuth2ClientCredentialsAuth instance for API authentication
+            OAuth2ClientCredentialsAuth or BasicAuth instance for API authentication
         """
         if not self._auth:
-            # Set up OAuth2 authentication with correct Red Hat SSO token URL
-            token_url = (
-                "https://sso.redhat.com/auth/realms/redhat-external/"
-                "protocol/openid-connect/token"  # nosec B105
-            )
+            client_id = self.config.get("client_id")
+            client_secret = self.config.get("client_secret")
+            username = self.config.get("username")
+            password = self.config.get("password")
 
-            self._auth = OAuth2ClientCredentialsAuth(  # type: ignore[assignment]
-                client_id=str(self.config["client_id"]),
-                client_secret=str(self.config["client_secret"]),
-                token_url=token_url,
-            )
+            # Prefer OAuth2 if both client_id and client_secret are set
+            if client_id and client_secret:
+                token_url = (
+                    "https://sso.redhat.com/auth/realms/redhat-external/"
+                    "protocol/openid-connect/token"  # nosec B105
+                )
+                self._auth = OAuth2ClientCredentialsAuth(  # type: ignore[assignment]
+                    client_id=str(client_id),
+                    client_secret=str(client_secret),
+                    token_url=token_url,
+                )
+            # Fall back to Basic Auth (username/password) for packages.redhat.com
+            elif username is not None and password is not None:
+                self._auth = httpx.BasicAuth(str(username), str(password))  # type: ignore[assignment]
+            else:
+                missing = []
+                if not (client_id and client_secret):
+                    missing.append("client_id/client_secret (OAuth2)")
+                if username is None or password is None:
+                    missing.append("username/password (Basic Auth)")
+                raise ValueError(
+                    f"Authentication credentials missing. Provide either: {', or '.join(missing)}. "
+                    "See README for configuration."
+                )
         return self._auth  # type: ignore[return-value]
 
     @property
@@ -1158,6 +1200,410 @@ class PulpClient(
         url = self._build_rpm_packages_url()
         params = {"pkgId__in": ",".join(pkg_ids)}
         return await self.async_get(url, params=params)
+
+    def get_rpm_by_unsigned_checksums(self, checksums: List[str]) -> httpx.Response:
+        """
+        Get signed RPMs by unsigned checksum (pulp_labels.unsigned_checksum).
+
+        Uses Pulp complex filtering: q='pulp_label_select="unsigned_checksum=X" OR ...'
+
+        Args:
+            checksums: List of unsigned SHA256 checksums to search for
+
+        Returns:
+            Response object containing signed RPM packages matching the unsigned checksums
+        """
+        return self._run_async(self.async_get_rpm_by_unsigned_checksums(checksums))
+
+    async def async_get_rpm_by_unsigned_checksums(self, checksums: List[str]) -> httpx.Response:
+        """
+        Get signed RPMs by unsigned checksum asynchronously.
+
+        Args:
+            checksums: List of unsigned SHA256 checksums to search for
+
+        Returns:
+            Response object containing signed RPM packages
+        """
+        url = self._build_rpm_packages_url()
+        if not checksums:
+            return httpx.Response(
+                200,
+                content=json.dumps({"count": 0, "results": []}).encode("utf-8"),
+                request=_EMPTY_RESPONSE_REQUEST,
+            )
+
+        chunk_size = 20  # Pulp limits q expression complexity
+        chunks = [checksums[i : i + chunk_size] for i in range(0, len(checksums), chunk_size)]
+
+        if len(chunks) == 1:
+            # Single request
+            q_parts = [f'pulp_label_select="unsigned_checksum={c}"' for c in chunks[0]]
+            q_expr = " OR ".join(q_parts)
+            params = {"q": q_expr}
+            return await self.async_get(url, params=params)
+
+        # Multiple chunks: fetch concurrently and merge
+        async def fetch_chunk(chunk: List[str]) -> tuple:
+            q_parts = [f'pulp_label_select="unsigned_checksum={c}"' for c in chunk]
+            q_expr = " OR ".join(q_parts)
+            params = {"q": q_expr}
+            response = await self._get_async_session().get(
+                url, params=params, timeout=self.timeout, **self.request_params
+            )
+            self._check_response(response, "get RPM by unsigned checksums")
+            return response.json().get("results", [])
+
+        tasks = [fetch_chunk(chunk) for chunk in chunks]
+        raw: List[Any] = []
+        for chunk_results in await asyncio.gather(*tasks):
+            raw.extend(chunk_results)
+        all_results = _dedupe_results_by_pulp_href(raw)
+
+        # Return response with aggregated results
+        aggregated = {"count": len(all_results), "results": all_results}
+        return httpx.Response(
+            200,
+            content=json.dumps(aggregated).encode("utf-8"),
+            request=_EMPTY_RESPONSE_REQUEST,
+        )
+
+    def get_rpm_by_filenames(self, filenames: List[str]) -> httpx.Response:
+        """
+        Get RPMs by filename (e.g. package-1.0-1.el10.x86_64.rpm).
+
+        Parses filenames to name+version+release (NVR) and searches Pulp by those
+        fields instead of filename, for compatibility with instances that do not
+        support filename filtering.
+
+        Args:
+            filenames: List of RPM filenames or paths to search for
+
+        Returns:
+            Response object containing RPM packages matching the NVRs
+        """
+        return self._run_async(self.async_get_rpm_by_filenames(filenames))
+
+    async def async_get_rpm_by_filenames(self, filenames: List[str]) -> httpx.Response:
+        """
+        Get RPMs by filename asynchronously. Parses filenames to NVR and queries by name+version+release.
+        """
+        nvrs = self._filenames_to_nvrs(filenames)
+        if not nvrs:
+            return httpx.Response(
+                200,
+                content=json.dumps({"count": 0, "results": []}).encode("utf-8"),
+                request=_EMPTY_RESPONSE_REQUEST,
+            )
+        return await self.async_get_rpm_by_nvr([(n, v, r) for n, v, r in nvrs])
+
+    def _filenames_to_nvrs(self, filenames: List[str]) -> List[Tuple[str, str, str]]:
+        """Parse filenames to NVRs, skipping unparseable with warning. Deduplicates."""
+        seen: set[Tuple[str, str, str]] = set()
+        result: List[Tuple[str, str, str]] = []
+        for fname in filenames:
+            nvr = parse_rpm_filename_to_nvr(fname)
+            if nvr is None:
+                logging.warning("Skipping unparseable RPM filename: %s", fname)
+                continue
+            if nvr not in seen:
+                seen.add(nvr)
+                result.append(nvr)
+        return result
+
+    async def async_get_rpm_by_nvr(self, nvrs: List[Tuple[str, str, str]]) -> httpx.Response:
+        """
+        Get RPMs by name+version+release. Single NVR uses simple params; multiple use q expression.
+        """
+        url = self._build_rpm_packages_url()
+        if not nvrs:
+            return httpx.Response(
+                200,
+                content=json.dumps({"count": 0, "results": []}).encode("utf-8"),
+                request=_EMPTY_RESPONSE_REQUEST,
+            )
+
+        if len(nvrs) == 1:
+            n, v, r = nvrs[0]
+            params = {"name": n, "version": v, "release": r}
+            return await self.async_get(url, params=params)
+
+        # Multiple NVRs: q=(name="a" AND version="1" AND release="2") OR ...
+        # Use chunk_size=1 to stay under Pulp expression complexity limit (packages.redhat.com)
+        chunk_size = 1
+        chunks = [nvrs[i : i + chunk_size] for i in range(0, len(nvrs), chunk_size)]
+
+        async def fetch_chunk(chunk: List[Tuple[str, str, str]]) -> list:
+            nvr_parts = [f'(name="{n}" AND version="{v}" AND release="{r}")' for n, v, r in chunk]
+            q_expr = " OR ".join(nvr_parts)
+            params = {"q": q_expr}
+            response = await self._get_async_session().get(
+                url, params=params, timeout=self.timeout, **self.request_params
+            )
+            self._check_response(response, "get RPM by NVR")
+            return response.json().get("results", [])
+
+        tasks = [fetch_chunk(chunk) for chunk in chunks]
+        raw: List[Any] = []
+        for chunk_results in await asyncio.gather(*tasks):
+            raw.extend(chunk_results)
+        all_results = _dedupe_results_by_pulp_href(raw)
+
+        aggregated = {"count": len(all_results), "results": all_results}
+        return httpx.Response(
+            200,
+            content=json.dumps(aggregated).encode("utf-8"),
+            request=_EMPTY_RESPONSE_REQUEST,
+        )
+
+    def get_rpm_by_signed_by(self, signed_by_values: List[str]) -> httpx.Response:
+        """
+        Get RPMs by signed_by pulp label (pulp_labels.signed_by).
+
+        Uses Pulp complex filtering: q='pulp_label_select="signed_by=X" OR ...'
+
+        Args:
+            signed_by_values: List of signed_by values to search for
+
+        Returns:
+            Response object containing RPM packages matching the signed_by values
+        """
+        return self._run_async(self.async_get_rpm_by_signed_by(signed_by_values))
+
+    async def async_get_rpm_by_signed_by(self, signed_by_values: List[str]) -> httpx.Response:
+        """
+        Get RPMs by signed_by asynchronously.
+
+        Args:
+            signed_by_values: List of signed_by values to search for
+
+        Returns:
+            Response object containing RPM packages
+        """
+        url = self._build_rpm_packages_url()
+        if not signed_by_values:
+            return httpx.Response(
+                200,
+                content=json.dumps({"count": 0, "results": []}).encode("utf-8"),
+                request=_EMPTY_RESPONSE_REQUEST,
+            )
+
+        # Pulp limits q expression complexity to 8. (A OR B OR C OR D) = 7.
+        chunk_size = 4
+        chunks = [signed_by_values[i : i + chunk_size] for i in range(0, len(signed_by_values), chunk_size)]
+
+        if len(chunks) == 1:
+            q_parts = [f'pulp_label_select="signed_by={v}"' for v in chunks[0]]
+            q_expr = " OR ".join(q_parts)
+            params = {"q": q_expr}
+            return await self.async_get(url, params=params)
+
+        async def fetch_chunk(chunk: List[str]) -> list:
+            q_parts = [f'pulp_label_select="signed_by={v}"' for v in chunk]
+            q_expr = " OR ".join(q_parts)
+            params = {"q": q_expr}
+            response = await self._get_async_session().get(
+                url, params=params, timeout=self.timeout, **self.request_params
+            )
+            self._check_response(response, "get RPM by signed_by")
+            return response.json().get("results", [])
+
+        tasks = [fetch_chunk(chunk) for chunk in chunks]
+        raw: List[Any] = []
+        for chunk_results in await asyncio.gather(*tasks):
+            raw.extend(chunk_results)
+        all_results = _dedupe_results_by_pulp_href(raw)
+
+        aggregated = {"count": len(all_results), "results": all_results}
+        return httpx.Response(
+            200,
+            content=json.dumps(aggregated).encode("utf-8"),
+            request=_EMPTY_RESPONSE_REQUEST,
+        )
+
+    def get_rpm_by_checksums_and_signed_by(self, checksums: List[str], signed_by: str) -> httpx.Response:
+        """
+        Get RPMs by checksums AND signed_by in a single query (server-side filter).
+
+        Uses q=(pkgId="x" OR pkgId="y") AND pulp_label_select="signed_by=key"
+        """
+        return self._run_async(self.async_get_rpm_by_checksums_and_signed_by(checksums, signed_by))
+
+    async def async_get_rpm_by_checksums_and_signed_by(self, checksums: List[str], signed_by: str) -> httpx.Response:
+        """Get RPMs by checksums and signed_by in a single query."""
+        url = self._build_rpm_packages_url()
+        if not checksums:
+            return httpx.Response(
+                200,
+                content=json.dumps({"count": 0, "results": []}).encode("utf-8"),
+                request=_EMPTY_RESPONSE_REQUEST,
+            )
+
+        # Pulp limits q expression complexity to 8. (A OR B OR C) AND pulp_label_select = 7.
+        chunk_size = 3
+        chunks = [checksums[i : i + chunk_size] for i in range(0, len(checksums), chunk_size)]
+        signed_by_filter = f'pulp_label_select="signed_by={signed_by}"'
+
+        if len(chunks) == 1:
+            pkg_parts = [f'pkgId="{c}"' for c in chunks[0]]
+            identity_expr = " OR ".join(pkg_parts)
+            q_expr = f"({identity_expr}) AND {signed_by_filter}"
+            params = {"q": q_expr}
+            return await self.async_get(url, params=params)
+
+        async def fetch_chunk(chunk: List[str]) -> list:
+            pkg_parts = [f'pkgId="{c}"' for c in chunk]
+            identity_expr = " OR ".join(pkg_parts)
+            q_expr = f"({identity_expr}) AND {signed_by_filter}"
+            params = {"q": q_expr}
+            response = await self._get_async_session().get(
+                url, params=params, timeout=self.timeout, **self.request_params
+            )
+            self._check_response(response, "get RPM by checksums and signed_by")
+            return response.json().get("results", [])
+
+        tasks = [fetch_chunk(chunk) for chunk in chunks]
+        raw: List[Any] = []
+        for chunk_results in await asyncio.gather(*tasks):
+            raw.extend(chunk_results)
+        all_results = _dedupe_results_by_pulp_href(raw)
+        aggregated = {"count": len(all_results), "results": all_results}
+        return httpx.Response(
+            200,
+            content=json.dumps(aggregated).encode("utf-8"),
+            request=_EMPTY_RESPONSE_REQUEST,
+        )
+
+    def get_rpm_by_filenames_and_signed_by(self, filenames: List[str], signed_by: str) -> httpx.Response:
+        """
+        Get RPMs by filenames AND signed_by. Parses filenames to NVR and queries by name+version+release.
+        """
+        return self._run_async(self.async_get_rpm_by_filenames_and_signed_by(filenames, signed_by))
+
+    async def async_get_rpm_by_filenames_and_signed_by(self, filenames: List[str], signed_by: str) -> httpx.Response:
+        """Get RPMs by filenames and signed_by. Parses to NVR, then tries combined query; falls back on 400/500."""
+        nvrs = self._filenames_to_nvrs(filenames)
+        if not nvrs:
+            return httpx.Response(
+                200,
+                content=json.dumps({"count": 0, "results": []}).encode("utf-8"),
+                request=_EMPTY_RESPONSE_REQUEST,
+            )
+
+        nvr_list = [(n, v, r) for n, v, r in nvrs]
+        try:
+            response = await self._fetch_rpm_by_nvr_and_signed_by_combined(nvr_list, signed_by)
+            if response.status_code in (400, 500):
+                raise httpx.HTTPStatusError(
+                    f"Combined query returned {response.status_code}",
+                    request=response.request,
+                    response=response,
+                )
+            return response
+        except (httpx.HTTPStatusError, httpx.HTTPError, ValueError):
+            return await self._fetch_rpm_by_nvr_and_signed_by_fallback(nvr_list, signed_by)
+
+    async def _fetch_rpm_by_nvr_and_signed_by_combined(
+        self, nvrs: List[Tuple[str, str, str]], signed_by: str
+    ) -> httpx.Response:
+        """Single-query path: q=(name+version+release) OR ... AND pulp_label_select="signed_by=key"."""
+        url = self._build_rpm_packages_url()
+        # Use chunk_size=1 to stay under Pulp expression complexity limit (packages.redhat.com)
+        chunk_size = 1
+        chunks = [nvrs[i : i + chunk_size] for i in range(0, len(nvrs), chunk_size)]
+        signed_by_filter = f'pulp_label_select="signed_by={signed_by}"'
+
+        if len(nvrs) == 1:
+            n, v, r = nvrs[0]
+            params = {"name": n, "version": v, "release": r, "q": signed_by_filter}
+            return await self.async_get(url, params=params)
+
+        async def fetch_chunk(chunk: List[Tuple[str, str, str]]) -> list:
+            nvr_parts = [f'(name="{n}" AND version="{v}" AND release="{r}")' for n, v, r in chunk]
+            identity_expr = " OR ".join(nvr_parts)
+            q_expr = f"({identity_expr}) AND {signed_by_filter}"
+            params = {"q": q_expr}
+            response = await self._get_async_session().get(
+                url, params=params, timeout=self.timeout, **self.request_params
+            )
+            if response.status_code in (400, 500):
+                raise httpx.HTTPStatusError(
+                    f"Combined query returned {response.status_code}",
+                    request=response.request,
+                    response=response,
+                )
+            self._check_response(response, "get RPM by NVR and signed_by")
+            return response.json().get("results", [])
+
+        tasks = [fetch_chunk(chunk) for chunk in chunks]
+        raw: List[Any] = []
+        for chunk_results in await asyncio.gather(*tasks):
+            raw.extend(chunk_results)
+        all_results = _dedupe_results_by_pulp_href(raw)
+        aggregated = {"count": len(all_results), "results": all_results}
+        return httpx.Response(
+            200,
+            content=json.dumps(aggregated).encode("utf-8"),
+            request=_EMPTY_RESPONSE_REQUEST,
+        )
+
+    async def _fetch_rpm_by_nvr_and_signed_by_fallback(
+        self, nvrs: List[Tuple[str, str, str]], signed_by: str
+    ) -> httpx.Response:
+        """Fallback: when NVRs >= 5, get by signed_by first and filter by NVR (1 call vs N+1).
+        Otherwise get by NVR, get by signed_by, intersect by pulp_href."""
+        if len(nvrs) >= 5:
+            return await self._fetch_rpm_by_signed_by_then_filter_nvr(nvrs, signed_by)
+        by_nvr_resp = await self.async_get_rpm_by_nvr(nvrs)
+        self._check_response(by_nvr_resp, "get RPM by NVR (fallback)")
+        by_signed_resp = await self.async_get_rpm_by_signed_by([signed_by])
+        self._check_response(by_signed_resp, "get RPM by signed_by (fallback)")
+
+        by_hrefs = {r["pulp_href"]: r for r in by_nvr_resp.json().get("results", [])}
+        by_signed_hrefs = {r["pulp_href"] for r in by_signed_resp.json().get("results", [])}
+        intersected = [by_hrefs[href] for href in by_signed_hrefs if href in by_hrefs]
+        return httpx.Response(
+            200,
+            content=json.dumps({"count": len(intersected), "results": intersected}).encode("utf-8"),
+            request=_EMPTY_RESPONSE_REQUEST,
+        )
+
+    async def _fetch_rpm_by_signed_by_then_filter_nvr(
+        self, nvrs: List[Tuple[str, str, str]], signed_by: str
+    ) -> httpx.Response:
+        """Fetch all packages by signed_by (paginated), filter by NVR locally. Reduces N+1 to 1 call."""
+        url = self._build_rpm_packages_url()
+        nvr_set = set(nvrs)
+        params: dict[str, str | int] = {"q": f'pulp_label_select="signed_by={signed_by}"', "limit": 100}
+        all_results: List[Any] = []
+        next_url: Optional[str] = None
+
+        while True:
+            req_url = next_url if next_url else url
+            req_params: dict[str, str | int] | None = None if next_url else params
+            response = await self._get_async_session().get(
+                req_url,
+                params=req_params,
+                timeout=self.timeout,
+                **self.request_params,
+            )
+            self._check_response(response, "get RPM by signed_by (paginated)")
+            data = response.json()
+            results = data.get("results", [])
+            for r in results:
+                nvr = (r.get("name"), r.get("version"), r.get("release"))
+                if nvr in nvr_set:
+                    all_results.append(r)
+            next_url = data.get("next")
+            if not next_url:
+                break
+
+        filtered = _dedupe_results_by_pulp_href(all_results)
+        return httpx.Response(
+            200,
+            content=json.dumps({"count": len(filtered), "results": filtered}).encode("utf-8"),
+            request=_EMPTY_RESPONSE_REQUEST,
+        )
 
     def gather_content_data(self, build_id: str, extra_artifacts: Optional[List[Dict[str, str]]] = None) -> Any:
         """

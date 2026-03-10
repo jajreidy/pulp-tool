@@ -40,6 +40,7 @@ class TestCLIHelp:
         assert "Pulp Tool" in result.output
         assert "upload" in result.output
         assert "pull" in result.output
+        assert "search-by" in result.output
         assert "create-repository" in result.output
         # Check group-level options
         assert "--config" in result.output
@@ -56,6 +57,7 @@ class TestCLIHelp:
         assert "Pulp Tool" in result.output
         assert "upload" in result.output
         assert "pull" in result.output
+        assert "search-by" in result.output
         assert "create-repository" in result.output
         assert "-h, --help" in result.output
 
@@ -275,7 +277,7 @@ class TestUploadCommand:
             )
 
             assert result.exit_code == 0
-            assert "RESULTS JSON URL" in result.output
+            assert "RESULTS JSON:" in result.output
 
     @patch("pulp_tool.cli.upload.PulpClient")
     @patch("pulp_tool.cli.upload.PulpHelper")
@@ -338,7 +340,7 @@ class TestUploadCommand:
             )
 
             assert result.exit_code == 0
-            assert "RESULTS JSON URL" in result.output
+            assert "RESULTS JSON:" in result.output
             # Verify that create_from_config_file was called with the base64 string directly
             assert mock_client_class.create_from_config_file.called
             call_args = mock_client_class.create_from_config_file.call_args
@@ -416,6 +418,70 @@ class TestUploadCommand:
             )
 
             assert result.exit_code == 0
+
+    @patch("pulp_tool.cli.upload.PulpClient")
+    @patch("pulp_tool.cli.upload.PulpHelper")
+    def test_upload_with_artifact_results_folder(self, mock_helper_class, mock_client_class):
+        """Test upload with --artifact-results as folder path (saves locally, skips Pulp upload)."""
+        runner = CliRunner()
+
+        mock_client = Mock()
+        mock_client.close = Mock()
+        mock_client_class.create_from_config_file.return_value = mock_client
+
+        mock_helper = Mock()
+        from pulp_tool.models.repository import RepositoryRefs
+
+        mock_repos = RepositoryRefs(
+            rpms_href="/test/",
+            rpms_prn="",
+            logs_href="",
+            logs_prn="",
+            sbom_href="",
+            sbom_prn="",
+            artifacts_href="",
+            artifacts_prn="",
+        )
+        mock_helper.setup_repositories.return_value = mock_repos
+        mock_helper_class.return_value = mock_helper
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            rpm_dir = Path(tmpdir) / "rpms"
+            rpm_dir.mkdir()
+            sbom_path = Path(tmpdir) / "sbom.json"
+            sbom_path.write_text("{}")
+            config_path = Path(tmpdir) / "config.toml"
+            config_path.write_text(
+                '[cli]\nbase_url = "https://pulp.example.com"\napi_root = "/pulp/api/v3"\ndomain = "test-domain"'
+            )
+            output_dir = Path(tmpdir) / "results"
+            expected_path = str(output_dir / "pulp_results.json")
+            mock_helper.process_uploads.return_value = expected_path
+
+            result = runner.invoke(
+                cli,
+                [
+                    "--build-id",
+                    "test-build",
+                    "--namespace",
+                    "test-ns",
+                    "--config",
+                    str(config_path),
+                    "upload",
+                    "--parent-package",
+                    "test-pkg",
+                    "--rpm-path",
+                    str(rpm_dir),
+                    "--sbom-path",
+                    str(sbom_path),
+                    "--artifact-results",
+                    str(output_dir),
+                ],
+            )
+
+            assert result.exit_code == 0
+            assert "RESULTS JSON:" in result.output
+            assert expected_path in result.output
 
     @patch("pulp_tool.cli.upload.PulpClient")
     def test_upload_http_error(self, mock_client_class):
@@ -666,7 +732,7 @@ class TestUploadCommand:
                 )
 
                 assert result.exit_code == 0
-                assert "RESULTS JSON URL" in result.output
+                assert "RESULTS JSON:" in result.output
                 # Verify that rpm_path was set to current directory
                 call_args = mock_helper_class.call_args
                 assert call_args is not None
@@ -727,7 +793,7 @@ class TestUploadCommand:
             )
 
             assert result.exit_code == 0
-            assert "RESULTS JSON URL" in result.output
+            assert "RESULTS JSON:" in result.output
 
     @patch("pulp_tool.cli.upload.PulpClient")
     @patch("pulp_tool.cli.upload.PulpHelper")
@@ -785,7 +851,7 @@ class TestUploadCommand:
             )
 
             assert result.exit_code == 0
-            assert "RESULTS JSON URL" in result.output
+            assert "RESULTS JSON:" in result.output
             # Verify that parent_package was None
             call_args = mock_helper_class.call_args
             assert call_args is not None
@@ -843,7 +909,7 @@ class TestUploadCommand:
                 )
 
                 assert result.exit_code == 0
-                assert "RESULTS JSON URL" in result.output
+                assert "RESULTS JSON:" in result.output
             finally:
                 os.chdir(original_cwd)
 
@@ -1047,7 +1113,7 @@ class TestUploadFilesCommand:
             )
 
             assert result.exit_code == 0
-            assert "RESULTS JSON URL" in result.output
+            assert "RESULTS JSON:" in result.output
             assert "https://example.com/results.json" in result.output
             mock_helper.setup_repositories.assert_called_once_with("test-build")
             mock_helper.process_file_uploads.assert_called_once()
