@@ -16,6 +16,7 @@ import json
 import logging
 import os
 import traceback
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, TYPE_CHECKING
 
 from ..models.pulp_api import TaskResponse
@@ -182,6 +183,37 @@ def _serialize_results_to_json(results: Dict[str, Any]) -> str:
             except (TypeError, ValueError) as key_error:
                 logging.error("Key '%s' failed to serialize: %s", key, key_error)
         raise
+
+
+def _save_results_to_folder(folder_path: str, json_content: str, context: UploadContext) -> Optional[Path]:
+    """
+    Save results JSON to a local folder instead of uploading to Pulp.
+
+    Creates the folder if it does not exist. Writes pulp_results.json to it.
+    Also handles sbom_results if configured.
+
+    Args:
+        folder_path: Path to output directory
+        json_content: Serialized results JSON
+        context: Upload context (for sbom_results)
+
+    Returns:
+        Path to the saved file, or None on failure
+    """
+    try:
+        output_dir = Path(folder_path).expanduser().resolve()
+        output_dir.mkdir(parents=True, exist_ok=True)
+        output_file = output_dir / RESULTS_JSON_FILENAME
+        with open(output_file, "w", encoding="utf-8") as f:
+            f.write(json_content)
+        logging.info("Results JSON saved to %s (skipped Pulp upload)", output_file)
+        if context.sbom_results:
+            _handle_sbom_results(None, context, json_content)  # type: ignore[arg-type]
+        return output_file
+    except (OSError, IOError) as e:
+        logging.error("Failed to save results JSON to folder %s: %s", folder_path, e)
+        logging.error("Traceback: %s", traceback.format_exc())
+        return None
 
 
 def _upload_and_get_results_url(
@@ -415,6 +447,19 @@ def collect_results(
     """
     # Gather and validate content
     content_data = _gather_and_validate_content(client, context, extra_artifacts)
+
+    # If artifact_results is a folder path (no comma), save locally instead of uploading to Pulp.
+    # When no content is found, still create a minimal pulp_results.json so downstream steps
+    # (e.g. search-by-checksum with --results-json) have a file to read.
+    if context.artifact_results and "," not in context.artifact_results.strip():
+        if content_data:
+            file_info_map = _build_artifact_map(client, content_data.content_results)
+            _populate_results_model(client, results_model, content_data.content_results, file_info_map, context)
+        _add_distributions_to_results(client, context, results_model)
+        json_content = _serialize_results_to_json(results_model.to_json_dict())
+        output_path = _save_results_to_folder(context.artifact_results.strip(), json_content, context)
+        return str(output_path) if output_path else None
+
     if not content_data:
         return None
 
@@ -427,8 +472,9 @@ def collect_results(
     # Add distribution URLs
     _add_distributions_to_results(client, context, results_model)
 
-    # Serialize and upload
+    # Serialize results
     json_content = _serialize_results_to_json(results_model.to_json_dict())
+
     return _upload_and_get_results_url(client, context, results_model.repositories.artifacts_prn, json_content, date)
 
 
@@ -656,6 +702,7 @@ __all__ = [
     "upload_sbom",
     "collect_results",
     "_serialize_results_to_json",
+    "_save_results_to_folder",
     "_upload_and_get_results_url",
     "_extract_results_url",
     "_handle_artifact_results",

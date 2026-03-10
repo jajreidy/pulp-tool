@@ -562,25 +562,46 @@ class PulpClient(
         return None
 
     @property
-    def auth(self) -> OAuth2ClientCredentialsAuth:
+    def auth(self) -> Union[OAuth2ClientCredentialsAuth, httpx.BasicAuth]:
         """
         Get authentication credentials.
 
+        Supports OAuth2 (client_id/client_secret) or Basic Auth (username/password).
+        OAuth2 is preferred when both credential types are present.
+
         Returns:
-            OAuth2ClientCredentialsAuth instance for API authentication
+            OAuth2ClientCredentialsAuth or BasicAuth instance for API authentication
         """
         if not self._auth:
-            # Set up OAuth2 authentication with correct Red Hat SSO token URL
-            token_url = (
-                "https://sso.redhat.com/auth/realms/redhat-external/"
-                "protocol/openid-connect/token"  # nosec B105
-            )
+            client_id = self.config.get("client_id")
+            client_secret = self.config.get("client_secret")
+            username = self.config.get("username")
+            password = self.config.get("password")
 
-            self._auth = OAuth2ClientCredentialsAuth(  # type: ignore[assignment]
-                client_id=str(self.config["client_id"]),
-                client_secret=str(self.config["client_secret"]),
-                token_url=token_url,
-            )
+            # Prefer OAuth2 if both client_id and client_secret are set
+            if client_id and client_secret:
+                token_url = (
+                    "https://sso.redhat.com/auth/realms/redhat-external/"
+                    "protocol/openid-connect/token"  # nosec B105
+                )
+                self._auth = OAuth2ClientCredentialsAuth(  # type: ignore[assignment]
+                    client_id=str(client_id),
+                    client_secret=str(client_secret),
+                    token_url=token_url,
+                )
+            # Fall back to Basic Auth (username/password) for packages.redhat.com
+            elif username is not None and password is not None:
+                self._auth = httpx.BasicAuth(str(username), str(password))  # type: ignore[assignment]
+            else:
+                missing = []
+                if not (client_id and client_secret):
+                    missing.append("client_id/client_secret (OAuth2)")
+                if username is None or password is None:
+                    missing.append("username/password (Basic Auth)")
+                raise ValueError(
+                    f"Authentication credentials missing. Provide either: {', or '.join(missing)}. "
+                    "See README for configuration."
+                )
         return self._auth  # type: ignore[return-value]
 
     @property

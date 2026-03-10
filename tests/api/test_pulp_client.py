@@ -145,6 +145,43 @@ class TestPulpClient:
 
         assert auth1 is auth2
 
+    def test_auth_property_missing_credentials_raises(self, mock_config):
+        """Test auth property raises clear error when no credentials provided."""
+        config_no_creds = {
+            "base_url": mock_config["base_url"],
+            "api_root": mock_config["api_root"],
+            "domain": mock_config["domain"],
+        }
+        client = PulpClient(config_no_creds)
+        with pytest.raises(ValueError, match="Authentication credentials missing"):
+            _ = client.auth
+
+    def test_auth_property_empty_client_id_raises(self, mock_config):
+        """Test auth property raises when client_id is empty and no username/password."""
+        config = {
+            "base_url": mock_config["base_url"],
+            "api_root": mock_config["api_root"],
+            "domain": mock_config["domain"],
+            "client_id": "",
+            "client_secret": "secret",
+        }
+        client = PulpClient(config)
+        with pytest.raises(ValueError, match="Authentication credentials missing"):
+            _ = client.auth
+
+    def test_auth_property_username_password_basic_auth(self, mock_config):
+        """Test auth property uses Basic Auth when username/password provided."""
+        config = {
+            "base_url": mock_config["base_url"],
+            "api_root": mock_config["api_root"],
+            "domain": mock_config["domain"],
+            "username": "myuser",
+            "password": "mypass",
+        }
+        client = PulpClient(config)
+        auth = client.auth
+        assert isinstance(auth, httpx.BasicAuth)
+
     def test_cert_property(self, mock_pulp_client):
         """Test cert property."""
         cert_tuple = mock_pulp_client.cert

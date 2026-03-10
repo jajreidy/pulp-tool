@@ -39,7 +39,10 @@ from ..utils.error_handling import handle_http_error, handle_generic_error
 )
 @click.option(
     "--artifact-results",
-    help="Comma-separated paths for Konflux artifact results location (url_path,digest_path)",
+    help=(
+        "Konflux: comma-separated paths (url_path,digest_path). "
+        "Or a folder path to save pulp_results.json locally instead of uploading to Pulp."
+    ),
 )
 @click.option("--sbom-results", type=click.Path(), help="Path to write SBOM results")
 @click.pass_context
@@ -110,12 +113,12 @@ def upload(  # pylint: disable=too-many-arguments,too-many-positional-arguments
 
         logging.info("All operations completed successfully")
 
-        # Report the results JSON URL
+        # Report the results JSON location (URL or local path)
         click.echo("\n" + "=" * 80)
-        click.echo(f"RESULTS JSON URL: {results_json_url}")
+        click.echo(f"RESULTS JSON: {results_json_url}")
         if not artifact_results:
             click.echo("NOTE: Results JSON created but not written to Konflux artifact files")
-            click.echo("      Use --artifact_results to specify file paths for Konflux integration")
+            click.echo("      Use --artifact-results to specify file paths for Konflux or a folder to save locally")
         click.echo("=" * 80)
 
         sys.exit(0)

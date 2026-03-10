@@ -9,11 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - `codecov.yml` configuration file with `unit-tests` flag and carryforward enabled
+- packages.redhat.com configuration section in README with OAuth2 setup
+- Username/password (Basic Auth) support for packages.redhat.com
 
 ### Fixed
-- Renamed Codecov flag from `unittests` to `unit-tests` for consistency
+- Clear error when no auth credentials provided (client_id/client_secret or username/password)
+- Create minimal pulp_results.json when --artifact-results is folder and no content found (fixes search-by-checksum --results-json "does not exist")
 
 ### Added
+- Search RPM content by checksum command (`search-by-checksum`)
+- `--artifact-results` folder mode: pass a folder path to save pulp_results.json locally instead of uploading to Pulp
+- `--results-json` and `--output-results` options for search-by-checksum: accept results.json, remove found RPMs, write filtered file
 - Comprehensive type annotations for all function arguments
 - Pre-commit hooks for code quality checks
 - CHANGELOG.md following Keep a Changelog format

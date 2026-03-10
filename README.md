@@ -114,12 +114,34 @@ pulp-tool create-repository \
   }'
 ```
 
+#### Search RPM Content by Checksum
+
+```bash
+# Single checksum, JSON output (default)
+pulp-tool --config ~/.config/pulp/cli.toml search-by-checksum --checksum <sha256>
+
+# Multiple checksums
+pulp-tool --config ~/.config/pulp/cli.toml search-by-checksum --checksums <sha256_1>,<sha256_2>
+
+# Table output
+pulp-tool --config ~/.config/pulp/cli.toml search-by-checksum -c <sha256> --output table
+
+# Checksums only (for scripting)
+pulp-tool --config ~/.config/pulp/cli.toml search-by-checksum -c <sha256> --checksums-only
+
+# Filter results.json: remove RPMs found in Pulp, write filtered file
+pulp-tool --config ~/.config/pulp/cli.toml search-by-checksum \
+  --results-json /path/to/pulp_results.json \
+  --output-results /path/to/filtered_results.json
+```
+
 #### Get Help
 
 ```bash
 pulp-tool --help              # General help
 pulp-tool upload --help       # Upload command help
 pulp-tool pull --help         # Pull command help
+pulp-tool search-by-checksum --help  # Search by checksum help
 pulp-tool create-repository --help  # Create repository help
 pulp-tool --version           # Show version
 ```
@@ -252,6 +274,26 @@ timeout = 0
 verbose = 0
 ```
 
+### packages.redhat.com (Hosted Pulp)
+
+For [packages.redhat.com](https://packages.redhat.com) (hosted Pulp), use `username` and `password` (Basic Auth). See the [migration guide](https://gitlab.cee.redhat.com/hosted-pulp/pulp-docs/-/blob/main/migrate.to.packages.redhat.com.md) for details.
+
+```toml
+[cli]
+base_url = "https://packages.redhat.com"
+api_root = "/api/pulp/"
+username = "your-username"
+password = "your-password"
+domain = "konflux-jreidy-tenant"
+verify_ssl = true
+format = "json"
+dry_run = false
+timeout = 0
+verbose = 0
+```
+
+Alternatively, OAuth2 (`client_id` and `client_secret`) is also supported.
+
 ### Certificate Configuration (Optional)
 
 For distribution access, you may need a certificate configuration file:
@@ -287,7 +329,7 @@ Upload RPM packages, logs, and SBOM files to Pulp repositories.
 - `--rpm-path`: Path to directory containing RPM files (optional, defaults to current directory if not provided)
 - `--sbom-path`: Path to SBOM file (optional, SBOM upload will be skipped if not provided)
 - `--config`: Path to Pulp CLI config file (default: `~/.config/pulp/cli.toml`)
-- `--artifact-results`: Comma-separated paths for Konflux artifact results (url_path,digest_path)
+- `--artifact-results`: Konflux: comma-separated paths (url_path,digest_path). Or a folder path to save pulp_results.json locally instead of uploading to Pulp.
 - `--sbom-results`: Path to write SBOM results
 - `-d, --debug`: Increase verbosity (use `-d` for INFO, `-dd` for DEBUG, `-ddd` for DEBUG with HTTP logs)
 
@@ -333,7 +375,7 @@ pulp-tool \
   --namespace konflux-team \
   upload
 
-# With result file outputs
+# With result file outputs (Konflux)
 pulp-tool \
   --build-id konflux-build-12345 \
   --namespace konflux-team \
@@ -343,6 +385,16 @@ pulp-tool \
   --sbom-path ./build/sbom.json \
   --sbom-results ./sbom_url.txt \
   --artifact-results ./artifact_url.txt,./artifact_digest.txt
+
+# Save results.json locally (skip Pulp upload)
+pulp-tool \
+  --build-id konflux-build-12345 \
+  --namespace konflux-team \
+  upload \
+  --parent-package my-application \
+  --rpm-path ./build/rpms \
+  --sbom-path ./build/sbom.json \
+  --artifact-results ./output-results
 ```
 
 ### Upload Files Command
@@ -363,7 +415,7 @@ Upload individual files to pulp repositories.
 
 **Optional Arguments:**
 - `--arch`: Architecture for RPM files (e.g., 'x86_64', 'aarch64'). If not provided, will try to detect from RPM file
-- `--artifact-results`: Comma-separated paths for Konflux artifact results location (url_path,digest_path)
+- `--artifact-results`: Konflux: comma-separated paths (url_path,digest_path). Or a folder path to save pulp_results.json locally instead of uploading to Pulp.
 - `--sbom-results`: Path to write SBOM results
 
 **Example:**
