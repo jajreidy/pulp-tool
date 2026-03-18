@@ -516,6 +516,51 @@ class TestRepositoryManagerSetupRepositoriesAsync:
             # File repos don't have href
             assert "logs_href" not in result
 
+    def test_setup_repositories_impl_async_skip_artifacts_repo(self):
+        """Test _setup_repositories_impl_async with skip_artifacts_repo excludes artifacts."""
+        mock_client = Mock()
+        mock_client.namespace = "test-namespace"
+
+        manager = RepositoryManager(mock_client)
+
+        with patch.object(manager, "_create_or_get_repository_impl") as mock_create:
+            mock_create.side_effect = [
+                ("rpms-prn", "rpms-href"),
+                ("logs-prn", None),
+                ("sbom-prn", None),
+            ]
+
+            import asyncio
+
+            result = asyncio.run(manager._setup_repositories_impl_async("test-build", skip_artifacts_repo=True))
+
+            assert mock_create.call_count == 3
+            assert "artifacts_prn" not in result
+
+    def test_setup_repositories_impl_async_with_signed_by(self):
+        """Test _setup_repositories_impl_async with signed_by creates signed RPM repo only (line 365)."""
+        mock_client = Mock()
+        mock_client.namespace = "test-namespace"
+
+        manager = RepositoryManager(mock_client)
+
+        with patch.object(manager, "_create_or_get_repository_impl") as mock_create:
+            mock_create.side_effect = [
+                ("rpms-prn", "rpms-href"),
+                ("logs-prn", None),
+                ("sbom-prn", None),
+                ("artifacts-prn", None),
+                ("rpms-signed-prn", "rpms-signed-href"),
+            ]
+
+            import asyncio
+
+            result = asyncio.run(manager._setup_repositories_impl_async("test-build", signed_by="key-123"))
+
+            assert mock_create.call_count == 5
+            assert result["rpms_signed_prn"] == "rpms-signed-prn"
+            assert result["rpms_signed_href"] == "rpms-signed-href"
+
     def test_setup_repositories_impl_async_http_error_403(self):
         """Test _setup_repositories_impl_async with 403 HTTP error (lines 303, 305-307)."""
         mock_client = Mock()
@@ -573,7 +618,7 @@ class TestRepositoryManagerSetupRepositoriesAsync:
         with patch.object(manager, "_setup_repositories_impl_async", return_value=mock_repositories) as mock_async:
             result = manager._setup_repositories_impl("test-build")
 
-            mock_async.assert_called_once_with("test-build")
+            mock_async.assert_called_once_with("test-build", signed_by=None, skip_artifacts_repo=False)
             assert result == mock_repositories
 
 

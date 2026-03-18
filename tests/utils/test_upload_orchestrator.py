@@ -515,6 +515,40 @@ class TestUploadOrchestratorProcessUploads:
             assert call_pos[3] == "noarch"  # arch is 4th positional arg
             assert call_kw["rpm_repository_href"] == "/test/rpm-href"
 
+    def test_process_uploads_with_results_json(self):
+        """Test process_uploads calls process_uploads_from_results_json when results_json is set."""
+        orchestrator = UploadOrchestrator()
+
+        args = UploadRpmContext(
+            build_id="test-build",
+            date_str="2024-01-01 00:00:00",
+            namespace="test-ns",
+            parent_package="test-pkg",
+            rpm_path="/test/rpms",
+            sbom_path="/test/sbom.json",
+            results_json="/test/pulp_results.json",
+        )
+        mock_client = Mock()
+        repositories = RepositoryRefs(
+            rpms_href="/test/rpm-href",
+            rpms_prn="",
+            logs_href="",
+            logs_prn="logs-prn",
+            sbom_href="",
+            sbom_prn="sbom-prn",
+            artifacts_href="",
+            artifacts_prn="",
+        )
+
+        with patch(
+            "pulp_tool.services.upload_service.process_uploads_from_results_json",
+            return_value="https://example.com/results-from-json.json",
+        ) as mock_from_json:
+            result = orchestrator.process_uploads(mock_client, args, repositories)
+
+        assert result == "https://example.com/results-from-json.json"
+        mock_from_json.assert_called_once_with(mock_client, args, repositories)
+
 
 class TestUploadOrchestratorProcessFileUploads:
     """Tests for UploadOrchestrator.process_file_uploads() method."""

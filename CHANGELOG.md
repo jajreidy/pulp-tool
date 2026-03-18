@@ -8,6 +8,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- `upload --results-json`: Upload artifacts from pulp_results.json; files resolved from JSON directory or --files-base-path; --build-id and --namespace optional (extracted from artifact labels)
+- Skip artifacts repository and distribution when `--artifact-results` is a local folder path (no comma); Konflux mode (url_path,digest_path) still creates artifacts repo
+- `upload --signed-by`: Add signed_by pulp_label to RPMs only; use separate rpms-signed repo (logs/SBOMs never signed)
 - `search-by` command: search RPM content in Pulp by checksum, filename, and/or signed_by; filter results.json by removing found artifacts (--results-json, --output-results); supports --filename/--filenames, --checksum/--checksums, --signed-by, --keep-files; NVR-based queries with incremental API call reduction; --keep-files keeps logs and sboms in output-results (default: only RPM artifacts)
 - `codecov.yml` configuration file with `unit-tests` flag and carryforward enabled
 - packages.redhat.com configuration section in README with OAuth2 setup

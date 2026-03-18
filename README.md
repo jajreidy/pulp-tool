@@ -90,6 +90,12 @@ pulp-tool --config ~/.config/pulp/cli.toml \
   --rpm-path /path/to/rpms \
   --sbom-path /path/to/sbom.json
 
+# Upload from pulp_results.json (e.g. from --artifact-results folder)
+pulp-tool --config ~/.config/pulp/cli.toml \
+  upload \
+  --results-json /path/to/pulp_results.json \
+  --signed-by key-id-123
+
 # Download artifacts
 pulp-tool pull \
   --artifact-location /path/to/artifacts.json \
@@ -113,14 +119,21 @@ Upload RPM packages, logs, and SBOM files.
 
 | Argument | Required | Description |
 |----------|----------|-------------|
-| `--build-id` | Yes | Build identifier |
-| `--namespace` | Yes | Namespace (e.g., org or project) |
+| `--build-id` | No | Build identifier |
+| `--namespace` | No | Namespace (e.g., org or project) |
 | `--parent-package` | No | Parent package name |
 | `--rpm-path` | No | Path to RPM directory (default: current dir) |
 | `--sbom-path` | No | Path to SBOM file |
+| `--results-json` | No | Path to `pulp_results.json`; upload artifacts from this file (files resolved from its directory or `--files-base-path`). When used, `--build-id` and `--namespace` are optional (extracted from artifact labels in the JSON) |
+| `--files-base-path` | No | Base path for resolving artifact keys to file paths (default: directory of `--results-json`; requires `--results-json`) |
+| `--signed-by` | No | Add `signed_by` pulp_label and upload to separate signed repos/distributions |
 | `--artifact-results` | No | Comma-separated paths or folder for local `pulp_results.json` |
 | `--sbom-results` | No | Path to write SBOM results |
 | `-d, --debug` | No | Verbosity: `-d` INFO, `-dd` DEBUG, `-ddd` HTTP logs |
+
+**Upload from results JSON:** When `--results-json` is used, artifact keys from the JSON are resolved to file paths (default: same directory as the JSON; override with `--files-base-path`). Files are classified by extension (`.rpm` → rpms, `.log` → logs, SBOM extensions → sbom, else → artifacts) and uploaded to the appropriate repository. `--rpm-path` and `--sbom-path` are ignored in this mode.
+
+**Signed-by:** When `--signed-by` is set, a `signed_by` label is added to RPMs only, and RPMs are stored in a separate `rpms-signed` repository with its own distribution. Logs and SBOMs are never signed and always go to the standard repositories.
 
 ### upload-files
 

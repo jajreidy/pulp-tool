@@ -23,6 +23,7 @@ if TYPE_CHECKING:
 from .constants import (
     API_TYPES,
     REPOSITORY_TYPES,
+    SIGNED_REPOSITORY_TYPES,
 )
 from .validation import (
     strip_namespace_from_build_id,
@@ -71,7 +72,9 @@ class RepositoryManager:
         if not full_name or not full_name.strip():
             raise ValueError(f"Invalid full_name constructed: build_name={build_name}, repo_type={repo_type}")
 
-    def setup_repositories(self, build_id: str) -> RepositoryRefs:
+    def setup_repositories(
+        self, build_id: str, signed_by: Optional[str] = None, skip_artifacts_repo: bool = False
+    ) -> RepositoryRefs:
         """
         Setup all required repositories and return their identifiers.
 
@@ -80,6 +83,8 @@ class RepositoryManager:
 
         Args:
             build_id: Build ID for naming repositories and distributions
+            signed_by: If set, also create signed repos (rpms-signed, etc.)
+            skip_artifacts_repo: If True, do not create artifacts repo (e.g. when saving locally)
 
         Returns:
             RepositoryRefs NamedTuple containing all repository PRNs and hrefs
@@ -100,10 +105,13 @@ class RepositoryManager:
         logging.debug("Setting up repositories for build: %s", sanitized_build_id)
 
         # Create repositories directly using the helper's own methods
-        repositories = self._setup_repositories_impl(sanitized_build_id)
+        repositories = self._setup_repositories_impl(
+            sanitized_build_id, signed_by=signed_by, skip_artifacts_repo=skip_artifacts_repo
+        )
 
-        # Validate the setup
-        is_valid, errors = validate_repository_setup(repositories)
+        # Validate the setup (only base repos; signed repos are optional)
+        required = [r for r in REPOSITORY_TYPES if not (skip_artifacts_repo and r == "artifacts")]
+        is_valid, errors = validate_repository_setup(repositories, required_types=required)
         if not is_valid:
             raise RuntimeError(f"Repository setup validation failed: {', '.join(errors)}")
 
@@ -119,6 +127,14 @@ class RepositoryManager:
             sbom_prn=repositories.get("sbom_prn", ""),
             artifacts_href=repositories.get("artifacts_href", ""),
             artifacts_prn=repositories.get("artifacts_prn", ""),
+            rpms_signed_href=repositories.get("rpms_signed_href", ""),
+            rpms_signed_prn=repositories.get("rpms_signed_prn", ""),
+            logs_signed_href=repositories.get("logs_signed_href", ""),
+            logs_signed_prn=repositories.get("logs_signed_prn", ""),
+            sbom_signed_href=repositories.get("sbom_signed_href", ""),
+            sbom_signed_prn=repositories.get("sbom_signed_prn", ""),
+            artifacts_signed_href=repositories.get("artifacts_signed_href", ""),
+            artifacts_signed_prn=repositories.get("artifacts_signed_prn", ""),
         )
 
     def create_or_get_repository(
@@ -333,22 +349,33 @@ class RepositoryManager:
 
         return base_path
 
-    async def _setup_repositories_impl_async(self, build_id: str) -> Dict[str, str]:
+    async def _setup_repositories_impl_async(
+        self,
+        build_id: str,
+        signed_by: Optional[str] = None,
+        skip_artifacts_repo: bool = False,
+    ) -> Dict[str, str]:
         """
         Async version: Setup all required repositories using asyncio.gather for concurrency.
 
         This method creates or retrieves all necessary repositories (rpms, logs, sbom, artifacts)
-        and their distributions concurrently using async/await for better performance.
+        and their distributions concurrently using asyncio.gather for better performance.
+        When signed_by is set, also creates rpms-signed. When skip_artifacts_repo is True,
+        skips the artifacts repository (e.g. when saving results locally).
 
         Args:
             build_id: Base name for the repositories
+            signed_by: If set, also create signed repos
+            skip_artifacts_repo: If True, do not create artifacts repo
 
         Returns:
             Dictionary mapping repository types to their PRNs and hrefs
         """
         logging.debug("Setting up repositories async for: %s", build_id)
 
-        repo_types = REPOSITORY_TYPES
+        repo_types = [r for r in REPOSITORY_TYPES if not (skip_artifacts_repo and r == "artifacts")]
+        if signed_by:
+            repo_types.extend(SIGNED_REPOSITORY_TYPES)
 
         # Use asyncio.gather to run all repository setups concurrently
         # Each operation runs in the event loop without blocking
@@ -359,7 +386,8 @@ class RepositoryManager:
             if not build_name or not build_name.strip():
                 raise ValueError(f"Empty build_name after stripping namespace from build_id: {build_id}")
             full_name = f"{build_name}/{repo_type}"
-            self._validate_full_name(full_name, build_name, repo_type)
+            base_repo_type = repo_type.split("-")[0] if "-" in repo_type else repo_type
+            self._validate_full_name(full_name, build_name, base_repo_type)
             new_repository = RepositoryRequest(name=full_name, autopublish=True)
             new_distribution = DistributionRequest(name=full_name, base_path=full_name)
             # Validate that base_path was set correctly
@@ -368,22 +396,27 @@ class RepositoryManager:
                     f"DistributionRequest base_path is empty after creation: "
                     f"name={full_name}, base_path={new_distribution.base_path}"
                 )
+            # Map repo_type to API type: rpms-signed -> rpms, logs-signed -> logs, etc.
+            api_repo_type = base_repo_type
+
             # Run sync method in executor to avoid blocking
-            prn, href = await loop.run_in_executor(
-                None, self._create_or_get_repository_impl, new_repository, new_distribution, repo_type
-            )
+            def _run_create(r=new_repository, d=new_distribution, t=api_repo_type):
+                return self._create_or_get_repository_impl(r, d, t, build_id)
+
+            prn, href = await loop.run_in_executor(None, _run_create)
             return repo_type, (prn, href)
 
         try:
             # Gather all repository creation tasks concurrently
             results = await asyncio.gather(*[create_repo(rt) for rt in repo_types])
 
-            # Build result dictionary
+            # Build result dictionary; map rpms-signed -> rpms_signed for key names
             repositories = {}
             for repo_type, (prn, href) in results:
-                repositories[f"{repo_type}_prn"] = prn
+                key_suffix = repo_type.replace("-", "_")
+                repositories[f"{key_suffix}_prn"] = prn
                 if href:  # RPM repositories have href, file repositories don't
-                    repositories[f"{repo_type}_href"] = href
+                    repositories[f"{key_suffix}_href"] = href
                 logging.debug("Completed setup for %s repository", repo_type)
 
             return repositories
@@ -570,15 +603,19 @@ class RepositoryManager:
 
         return distro_task
 
-    def _setup_repositories_impl(self, build_id: str) -> Dict[str, str]:
+    def _setup_repositories_impl(
+        self, build_id: str, signed_by: Optional[str] = None, skip_artifacts_repo: bool = False
+    ) -> Dict[str, str]:
         """
         Setup all required repositories and return their identifiers.
 
         This method creates or retrieves all necessary repositories (rpms, logs, sbom, artifacts)
         and their distributions concurrently using async/await for better performance than threads.
+        When signed_by is set, also creates signed repos.
 
         Args:
             build_id: Base name for the repositories
+            signed_by: If set, also create signed repos
 
         Returns:
             Dictionary mapping repository types to their PRNs and hrefs:
@@ -586,7 +623,9 @@ class RepositoryManager:
                 - {repo_type}_href: Repository href for RPM repositories (None for file repos)
         """
         # Run the async version and return results
-        return asyncio.run(self._setup_repositories_impl_async(build_id))
+        return asyncio.run(
+            self._setup_repositories_impl_async(build_id, signed_by=signed_by, skip_artifacts_repo=skip_artifacts_repo)
+        )
 
     def get_distribution_cache(self) -> Dict[Tuple[str, str], str]:
         """Get the distribution cache for sharing with DistributionManager."""

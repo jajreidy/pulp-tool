@@ -18,6 +18,14 @@ class RepositoryRefs(KonfluxBaseModel):
         sbom_prn: Pulp Resource Name for SBOM repository
         artifacts_href: Pulp href for artifacts repository
         artifacts_prn: Pulp Resource Name for artifacts repository
+        rpms_signed_href: Pulp href for signed RPM repository (when --signed-by used)
+        rpms_signed_prn: Pulp Resource Name for signed RPM repository
+        logs_signed_href: Pulp href for signed logs repository
+        logs_signed_prn: Pulp Resource Name for signed logs repository
+        sbom_signed_href: Pulp href for signed SBOM repository
+        sbom_signed_prn: Pulp Resource Name for signed SBOM repository
+        artifacts_signed_href: Pulp href for signed artifacts repository
+        artifacts_signed_prn: Pulp Resource Name for signed artifacts repository
     """
 
     rpms_href: str
@@ -28,6 +36,14 @@ class RepositoryRefs(KonfluxBaseModel):
     sbom_prn: str
     artifacts_href: str
     artifacts_prn: str
+    rpms_signed_href: str = ""
+    rpms_signed_prn: str = ""
+    logs_signed_href: str = ""
+    logs_signed_prn: str = ""
+    sbom_signed_href: str = ""
+    sbom_signed_prn: str = ""
+    artifacts_signed_href: str = ""
+    artifacts_signed_prn: str = ""
 
 
 class RepositoryInfo(KonfluxBaseModel):
