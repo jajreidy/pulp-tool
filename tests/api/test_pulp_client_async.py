@@ -120,6 +120,25 @@ class TestPulpClientAsync:
 
         asyncio.run(_run())
 
+    def test_async_get_rpm_by_nvr_empty(self, mock_config):
+        """Test async_get_rpm_by_nvr with empty list returns empty results (line 1320)."""
+        import respx
+
+        async def _run():
+            client = PulpClient(mock_config)
+            with respx.mock:
+                respx.post("https://sso.redhat.com/auth/realms/redhat-external/protocol/openid-connect/token").mock(
+                    return_value=httpx.Response(200, json={"access_token": "test-token", "expires_in": 3600})
+                )
+                response = await client.async_get_rpm_by_nvr([])
+                assert response.status_code == 200
+                assert response.json()["count"] == 0
+                assert response.json()["results"] == []
+                if hasattr(client, "_async_session") and client._async_session:
+                    await client._async_session.aclose()
+
+        asyncio.run(_run())
+
 
 class TestPulpClientErrorPaths:
     """Test PulpClient error paths."""

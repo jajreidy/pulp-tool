@@ -16,6 +16,8 @@ from pulp_tool.utils.rpm_operations import (
     _calculate_sha256_checksum,
     _create_batches,
     _get_nvra,
+    parse_rpm_filename_to_nvr,
+    parse_rpm_filename_to_nvra,
     upload_rpms_parallel,
 )
 
@@ -79,6 +81,90 @@ class TestBatchProcessingUtilities:
 
         assert len(batches) == 1
         assert len(batches[0]) == 10
+
+
+class TestParseRpmFilenameToNvr:
+    """Test parse_rpm_filename_to_nvr function."""
+
+    def test_parse_src_rpm(self):
+        """Parse src.rpm filename."""
+        result = parse_rpm_filename_to_nvr("osci-internal-test-package-0.2.0-257.el10.src.rpm")
+        assert result == ("osci-internal-test-package", "0.2.0", "257.el10")
+
+    def test_parse_x86_64_rpm(self):
+        """Parse x86_64.rpm filename."""
+        result = parse_rpm_filename_to_nvr("pkg-1.0-1.x86_64.rpm")
+        assert result == ("pkg", "1.0", "1")
+
+    def test_parse_with_path(self):
+        """Parse filename with path - uses basename."""
+        result = parse_rpm_filename_to_nvr("x86_64/pkg-1.0-1.x86_64.rpm")
+        assert result == ("pkg", "1.0", "1")
+
+    def test_parse_epoch_in_version(self):
+        """Parse filename with epoch in version (name-epoch:version-release)."""
+        result = parse_rpm_filename_to_nvr("pkg-1:2.3-4.el8.x86_64.rpm")
+        assert result == ("pkg", "1:2.3", "4.el8")
+
+    def test_parse_epoch_prefix(self):
+        """Parse filename with epoch prefix (epoch:name-version-release, rpmUtils format)."""
+        result = parse_rpm_filename_to_nvr("1:bar-9-123a.ia64.rpm")
+        assert result == ("bar", "9", "123a")
+
+    def test_parse_release_starts_with_letter(self):
+        """Parse filename where release starts with letter (e.g. test_15.el10)."""
+        result = parse_rpm_filename_to_nvr("libecpg-16.1-test_15.el10.src.rpm")
+        assert result == ("libecpg", "16.1", "test_15.el10")
+        result2 = parse_rpm_filename_to_nvr("libpgtypes-16.1-test_15.el10.s390x.rpm")
+        assert result2 == ("libpgtypes", "16.1", "test_15.el10")
+
+    def test_parse_noarch(self):
+        """Parse noarch rpm."""
+        result = parse_rpm_filename_to_nvr("my-pkg-0.1.0-1.noarch.rpm")
+        assert result == ("my-pkg", "0.1.0", "1")
+
+    def test_parse_aarch64(self):
+        """Parse aarch64 rpm."""
+        result = parse_rpm_filename_to_nvr("package-1.0.0-1.aarch64.rpm")
+        assert result == ("package", "1.0.0", "1")
+
+    def test_parse_invalid_no_rpm_suffix(self):
+        """Return None for non-.rpm file."""
+        assert parse_rpm_filename_to_nvr("pkg.tar.gz") is None
+
+    def test_parse_invalid_malformed(self):
+        """Return None for malformed rpm filename."""
+        assert parse_rpm_filename_to_nvr("package.rpm") is None
+        assert parse_rpm_filename_to_nvr("package-1.0.rpm") is None
+
+    def test_parse_invalid_empty_name_version_or_release(self):
+        """Return None when name, version, or release is empty after parsing (line 117)."""
+        # Release empty: pkg-1.0-.rpm (trailing -)
+        assert parse_rpm_filename_to_nvr("pkg-1.0-.rpm") is None
+        # Version empty: pkg--1.rpm (double -)
+        assert parse_rpm_filename_to_nvr("pkg--1.rpm") is None
+
+
+class TestParseRpmFilenameToNvra:
+    """Test parse_rpm_filename_to_nvra function."""
+
+    def test_parse_includes_arch(self):
+        """Parse filename and extract architecture."""
+        assert parse_rpm_filename_to_nvra("pkg-1.0-1.x86_64.rpm") == ("pkg", "1.0", "1", "x86_64")
+        assert parse_rpm_filename_to_nvra("pkg-1.0-1.aarch64.rpm") == ("pkg", "1.0", "1", "aarch64")
+        assert parse_rpm_filename_to_nvra("pkg-1.0-1.s390x.rpm") == ("pkg", "1.0", "1", "s390x")
+        assert parse_rpm_filename_to_nvra("pkg-1.0-1.src.rpm") == ("pkg", "1.0", "1", "src")
+        assert parse_rpm_filename_to_nvra("pkg-1.0-1.noarch.rpm") == ("pkg", "1.0", "1", "noarch")
+
+    def test_parse_with_path(self):
+        """Parse filename with path - uses basename for arch extraction."""
+        result = parse_rpm_filename_to_nvra("x86_64/pkg-1.0-1.x86_64.rpm")
+        assert result == ("pkg", "1.0", "1", "x86_64")
+
+    def test_parse_invalid_returns_none(self):
+        """Return None for unparseable filenames."""
+        assert parse_rpm_filename_to_nvra("pkg.tar.gz") is None
+        assert parse_rpm_filename_to_nvra("package.rpm") is None
 
 
 class TestNVRAUtilities:
