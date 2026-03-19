@@ -65,7 +65,7 @@ def load_artifact_metadata(artifact_location: str, distribution_client: Optional
         # HTTP URL - use distribution client
         if distribution_client is None:
             raise ValueError(
-                "DistributionClient (certificate and key) required for remote artifact locations. "
+                "DistributionClient (cert/key or username/password) required for remote artifact locations. "
                 "Provide via config file."
             )
         logging.debug("Loading artifact metadata from URL: %s", artifact_location)
@@ -221,7 +221,8 @@ def download_artifacts_concurrently(
 
     if distribution_client is None:
         raise ValueError(
-            "DistributionClient (certificate and key) required for downloading artifacts. " "Provide via config file."
+            "DistributionClient (cert/key or username/password) required for downloading artifacts. "
+            "Provide via config file."
         )
 
     logging.info("Downloading %d artifact(s)", total_artifacts)

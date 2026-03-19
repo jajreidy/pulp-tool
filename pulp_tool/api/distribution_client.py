@@ -8,7 +8,7 @@ distribution repositories.
 # Standard library imports
 import logging
 import traceback
-from typing import Tuple
+from typing import Optional, Tuple
 
 # Third-party imports
 import httpx
@@ -20,23 +20,56 @@ from ..utils import create_session_with_retry
 class DistributionClient:
     """Client for downloading artifacts from distribution repositories."""
 
-    def __init__(self, cert: str, key: str) -> None:
-        """Initialize the distribution client with SSL certificates.
+    def __init__(
+        self,
+        cert: Optional[str] = None,
+        key: Optional[str] = None,
+        username: Optional[str] = None,
+        password: Optional[str] = None,
+    ) -> None:
+        """Initialize the distribution client with SSL certificates or username/password.
+
+        Provide either (cert, key) for client certificate auth, or (username, password)
+        for Basic Auth. At least one auth method is required.
 
         Args:
-            cert: Path to the SSL certificate file
-            key: Path to the SSL private key file
+            cert: Path to the SSL certificate file (optional if username/password provided)
+            key: Path to the SSL private key file (optional if username/password provided)
+            username: Username for Basic Auth (optional if cert/key provided)
+            password: Password for Basic Auth (optional if cert/key provided)
+
+        Raises:
+            ValueError: If neither (cert+key) nor (username+password) is provided
         """
         self.cert = cert
         self.key = key
+        self.username = username
+        self.password = password
+
+        has_cert = cert and key
+        has_basic = username is not None and password is not None
+        if not has_cert and not has_basic:
+            raise ValueError(
+                "Provide either (cert, key) for client certificate auth, " "or (username, password) for Basic Auth."
+            )
+        if has_cert and has_basic:
+            raise ValueError("Provide either (cert, key) or (username, password), not both.")
+
         self.session = self._create_session()
 
     def _create_session(self) -> httpx.Client:
         """Create an httpx client with retry strategy and connection pooling.
 
         Uses a 5-minute timeout to allow for downloading large RPM files.
+        Uses cert/key for client cert auth, or Basic Auth when username/password provided.
         """
-        return create_session_with_retry(cert=(self.cert, self.key), timeout=300.0)
+        cert_tuple: Optional[Tuple[str, str]] = None
+        auth: Optional[Tuple[str, str]] = None
+        if self.cert and self.key:
+            cert_tuple = (self.cert, self.key)
+        elif self.username is not None and self.password is not None:
+            auth = (str(self.username), str(self.password))
+        return create_session_with_retry(cert=cert_tuple, auth=auth, timeout=300.0)
 
     def pull_artifact(self, file_url: str) -> httpx.Response:
         """Pull artifact metadata from the given URL.

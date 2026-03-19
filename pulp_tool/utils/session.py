@@ -25,7 +25,10 @@ RETRY_BACKOFF_FACTOR = 0.5  # 0.5s, 1s, 2s delays
 
 
 def create_session_with_retry(
-    cert: Optional[Tuple[str, str]] = None, timeout: float = 30.0, max_connections: int = 100
+    cert: Optional[Tuple[str, str]] = None,
+    timeout: float = 30.0,
+    max_connections: int = 100,
+    auth: Optional[Union[httpx.Auth, Tuple[str, str]]] = None,
 ) -> httpx.Client:
     """
     Create an httpx client with retry strategy and connection pooling.
@@ -34,6 +37,7 @@ def create_session_with_retry(
         cert: Optional tuple of (cert_file, key_file) paths for client authentication
         timeout: Total timeout in seconds (default: 30.0)
         max_connections: Maximum number of connections in the pool (default: 100)
+        auth: Optional auth for Basic Auth (e.g. httpx.BasicAuth or (username, password) tuple)
 
     Returns:
         Configured httpx.Client object with:
@@ -42,13 +46,15 @@ def create_session_with_retry(
         - Compression support (gzip, deflate, br)
         - Optimized connection pooling
         - Timeout configuration
-        - Optional client certificate authentication
+        - Optional client certificate or Basic Auth
 
     Example:
         >>> client = create_session_with_retry()
         >>> response = client.get("https://pulp.example.com/api/")
         >>> # With client cert and longer timeout
         >>> client = create_session_with_retry(cert=("cert.pem", "key.pem"), timeout=300.0)
+        >>> # With Basic Auth (username/password)
+        >>> client = create_session_with_retry(auth=("user", "pass"), timeout=300.0)
     """
     # Configure connection limits - increased for parallel workloads
     limits = httpx.Limits(
@@ -96,15 +102,20 @@ def create_session_with_retry(
     if not use_http2:
         logging.debug("HTTP/2 support not available (h2 package not installed)")
 
-    client = httpx.Client(
-        transport=transport,
-        timeout=timeout_config,
-        follow_redirects=True,
-        headers=default_headers,
-        http2=use_http2,
-    )
+    client_kwargs: dict = {
+        "transport": transport,
+        "timeout": timeout_config,
+        "follow_redirects": True,
+        "headers": default_headers,
+        "http2": use_http2,
+    }
+    if auth is not None:
+        if isinstance(auth, tuple):
+            client_kwargs["auth"] = httpx.BasicAuth(auth[0], auth[1])
+        else:
+            client_kwargs["auth"] = auth
 
-    return client
+    return httpx.Client(**client_kwargs)
 
 
 __all__ = ["create_session_with_retry"]

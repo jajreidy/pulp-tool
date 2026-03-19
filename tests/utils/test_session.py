@@ -88,3 +88,17 @@ class TestSessionUtilities:
             # HTTP/2 should be disabled when h2 package is not available
             # Note: httpx.Client doesn't expose http2 setting after initialization
             assert not session.is_closed
+
+    def test_create_session_with_auth_tuple(self):
+        """Test create_session_with_retry with Basic Auth (username, password) tuple."""
+        session = create_session_with_retry(auth=("user", "pass"))
+        assert isinstance(session, httpx.Client)
+        assert session.auth is not None
+        assert isinstance(session.auth, httpx.BasicAuth)
+
+    def test_create_session_with_auth_basic(self):
+        """Test create_session_with_retry with httpx.BasicAuth."""
+        auth = httpx.BasicAuth("myuser", "mypass")
+        session = create_session_with_retry(auth=auth)
+        assert isinstance(session, httpx.Client)
+        assert session.auth is auth

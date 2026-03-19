@@ -53,20 +53,20 @@ class TestDistributionClient:
 
     def test_init(self):
         """Test DistributionClient initialization."""
-        client = DistributionClient("cert.pem", "key.pem")
+        client = DistributionClient(cert="cert.pem", key="key.pem")
         assert client.cert == "cert.pem"
         assert client.key == "key.pem"
         assert client.session is not None
 
     def test_create_session(self):
         """Test _create_session method."""
-        client = DistributionClient("cert.pem", "key.pem")
+        client = DistributionClient(cert="cert.pem", key="key.pem")
         session = client._create_session()
         assert session is not None
 
     def test_pull_artifact(self, httpx_mock):
         """Test pull_artifact method."""
-        client = DistributionClient("cert.pem", "key.pem")
+        client = DistributionClient(cert="cert.pem", key="key.pem")
 
         # Mock the artifact endpoint
         httpx_mock.get("https://example.com/artifacts.json").mock(
@@ -90,7 +90,7 @@ class TestDistributionClient:
             patch("pulp_tool.api.distribution_client.logging") as mock_logging,
         ):
 
-            client = DistributionClient("cert.pem", "key.pem")
+            client = DistributionClient(cert="cert.pem", key="key.pem")
             result = client.pull_data("file.rpm", "https://example.com/file.rpm", "x86_64", "rpm")
 
             assert result == "file.rpm"
@@ -99,7 +99,7 @@ class TestDistributionClient:
 
     def test_pull_data_async_success(self):
         """Test successful async data pull."""
-        client = DistributionClient("/tmp/cert.pem", "/tmp/key.pem")
+        client = DistributionClient(cert="/tmp/cert.pem", key="/tmp/key.pem")
         download_info = ("test.rpm", "https://example.com/test.rpm", "x86_64", "rpm")
 
         with patch.object(client, "pull_data", return_value="/tmp/test.rpm"):
@@ -109,7 +109,7 @@ class TestDistributionClient:
 
     def test_pull_data_async_exception(self):
         """Test async data pull with exception."""
-        client = DistributionClient("/tmp/cert.pem", "/tmp/key.pem")
+        client = DistributionClient(cert="/tmp/cert.pem", key="/tmp/key.pem")
         download_info = ("test.rpm", "https://example.com/test.rpm", "x86_64", "rpm")
 
         with patch.object(client, "pull_data", side_effect=HTTPError("Network error")):
@@ -122,7 +122,7 @@ class TestArtifactManagement:
 
     def test_load_artifact_metadata_success(self, httpx_mock):
         """Test loading artifact metadata successfully."""
-        client = DistributionClient("cert.pem", "key.pem")
+        client = DistributionClient(cert="cert.pem", key="key.pem")
 
         # Mock HTTP response
         httpx_mock.get("https://example.com/artifacts.json").mock(
@@ -136,14 +136,14 @@ class TestArtifactManagement:
 
     def test_load_artifact_metadata_file_not_found(self):
         """Test loading artifact metadata from non-existent file."""
-        client = DistributionClient("cert.pem", "key.pem")
+        client = DistributionClient(cert="cert.pem", key="key.pem")
 
         with pytest.raises(FileNotFoundError):
             load_artifact_metadata("/nonexistent/file.json", client)
 
     def test_load_artifact_metadata_invalid_json(self, temp_file):
         """Test loading artifact metadata with invalid JSON."""
-        client = DistributionClient("cert.pem", "key.pem")
+        client = DistributionClient(cert="cert.pem", key="key.pem")
 
         with open(temp_file, "w") as f:
             f.write("invalid json content")
@@ -1098,7 +1098,7 @@ class TestClientInitialization:
     def test_initialize_clients(self):
         """Test distribution client initialization."""
         # This is now inlined in the CLI, but we can test DistributionClient directly
-        client = DistributionClient("/tmp/cert.pem", "/tmp/key.pem")
+        client = DistributionClient(cert="/tmp/cert.pem", key="/tmp/key.pem")
         assert client.cert == "/tmp/cert.pem"
         assert client.key == "/tmp/key.pem"
 
@@ -1199,7 +1199,7 @@ class TestLoadArtifactMetadata:
 
     def test_load_artifact_metadata_general_exception(self, temp_file):
         """Test load_artifact_metadata handles general exceptions (lines 85-87)."""
-        client = DistributionClient("cert.pem", "key.pem")
+        client = DistributionClient(cert="cert.pem", key="key.pem")
 
         # Create a file that will raise a general exception (e.g., permission error)
         with patch("builtins.open", side_effect=PermissionError("Permission denied")):
