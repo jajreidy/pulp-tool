@@ -266,12 +266,16 @@ finally:
     client.close()
 ```
 
-**DistributionClient** (certificate auth for downloads):
+**DistributionClient** (certificate or Basic Auth for downloads):
 
 ```python
 from pulp_tool import DistributionClient
 
+# With client certificate
 dist = DistributionClient(cert="/path/to/cert.pem", key="/path/to/key.pem")
+# Or with username/password (Basic Auth)
+dist = DistributionClient(username="user", password="pass")
+
 metadata = dist.pull_artifact("https://pulp.example.com/artifacts.json").json()
 dist.pull_data(filename="pkg.rpm", file_url="...", arch="x86_64", artifact_type="rpm")
 ```

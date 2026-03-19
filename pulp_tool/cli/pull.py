@@ -60,6 +60,14 @@ from ..utils.error_handling import handle_generic_error, handle_http_error
         "(required for --build-id + --namespace unless --config is used, optional for upload)"
     ),
 )
+@click.option(
+    "--distribution-config",
+    type=click.Path(exists=True),
+    help=(
+        "Path to config file for distribution auth (cert/key or username/password). "
+        "If not set, auth is loaded from --transfer-dest or --config."
+    ),
+)
 @click.pass_context
 def pull(  # pylint: disable=too-many-positional-arguments
     ctx: click.Context,
@@ -69,6 +77,7 @@ def pull(  # pylint: disable=too-many-positional-arguments
     cert_path: Optional[str],
     key_path: Optional[str],
     transfer_dest: Optional[str],
+    distribution_config: Optional[str],
 ) -> None:
     """Download artifacts and optionally re-upload to Pulp repositories."""
     # Get shared options from context
@@ -116,41 +125,48 @@ def pull(  # pylint: disable=too-many-positional-arguments
     content_types_list = [ct.strip() for ct in content_types.split(",")] if content_types else None
     archs_list = [arch.strip() for arch in archs.split(",")] if archs else None
 
-    # Get certificate paths from config (--transfer-dest or --config) if not provided via CLI
-    if config_path and (not cert_path or not key_path):
+    # Get auth from --distribution-config, or fall back to --transfer-dest/--config
+    # Source: --distribution-config if set, else config_path
+    username: Optional[str] = None
+    password: Optional[str] = None
+    auth_config_path = distribution_config or config_path
+    if auth_config_path:
         try:
-            config_manager = ConfigManager(config_path)
+            config_manager = ConfigManager(auth_config_path)
             config_manager.load()
             if not cert_path:
                 loaded_cert = config_manager.get("cli.cert")
-                # Only assign if we got a non-empty value that exists
                 if loaded_cert and isinstance(loaded_cert, str) and loaded_cert.strip():
                     loaded_cert = loaded_cert.strip()
-                    # Expand user path and resolve relative paths
                     expanded_cert = os.path.expanduser(loaded_cert)
                     if os.path.exists(expanded_cert):
                         cert_path = expanded_cert
             if not key_path:
                 loaded_key = config_manager.get("cli.key")
-                # Only assign if we got a non-empty value that exists
                 if loaded_key and isinstance(loaded_key, str) and loaded_key.strip():
                     loaded_key = loaded_key.strip()
-                    # Expand user path and resolve relative paths
                     expanded_key = os.path.expanduser(loaded_key)
                     if os.path.exists(expanded_key):
                         key_path = expanded_key
+            if username is None:
+                username = config_manager.get("cli.username")
+                username = str(username).strip() if username else None
+            if password is None:
+                password = config_manager.get("cli.password")
+                password = str(password) if password is not None else None
         except Exception as e:
-            logging.debug("Could not load cert/key from config: %s", e)
-            # If config loading fails, cert_path/key_path remain None and will be caught by validation below
+            logging.debug("Could not load auth from config: %s", e)
 
     # Check if artifact_location is a remote URL BEFORE creating context
     is_remote = artifact_location.startswith(("http://", "https://")) if artifact_location else False
 
-    # Validate that cert_path and key_path are provided for remote URLs
-    if is_remote and (not cert_path or not key_path):
+    # Validate: for remote URLs, need (cert+key) OR (username+password)
+    has_cert = cert_path and key_path
+    has_basic = username is not None and password is not None
+    if is_remote and not has_cert and not has_basic:
         logging.error(
-            "Certificate and key paths are required when artifact_location is a remote URL. "
-            "Provide them via --transfer-dest, --config, --cert-path, or --key-path."
+            "Authentication required for remote URLs. Provide either (cert, key) or (username, password) "
+            "via --distribution-config, --transfer-dest, --config, --cert-path, or --key-path."
         )
         sys.exit(1)
 
@@ -170,9 +186,12 @@ def pull(  # pylint: disable=too-many-positional-arguments
     try:
         # Initialize distribution client only if needed
         distribution_client = None
-        if cert_path and key_path:
+        if has_cert or has_basic:
             logging.info("Initializing distribution client...")
-            distribution_client = DistributionClient(cert_path, key_path)
+            if has_cert:
+                distribution_client = DistributionClient(cert=cert_path, key=key_path)
+            else:
+                distribution_client = DistributionClient(username=username, password=password)
 
         # Load artifact metadata and validate
         artifact_data = load_and_validate_artifacts(args, distribution_client)

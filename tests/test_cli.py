@@ -2022,6 +2022,112 @@ class TestPullCommand:
 
             assert result.exit_code == 0
 
+    @patch("pulp_tool.cli.pull.DistributionClient")
+    @patch("pulp_tool.cli.pull.load_and_validate_artifacts")
+    @patch("pulp_tool.cli.pull.setup_repositories_if_needed")
+    @patch("pulp_tool.cli.pull.download_artifacts_concurrently")
+    @patch("pulp_tool.cli.pull.generate_pull_report")
+    def test_pull_with_username_password_from_config(
+        self, mock_report, mock_download, mock_setup, mock_load, mock_dist_client
+    ):
+        """Test pull with username/password from config (no cert/key)."""
+        runner = CliRunner()
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config_path = Path(tmpdir) / "config.toml"
+            config_path.write_text(
+                '[cli]\nbase_url = "https://pulp.example.com"\n' 'username = "myuser"\n' 'password = "mypass"\n'
+            )
+
+            from pulp_tool.models.artifacts import ArtifactData, ArtifactJsonResponse, ArtifactMetadata
+
+            mock_artifact_data = ArtifactData(
+                artifact_json=ArtifactJsonResponse(
+                    artifacts={"test.rpm": ArtifactMetadata(labels={"build_id": "test"})}, distributions={}
+                ),
+                artifacts={"test.rpm": ArtifactMetadata(labels={"build_id": "test"})},
+            )
+            mock_load.return_value = mock_artifact_data
+            mock_setup.return_value = None
+
+            mock_client_instance = Mock()
+            mock_dist_client.return_value = mock_client_instance
+
+            mock_result = Mock()
+            mock_result.pulled_artifacts = Mock()
+            mock_result.completed = 0
+            mock_result.failed = 0
+            mock_download.return_value = mock_result
+
+            result = runner.invoke(
+                cli,
+                [
+                    "pull",
+                    "--artifact-location",
+                    "https://example.com/artifact.json",
+                    "--transfer-dest",
+                    str(config_path),
+                ],
+            )
+
+            assert result.exit_code == 0
+            mock_dist_client.assert_called_once_with(username="myuser", password="mypass")
+
+    @patch("pulp_tool.cli.pull.DistributionClient")
+    @patch("pulp_tool.cli.pull.load_and_validate_artifacts")
+    @patch("pulp_tool.cli.pull.setup_repositories_if_needed")
+    @patch("pulp_tool.cli.pull.download_artifacts_concurrently")
+    @patch("pulp_tool.cli.pull.generate_pull_report")
+    def test_pull_with_distribution_config(self, mock_report, mock_download, mock_setup, mock_load, mock_dist_client):
+        """Test pull with --distribution-config overrides transfer-dest for auth."""
+        runner = CliRunner()
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # transfer-dest has cert/key, distribution-config has username/password
+            transfer_config = Path(tmpdir) / "transfer.toml"
+            transfer_config.write_text(
+                '[cli]\nbase_url = "https://pulp.example.com"\n' 'cert = "/tmp/cert.pem"\n' 'key = "/tmp/key.pem"\n'
+            )
+            dist_config = Path(tmpdir) / "dist_auth.toml"
+            dist_config.write_text('[cli]\nusername = "distuser"\npassword = "distpass"\n')
+
+            from pulp_tool.models.artifacts import ArtifactData, ArtifactJsonResponse, ArtifactMetadata
+
+            mock_artifact_data = ArtifactData(
+                artifact_json=ArtifactJsonResponse(
+                    artifacts={"test.rpm": ArtifactMetadata(labels={"build_id": "test"})}, distributions={}
+                ),
+                artifacts={"test.rpm": ArtifactMetadata(labels={"build_id": "test"})},
+            )
+            mock_load.return_value = mock_artifact_data
+            mock_setup.return_value = None
+
+            mock_client_instance = Mock()
+            mock_dist_client.return_value = mock_client_instance
+
+            mock_result = Mock()
+            mock_result.pulled_artifacts = Mock()
+            mock_result.completed = 0
+            mock_result.failed = 0
+            mock_download.return_value = mock_result
+
+            result = runner.invoke(
+                cli,
+                [
+                    "pull",
+                    "--artifact-location",
+                    "https://example.com/artifact.json",
+                    "--transfer-dest",
+                    str(transfer_config),
+                    "--distribution-config",
+                    str(dist_config),
+                ],
+            )
+
+            assert result.exit_code == 0
+            # Auth from --distribution-config (username/password), not transfer-dest (cert/key)
+            mock_dist_client.assert_called_once_with(username="distuser", password="distpass")
+
     @patch("pulp_tool.cli.pull.load_and_validate_artifacts")
     def test_transfer_config_load_exception(self, mock_load):
         """Test transfer when config file loading raises an exception."""
