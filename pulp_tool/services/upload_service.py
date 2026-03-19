@@ -29,6 +29,7 @@ if TYPE_CHECKING:
     from ..api.pulp_client import PulpClient
 
 from ..utils import PulpHelper, validate_file_path, create_labels
+from ..utils.constants import SBOM_EXTENSIONS, SUPPORTED_ARCHITECTURES
 
 # ============================================================================
 # Constants
@@ -160,6 +161,185 @@ def upload_sbom(
 
     # Return the created resources from the task
     return task_response.created_resources
+
+
+def _classify_artifact_from_key(key: str) -> str:
+    """
+    Classify artifact type from key (path/filename).
+
+    Returns: "rpms", "logs", "sbom", or "artifacts"
+    """
+    key_lower = key.lower()
+    if key_lower.endswith(".rpm"):
+        return "rpms"
+    if key_lower.endswith(".log"):
+        return "logs"
+    if "sbom" in key_lower:
+        return "sbom"
+    for ext in SBOM_EXTENSIONS:
+        if key_lower.endswith(ext):
+            return "sbom"
+    return "artifacts"
+
+
+def process_uploads_from_results_json(
+    client: "PulpClient",
+    context: UploadRpmContext,
+    repositories: RepositoryRefs,
+) -> Optional[str]:
+    """
+    Upload artifacts from pulp_results.json.
+
+    Reads artifact keys from the JSON, resolves file paths (base_path / key),
+    classifies each artifact, and uploads to the appropriate repo.
+    When signed_by is set, uses signed repos and adds signed_by pulp_label.
+
+    Args:
+        client: PulpClient instance
+        context: UploadRpmContext with results_json, files_base_path, signed_by
+        repositories: RepositoryRefs (with signed refs when signed_by set)
+
+    Returns:
+        URL of the uploaded results JSON, or None if upload failed
+    """
+    from ..utils.uploads import upload_rpms, upload_log
+
+    if not context.results_json:
+        return None
+
+    try:
+        with open(context.results_json, encoding="utf-8") as f:
+            results_data = json.load(f)
+    except (OSError, json.JSONDecodeError) as e:
+        logging.error("Failed to read results JSON %s: %s", context.results_json, e)
+        raise
+
+    artifacts = results_data.get("artifacts", {})
+    if not artifacts:
+        logging.info("No artifacts in results JSON, creating minimal results")
+        results_model = PulpResultsModel(build_id=context.build_id, repositories=repositories)
+        return collect_results(client, context, context.date_str, results_model, extra_artifacts=None)
+
+    base_path = Path(context.files_base_path or os.path.dirname(context.results_json)).resolve()
+    use_signed = bool(context.signed_by and context.signed_by.strip())
+
+    # Only RPMs use signed repos; logs and SBOMs are never signed
+    rpm_href = repositories.rpms_signed_href if use_signed else repositories.rpms_href
+    logs_prn = repositories.logs_prn
+    sbom_prn = repositories.sbom_prn
+    artifacts_prn = repositories.artifacts_prn
+
+    if use_signed and not rpm_href and not repositories.rpms_signed_prn:
+        logging.error("signed_by set but signed repositories not available")
+        raise ValueError("signed_by requires signed repositories")
+
+    results_model = PulpResultsModel(build_id=context.build_id, repositories=repositories)
+    created_resources: List[str] = []
+    date_str = context.date_str
+
+    # Group artifacts by type for batch processing
+    rpms_by_arch: Dict[str, List[str]] = {}
+    logs_to_upload: List[Tuple[str, str]] = []  # (path, arch)
+    sboms_to_upload: List[str] = []
+    artifacts_to_upload: List[Tuple[str, Dict[str, str]]] = []  # (path, labels)
+
+    for key, info in artifacts.items():
+        if not isinstance(info, dict):
+            logging.warning("Skipping invalid artifact entry: %s", key)
+            continue
+
+        file_path = base_path / key
+        if not file_path.exists():
+            logging.warning("Skipping missing file: %s", file_path)
+            continue
+
+        labels = dict(info.get("labels") or {})
+        labels.update(
+            create_labels(
+                context.build_id,
+                labels.get("arch", ""),
+                context.namespace,
+                context.parent_package,
+                date_str,
+            )
+        )
+        art_type = _classify_artifact_from_key(key)
+        arch = labels.get("arch") or ""
+
+        if art_type == "rpms":
+            if not arch:
+                # Try to infer from path (e.g. x86_64/pkg.rpm)
+                parts = key.replace("\\", "/").split("/")
+                for p in parts:
+                    if p in SUPPORTED_ARCHITECTURES:
+                        arch = p
+                        break
+                if not arch:
+                    arch = "noarch"
+            rpms_by_arch.setdefault(arch, []).append(str(file_path))
+        elif art_type == "logs":
+            if not arch:
+                parts = key.replace("\\", "/").split("/")
+                for p in parts:
+                    if p in SUPPORTED_ARCHITECTURES:
+                        arch = p
+                        break
+                if not arch:
+                    arch = "noarch"
+            logs_to_upload.append((str(file_path), arch))
+        elif art_type == "sbom":
+            sboms_to_upload.append(str(file_path))
+        else:
+            artifacts_to_upload.append((str(file_path), labels))
+
+    # Upload RPMs
+    for arch, rpm_list in rpms_by_arch.items():
+        created_resources.extend(
+            upload_rpms(
+                rpm_list,
+                context,
+                client,
+                arch,
+                rpm_repository_href=rpm_href,
+                date=date_str,
+                results_model=results_model,
+            )
+        )
+
+    # Upload logs (never signed)
+    for log_path, arch in logs_to_upload:
+        logging.warning("Uploading log: %s", os.path.basename(log_path))
+        log_labels = create_labels(context.build_id, arch, context.namespace, context.parent_package, date_str)
+        log_resources = upload_log(
+            client,
+            logs_prn,
+            log_path,
+            build_id=context.build_id,
+            labels=log_labels,
+            arch=arch,
+        )
+        created_resources.extend(log_resources)
+        results_model.uploaded_counts.logs += 1
+
+    # Upload SBOMs
+    for sbom_path in sboms_to_upload:
+        sbom_resources = upload_sbom(client, context, sbom_prn, date_str, results_model, sbom_path)
+        created_resources.extend(sbom_resources)
+
+    # Upload generic artifacts
+    for file_path, labels in artifacts_to_upload:
+        logging.warning("Uploading artifact: %s", os.path.basename(file_path))
+        validate_file_path(file_path, "File")
+        resp = client.create_file_content(artifacts_prn, file_path, build_id=context.build_id, pulp_label=labels)
+        client.check_response(resp, f"upload file {file_path}")
+        task_href = resp.json()["task"]
+        task_response = client.wait_for_finished_task(task_href)
+        if task_response.created_resources:
+            created_resources.extend(task_response.created_resources)
+        results_model.uploaded_counts.files += 1
+
+    extra_artifacts = [{"pulp_href": href} for href in created_resources]
+    return collect_results(client, context, date_str, results_model, extra_artifacts)
 
 
 def _serialize_results_to_json(results: Dict[str, Any]) -> str:

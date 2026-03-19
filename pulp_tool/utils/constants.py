@@ -12,6 +12,9 @@ to eliminate magic numbers and strings.
 # Repository types supported by Pulp
 REPOSITORY_TYPES = ["rpms", "logs", "sbom", "artifacts"]
 
+# Signed repository types (when --signed-by is used; only RPMs are signed)
+SIGNED_REPOSITORY_TYPES = ["rpms-signed"]
+
 # Supported CPU architectures (including source RPMs as a logical 'src' arch)
 SUPPORTED_ARCHITECTURES = ["x86_64", "aarch64", "s390x", "ppc64le", "noarch", "src"]
 
@@ -174,6 +177,7 @@ BYTES_PER_KB = 1024
 __all__ = [
     # Repository and Content
     "REPOSITORY_TYPES",
+    "SIGNED_REPOSITORY_TYPES",
     "SUPPORTED_ARCHITECTURES",
     "CONTENT_TYPES",
     "ARTIFACT_TYPES",

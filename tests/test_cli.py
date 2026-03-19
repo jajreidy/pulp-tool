@@ -1,6 +1,7 @@
 """Tests for Click CLI commands."""
 
 import base64
+import json
 import tempfile
 import os
 from pathlib import Path
@@ -577,6 +578,230 @@ class TestUploadCommand:
             assert result.exit_code == 1
             assert "--namespace is required" in result.output
 
+    def test_upload_files_base_path_without_results_json(self):
+        """Test --files-base-path without --results-json fails."""
+        runner = CliRunner()
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            base_path = Path(tmpdir) / "files"
+            base_path.mkdir()
+            rpm_dir = Path(tmpdir) / "rpms"
+            rpm_dir.mkdir()
+            sbom_path = Path(tmpdir) / "sbom.json"
+            sbom_path.write_text("{}")
+            config_path = Path(tmpdir) / "config.toml"
+            config_path.write_text(
+                '[cli]\nbase_url = "https://pulp.example.com"\napi_root = "/pulp/api/v3"\ndomain = "test-domain"'
+            )
+
+            result = runner.invoke(
+                cli,
+                [
+                    "--build-id",
+                    "test-build",
+                    "--namespace",
+                    "test-ns",
+                    "--config",
+                    str(config_path),
+                    "upload",
+                    "--rpm-path",
+                    str(rpm_dir),
+                    "--sbom-path",
+                    str(sbom_path),
+                    "--files-base-path",
+                    str(base_path),
+                ],
+            )
+
+            assert result.exit_code == 1
+            assert "--files-base-path can only be used with --results-json" in result.output
+
+    @patch("pulp_tool.cli.upload.PulpClient")
+    @patch("pulp_tool.cli.upload.PulpHelper")
+    def test_upload_with_results_json(self, mock_helper_class, mock_client_class):
+        """Test upload with --results-json invokes process_uploads with results_json context."""
+        runner = CliRunner()
+
+        mock_client = Mock()
+        mock_client.close = Mock()
+        mock_client_class.create_from_config_file.return_value = mock_client
+
+        mock_helper = Mock()
+        from pulp_tool.models.repository import RepositoryRefs
+
+        mock_repos = RepositoryRefs(
+            rpms_href="/test/",
+            rpms_prn="",
+            logs_href="",
+            logs_prn="",
+            sbom_href="",
+            sbom_prn="",
+            artifacts_href="",
+            artifacts_prn="",
+        )
+        mock_helper.setup_repositories.return_value = mock_repos
+        mock_helper.process_uploads.return_value = "https://example.com/results.json"
+        mock_helper_class.return_value = mock_helper
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            results_json_path = Path(tmpdir) / "pulp_results.json"
+            results_json_path.write_text('{"artifacts": {}}')
+            config_path = Path(tmpdir) / "config.toml"
+            config_path.write_text(
+                '[cli]\nbase_url = "https://pulp.example.com"\napi_root = "/pulp/api/v3"\ndomain = "test-domain"'
+            )
+
+            result = runner.invoke(
+                cli,
+                [
+                    "--build-id",
+                    "test-build",
+                    "--namespace",
+                    "test-ns",
+                    "--config",
+                    str(config_path),
+                    "upload",
+                    "--results-json",
+                    str(results_json_path),
+                    "--signed-by",
+                    "key-123",
+                ],
+            )
+
+            assert result.exit_code == 0
+            mock_helper.setup_repositories.assert_called_once_with(
+                "test-build", signed_by="key-123", skip_artifacts_repo=False
+            )
+            mock_helper.process_uploads.assert_called_once()
+            call_args = mock_helper.process_uploads.call_args[0]
+            assert call_args[2].rpms_href == "/test/"
+            # Context (args) is second argument
+            context = call_args[1]
+            assert context.results_json == str(results_json_path)
+            assert context.signed_by == "key-123"
+
+    @patch("pulp_tool.cli.upload.PulpClient")
+    @patch("pulp_tool.cli.upload.PulpHelper")
+    def test_upload_results_json_extracts_build_id_namespace(self, mock_helper_class, mock_client_class):
+        """Test upload with --results-json extracts build_id and namespace from artifact labels."""
+        runner = CliRunner()
+
+        mock_client = Mock()
+        mock_client.close = Mock()
+        mock_client_class.create_from_config_file.return_value = mock_client
+
+        mock_helper = Mock()
+        from pulp_tool.models.repository import RepositoryRefs
+
+        mock_repos = RepositoryRefs(
+            rpms_href="/test/",
+            rpms_prn="",
+            logs_href="",
+            logs_prn="",
+            sbom_href="",
+            sbom_prn="",
+            artifacts_href="",
+            artifacts_prn="",
+        )
+        mock_helper.setup_repositories.return_value = mock_repos
+        mock_helper.process_uploads.return_value = "https://example.com/results.json"
+        mock_helper_class.return_value = mock_helper
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            results_json_path = Path(tmpdir) / "pulp_results.json"
+            results_json_path.write_text(
+                json.dumps(
+                    {
+                        "artifacts": {
+                            "x86_64/pkg.rpm": {
+                                "labels": {
+                                    "build_id": "extracted-build",
+                                    "namespace": "extracted-ns",
+                                    "arch": "x86_64",
+                                },
+                                "url": "https://example.com/pkg.rpm",
+                                "sha256": "abc123",
+                            }
+                        }
+                    }
+                )
+            )
+            config_path = Path(tmpdir) / "config.toml"
+            config_path.write_text(
+                '[cli]\nbase_url = "https://pulp.example.com"\napi_root = "/pulp/api/v3"\ndomain = "test-domain"'
+            )
+
+            result = runner.invoke(
+                cli,
+                [
+                    "--config",
+                    str(config_path),
+                    "upload",
+                    "--results-json",
+                    str(results_json_path),
+                ],
+            )
+
+            assert result.exit_code == 0
+            mock_helper.setup_repositories.assert_called_once_with(
+                "extracted-build", signed_by=None, skip_artifacts_repo=False
+            )
+            context = mock_helper.process_uploads.call_args[0][1]
+            assert context.build_id == "extracted-build"
+            assert context.namespace == "extracted-ns"
+
+    def test_upload_results_json_missing_build_id_namespace_in_json(self):
+        """Test upload with --results-json but no build_id/namespace in artifact labels fails."""
+        runner = CliRunner()
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            results_json_path = Path(tmpdir) / "pulp_results.json"
+            results_json_path.write_text('{"artifacts": {}}')
+            config_path = Path(tmpdir) / "config.toml"
+            config_path.write_text(
+                '[cli]\nbase_url = "https://pulp.example.com"\napi_root = "/pulp/api/v3"\ndomain = "test-domain"'
+            )
+
+            result = runner.invoke(
+                cli,
+                [
+                    "--config",
+                    str(config_path),
+                    "upload",
+                    "--results-json",
+                    str(results_json_path),
+                ],
+            )
+
+            assert result.exit_code == 1
+            assert "build_id and namespace" in result.output or "no artifacts" in result.output.lower()
+
+    def test_upload_results_json_invalid_json_fails(self):
+        """Test upload with --results-json and invalid JSON raises clear error."""
+        runner = CliRunner()
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            results_json_path = Path(tmpdir) / "pulp_results.json"
+            results_json_path.write_text("{ invalid json }")
+            config_path = Path(tmpdir) / "config.toml"
+            config_path.write_text(
+                '[cli]\nbase_url = "https://pulp.example.com"\napi_root = "/pulp/api/v3"\ndomain = "test-domain"'
+            )
+
+            result = runner.invoke(
+                cli,
+                [
+                    "--config",
+                    str(config_path),
+                    "upload",
+                    "--results-json",
+                    str(results_json_path),
+                ],
+            )
+
+            assert result.exit_code == 1
+            assert "Failed to read results JSON" in result.output
+
     @patch("pulp_tool.cli.upload.PulpClient")
     @patch("pulp_tool.cli.upload.PulpHelper")
     def test_upload_no_results_json(self, mock_helper_class, mock_client_class):
@@ -1115,8 +1340,67 @@ class TestUploadFilesCommand:
             assert result.exit_code == 0
             assert "RESULTS JSON:" in result.output
             assert "https://example.com/results.json" in result.output
-            mock_helper.setup_repositories.assert_called_once_with("test-build")
+            mock_helper.setup_repositories.assert_called_once_with("test-build", skip_artifacts_repo=False)
             mock_helper.process_file_uploads.assert_called_once()
+
+    @patch("pulp_tool.cli.upload_files.PulpClient")
+    @patch("pulp_tool.cli.upload_files.PulpHelper")
+    def test_upload_files_artifact_results_folder_skips_artifacts_repo(self, mock_helper_class, mock_client_class):
+        """Test upload-files with --artifact-results as folder path skips artifacts repo."""
+        runner = CliRunner()
+
+        mock_client = Mock()
+        mock_client.close = Mock()
+        mock_client_class.create_from_config_file.return_value = mock_client
+
+        mock_helper = Mock()
+        from pulp_tool.models.repository import RepositoryRefs
+
+        mock_repos = RepositoryRefs(
+            rpms_href="/test/",
+            rpms_prn="",
+            logs_href="",
+            logs_prn="",
+            sbom_href="",
+            sbom_prn="",
+            artifacts_href="",
+            artifacts_prn="",
+        )
+        mock_helper.setup_repositories.return_value = mock_repos
+        mock_helper.process_file_uploads.return_value = "/tmp/output/pulp_results.json"
+        mock_helper_class.return_value = mock_helper
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            rpm_file = Path(tmpdir) / "package.rpm"
+            rpm_file.write_text("dummy rpm")
+            config_path = Path(tmpdir) / "config.toml"
+            config_path.write_text(
+                '[cli]\nbase_url = "https://pulp.example.com"\napi_root = "/pulp/api/v3"\ndomain = "test-domain"'
+            )
+            output_dir = Path(tmpdir) / "output"
+            output_dir.mkdir()
+
+            result = runner.invoke(
+                cli,
+                [
+                    "--build-id",
+                    "test-build",
+                    "--namespace",
+                    "test-ns",
+                    "--config",
+                    str(config_path),
+                    "upload-files",
+                    "--parent-package",
+                    "test-pkg",
+                    "--rpm",
+                    str(rpm_file),
+                    "--artifact-results",
+                    str(output_dir),
+                ],
+            )
+
+            assert result.exit_code == 0
+            mock_helper.setup_repositories.assert_called_once_with("test-build", skip_artifacts_repo=True)
 
     @patch("pulp_tool.cli.upload_files.PulpClient")
     @patch("pulp_tool.cli.upload_files.PulpHelper")

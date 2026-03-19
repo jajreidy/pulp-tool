@@ -135,8 +135,10 @@ def upload_files(  # pylint: disable=too-many-arguments,too-many-positional-argu
 
         # Setup repositories using helper
         # Namespace is automatically read from config file via client
+        # Skip artifacts repo when saving results locally (folder path, no comma)
+        skip_artifacts = bool(artifact_results and "," not in artifact_results.strip())
         repository_helper = PulpHelper(client, parent_package=parent_package)
-        repositories = repository_helper.setup_repositories(build_id)
+        repositories = repository_helper.setup_repositories(build_id, skip_artifacts_repo=skip_artifacts)
         logging.info("Repository setup completed")
 
         # Process file uploads

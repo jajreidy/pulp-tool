@@ -51,7 +51,12 @@ class PulpHelper:
         )
         self._upload_orchestrator = UploadOrchestrator()
 
-    def setup_repositories(self, build_id: str) -> RepositoryRefs:
+    def setup_repositories(
+        self,
+        build_id: str,
+        signed_by: Optional[str] = None,
+        skip_artifacts_repo: bool = False,
+    ) -> RepositoryRefs:
         """
         Setup all required repositories and return their identifiers.
 
@@ -60,11 +65,15 @@ class PulpHelper:
 
         Args:
             build_id: Build ID for naming repositories and distributions
+            signed_by: If set, also create signed repos (rpms-signed, etc.)
+            skip_artifacts_repo: If True, do not create artifacts repo (e.g. when saving locally)
 
         Returns:
             RepositoryRefs NamedTuple containing all repository PRNs and hrefs
         """
-        return self._repository_manager.setup_repositories(build_id)
+        return self._repository_manager.setup_repositories(
+            build_id, signed_by=signed_by, skip_artifacts_repo=skip_artifacts_repo
+        )
 
     def get_distribution_urls(self, build_id: str) -> dict[str, str]:
         """

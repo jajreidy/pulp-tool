@@ -209,6 +209,9 @@ def upload_rpms(
 
     logging.warning("Uploading %d RPMs for %s", len(rpms), arch)
     labels = create_labels(context.build_id, arch, context.namespace, context.parent_package, date)
+    signed_by_val = getattr(context, "signed_by", None)
+    if signed_by_val and isinstance(signed_by_val, str) and signed_by_val.strip():
+        labels["signed_by"] = signed_by_val.strip()
 
     # Upload RPMs in parallel
     rpm_results_artifacts = upload_rpms_parallel(client, rpms, labels, arch)

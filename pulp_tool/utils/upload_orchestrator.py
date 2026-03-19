@@ -206,6 +206,7 @@ class UploadOrchestrator:
 
         This function orchestrates the complete upload process including processing
         all architectures, uploading SBOM, and collecting results.
+        When args.results_json is set, uploads from that file instead.
 
         Args:
             client: PulpClient instance for API interactions
@@ -216,7 +217,10 @@ class UploadOrchestrator:
             URL of the uploaded results JSON, or None if upload failed
         """
         # Import here to avoid circular import
-        from ..services.upload_service import upload_sbom, collect_results
+        from ..services.upload_service import upload_sbom, collect_results, process_uploads_from_results_json
+
+        if args.results_json:
+            return process_uploads_from_results_json(client, args, repositories)
 
         # Ensure RPM repository href exists
         if not repositories.rpms_href:

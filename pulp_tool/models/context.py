@@ -45,10 +45,16 @@ class UploadRpmContext(UploadContext):
     Attributes:
         rpm_path: Path to directory containing RPM files (defaults to current directory if not provided)
         sbom_path: Optional path to SBOM file (SBOM upload will be skipped if not provided)
+        results_json: Optional path to pulp_results.json (upload artifacts from this file)
+        files_base_path: Optional base path for resolving artifact keys to file paths (default: dir of results_json)
+        signed_by: Optional string; when set, add pulp_label and use separate signed repos
     """
 
     rpm_path: Optional[str] = None
     sbom_path: Optional[str] = None
+    results_json: Optional[str] = None
+    files_base_path: Optional[str] = None
+    signed_by: Optional[str] = None
 
 
 class PullContext(KonfluxBaseModel):

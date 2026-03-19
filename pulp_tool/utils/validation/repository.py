@@ -4,12 +4,14 @@ Repository validation utilities.
 This module provides functions for validating repository setup and configuration.
 """
 
-from typing import Dict, List, Tuple
+from typing import Dict, List, Optional, Tuple
 
 from ...utils.constants import REPOSITORY_TYPES
 
 
-def validate_repository_setup(repositories: Dict[str, str]) -> Tuple[bool, List[str]]:
+def validate_repository_setup(
+    repositories: Dict[str, str], required_types: Optional[List[str]] = None
+) -> Tuple[bool, List[str]]:
     """
     Validate that repository setup is complete.
 
@@ -33,9 +35,10 @@ def validate_repository_setup(repositories: Dict[str, str]) -> Tuple[bool, List[
         True
     """
     errors = []
+    repo_types = required_types if required_types is not None else REPOSITORY_TYPES
 
     # Check that all required repository PRNs are present
-    for repo_type in REPOSITORY_TYPES:
+    for repo_type in repo_types:
         prn_key = f"{repo_type}_prn"
         if prn_key not in repositories or not repositories.get(prn_key):
             errors.append(f"Missing {repo_type} repository PRN")

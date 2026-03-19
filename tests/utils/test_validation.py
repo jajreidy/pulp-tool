@@ -154,6 +154,19 @@ class TestRepositoryValidation:
         assert is_valid is False
         assert any("Invalid repository reference" in error for error in errors)
 
+    def test_validate_repository_setup_required_types_excludes_artifacts(self):
+        """Test validate_repository_setup with required_types excluding artifacts."""
+        repos = {
+            "rpms_prn": "rpms-prn",
+            "rpms_href": "rpms-href",
+            "logs_prn": "logs-prn",
+            "sbom_prn": "sbom-prn",
+        }
+        required = ["rpms", "logs", "sbom"]
+        is_valid, errors = validate_repository_setup(repos, required_types=required)
+        assert is_valid is True
+        assert len(errors) == 0
+
 
 class TestBuildIDExtraction:
     """Test build ID extraction functions."""

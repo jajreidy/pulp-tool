@@ -239,6 +239,61 @@ class TestUploadRpms:
             mock_logging.debug.assert_any_call("Adding %s RPM artifacts to repository", 2)
             mock_logging.debug.assert_any_call("Captured %d created resources from RPM add_content", 2)
 
+    def test_upload_rpms_with_signed_by_adds_label(self, mock_pulp_client):
+        """Test upload_rpms adds signed_by to labels when context has signed_by (lines 212-214)."""
+        from pulp_tool.models.context import UploadRpmContext
+        from pulp_tool.models.results import PulpResultsModel, RepositoryRefs
+        from pulp_tool.models.pulp_api import TaskResponse
+
+        context = UploadRpmContext(
+            build_id="test-build",
+            date_str="2024-01-01 00:00:00",
+            namespace="test-ns",
+            parent_package="test-pkg",
+            rpm_path="/test/rpms",
+            sbom_path="/test/sbom.json",
+            signed_by="key-123",
+        )
+
+        repositories = RepositoryRefs(
+            rpms_href="/test/rpm-href",
+            rpms_prn="",
+            logs_href="",
+            logs_prn="",
+            sbom_href="",
+            sbom_prn="",
+            artifacts_href="",
+            artifacts_prn="",
+        )
+
+        results_model = PulpResultsModel(build_id="test-build", repositories=repositories)
+        mock_artifacts = ["/rpm/artifact/1"]
+        mock_task_response = TaskResponse(
+            pulp_href="/tasks/123/",
+            state="completed",
+            created_resources=["/resource/1"],
+        )
+        mock_repo_task = TaskResponse(pulp_href="/tasks/123/", state="pending", created_resources=[])
+
+        with (
+            patch("pulp_tool.utils.uploads.upload_rpms_parallel", return_value=mock_artifacts) as mock_parallel,
+            patch.object(mock_pulp_client, "add_content", return_value=mock_repo_task),
+            patch.object(mock_pulp_client, "wait_for_finished_task", return_value=mock_task_response),
+        ):
+            upload_rpms(
+                ["/path/to/package.rpm"],
+                context,
+                mock_pulp_client,
+                "x86_64",
+                rpm_repository_href="/test/rpm-href",
+                date="2024-01-01 00:00:00",
+                results_model=results_model,
+            )
+
+        mock_parallel.assert_called_once()
+        labels_passed = mock_parallel.call_args[0][2]
+        assert labels_passed.get("signed_by") == "key-123"
+
     def test_upload_rpms_no_created_resources(self, mock_pulp_client):
         """Test upload_rpms without created resources (lines 225-227, but not 229-231)."""
         from pulp_tool.models.context import UploadRpmContext
