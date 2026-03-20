@@ -19,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Username/password (Basic Auth) support for packages.redhat.com
 
 ### Fixed
+- Change package url format from hardcoding "l" in path to using first letter of rpm name to fit Pulp standard
 - Clear error when no auth credentials provided (client_id/client_secret or username/password)
 
 ### Added

@@ -498,13 +498,13 @@ class TestDownloadTask:
         """Test creating a DownloadTask."""
         task = DownloadTask(
             artifact_name="test.rpm",
-            file_url="https://example.com/rpms/Packages/l/test.rpm",
+            file_url="https://example.com/rpms/Packages/t/test.rpm",
             arch="x86_64",
             artifact_type="rpm",
         )
 
         assert task.artifact_name == "test.rpm"
-        assert task.file_url == "https://example.com/rpms/Packages/l/test.rpm"
+        assert task.file_url == "https://example.com/rpms/Packages/t/test.rpm"
         assert task.arch == "x86_64"
         assert task.artifact_type == "rpm"
 

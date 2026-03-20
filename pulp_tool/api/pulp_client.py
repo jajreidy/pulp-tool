@@ -1073,7 +1073,8 @@ class PulpClient(
         rpms_url = distribution_urls.get("rpms", "")
         if rpms_url:
             filename = relative_path.split("/")[-1]
-            return f"{rpms_url}Packages/l/{filename}"
+            first_letter = filename[0].lower() if filename else "a"
+            return f"{rpms_url}Packages/{first_letter}/{filename}"
         return relative_path
 
     @staticmethod

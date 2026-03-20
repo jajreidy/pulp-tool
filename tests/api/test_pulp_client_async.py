@@ -177,7 +177,7 @@ class TestPulpClientErrorPaths:
 
         distribution_urls = {"rpms": "https://example.com/rpms/"}
         result = PulpClient._build_rpm_distribution_url("test/package.rpm", distribution_urls)
-        assert result == "https://example.com/rpms/Packages/l/package.rpm"
+        assert result == "https://example.com/rpms/Packages/p/package.rpm"
 
     def test_build_rpm_distribution_url_no_rpms(self):
         """Test _build_rpm_distribution_url without rpms URL."""
