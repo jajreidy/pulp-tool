@@ -31,7 +31,7 @@ def _categorize_artifacts(
 
     Args:
         artifacts: Dictionary of artifacts (can be ArtifactMetadata or dict)
-        distros: Dictionary of distribution URLs
+        distros: Distribution base URLs (used only when an artifact has no non-empty ``url``)
         content_types: Optional list of content types to filter (rpm, log, sbom)
         archs: Optional list of architectures to filter
 

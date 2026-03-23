@@ -18,8 +18,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - packages.redhat.com configuration section in README with OAuth2 setup
 - Username/password (Basic Auth) support for packages.redhat.com
 
+### Changed
+- `pull`: use each artifact's ``url`` from pulp_results.json when present instead of synthesizing download URLs from distribution entries
+
 ### Fixed
-- Change package url format from hardcoding "l" in path to using first letter of rpm name to fit Pulp standard
+- RPM distribution URLs: ``Packages/<letter>/`` uses the lowercase first character of the RPM **basename** only (correct for paths like ``Packages/W/foo.rpm``, ``arch/pkg.rpm``, or plain ``foo.rpm``)
 - Clear error when no auth credentials provided (client_id/client_secret or username/password)
 
 ### Added
