@@ -123,7 +123,7 @@ class TestSearchByChecksumHelpers:
         }
         # found has location_href from Pulp with path; sha256 must match
         found = FoundPackages(
-            filenames={"Packages/l/pkg-1.0-1.x86_64.rpm", "pkg-1.0-1.x86_64.rpm"},
+            filenames={"Packages/p/pkg-1.0-1.x86_64.rpm", "pkg-1.0-1.x86_64.rpm"},
             checksums={"a" * 64, "b" * 64},
         )
         filtered = SearchByResultsJson(results).remove_found(found)

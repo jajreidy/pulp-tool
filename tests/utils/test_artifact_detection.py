@@ -46,7 +46,7 @@ class TestBuildArtifactUrl:
         """Test building RPM URL."""
         distros = {"rpms": "https://example.com/rpms/"}
         url = build_artifact_url("package.rpm", "rpm", distros)
-        assert url == "https://example.com/rpms/Packages/l/package.rpm"
+        assert url == "https://example.com/rpms/Packages/p/package.rpm"
 
     def test_build_log_url(self):
         """Test building log URL."""
@@ -110,7 +110,7 @@ class TestCategorizeArtifactsByType:
         result = categorize_artifacts_by_type(artifacts, distros)
 
         assert len(result) == 3
-        assert ("package.rpm", "https://example.com/rpms/Packages/l/package.rpm", "x86_64", "rpm") in result
+        assert ("package.rpm", "https://example.com/rpms/Packages/p/package.rpm", "x86_64", "rpm") in result
         assert ("build.log", "https://example.com/logs/build.log", "noarch", "log") in result
         assert ("sbom.json", "https://example.com/sbom/sbom.json", "noarch", "sbom") in result
 
@@ -158,7 +158,7 @@ class TestCategorizeArtifactsByType:
             result = categorize_artifacts_by_type(artifacts, distros, content_types=["rpm"])
 
             assert len(result) == 1
-            assert ("package.rpm", "https://example.com/rpms/Packages/l/package.rpm", "x86_64", "rpm") in result
+            assert ("package.rpm", "https://example.com/rpms/Packages/p/package.rpm", "x86_64", "rpm") in result
             mock_logging.debug.assert_called_once_with(
                 "Skipping %s: content type %s not in filter %s", "build.log", "log", ["rpm"]
             )
@@ -175,7 +175,7 @@ class TestCategorizeArtifactsByType:
             result = categorize_artifacts_by_type(artifacts, distros, archs=["x86_64"])
 
             assert len(result) == 1
-            assert ("package1.rpm", "https://example.com/rpms/Packages/l/package1.rpm", "x86_64", "rpm") in result
+            assert ("package1.rpm", "https://example.com/rpms/Packages/p/package1.rpm", "x86_64", "rpm") in result
             mock_logging.debug.assert_called_once_with(
                 "Skipping %s: architecture %s not in filter %s", "package2.rpm", "aarch64", ["x86_64"]
             )
@@ -198,7 +198,7 @@ class TestCategorizeArtifactsByType:
         )
 
         assert len(result) == 2
-        assert ("package.rpm", "https://example.com/rpms/Packages/l/package.rpm", "x86_64", "rpm") in result
+        assert ("package.rpm", "https://example.com/rpms/Packages/p/package.rpm", "x86_64", "rpm") in result
         assert ("build.log", "https://example.com/logs/build.log", "noarch", "log") in result
 
 

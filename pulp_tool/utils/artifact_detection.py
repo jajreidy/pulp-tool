@@ -59,14 +59,15 @@ def build_artifact_url(artifact_name: str, artifact_type: str, distros: Dict[str
     Example:
         >>> distros = {"rpms": "https://example.com/rpms/", "logs": "https://example.com/logs/"}
         >>> build_artifact_url("package.rpm", "rpm", distros)
-        'https://example.com/rpms/Packages/l/package.rpm'
+        'https://example.com/rpms/Packages/p/package.rpm'
     """
     if artifact_type == "sbom":
         return f"{distros.get('sbom', '')}{artifact_name}"
     if artifact_type == "log":
         return f"{distros.get('logs', '')}{artifact_name}"
     if artifact_type == "rpm":
-        return f"{distros.get('rpms', '')}Packages/l/{artifact_name}"
+        first_letter = artifact_name[0].lower() if artifact_name else "a"
+        return f"{distros.get('rpms', '')}Packages/{first_letter}/{artifact_name}"
 
     return None
 
