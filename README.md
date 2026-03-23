@@ -127,6 +127,7 @@ Upload RPM packages, logs, and SBOM files.
 | `--results-json` | No | Path to `pulp_results.json`; upload artifacts from this file (files resolved from its directory or `--files-base-path`). When used, `--build-id` and `--namespace` are optional (extracted from artifact labels in the JSON) |
 | `--files-base-path` | No | Base path for resolving artifact keys to file paths (default: directory of `--results-json`; requires `--results-json`) |
 | `--signed-by` | No | Add `signed_by` pulp_label and upload to separate signed repos/distributions |
+| `--overwrite` | No | RPM only: before upload, find packages in the target RPM repo by each local file’s SHA256 (and `signed_by` when set) and remove them via `remove_content_units` |
 | `--artifact-results` | No | Comma-separated paths or folder for local `pulp_results.json` |
 | `--sbom-results` | No | Path to write SBOM results |
 | `-d, --debug` | No | Verbosity: `-d` INFO, `-dd` DEBUG, `-ddd` HTTP logs |
@@ -134,6 +135,8 @@ Upload RPM packages, logs, and SBOM files.
 **Upload from results JSON:** When `--results-json` is used, artifact keys from the JSON are resolved to file paths (default: same directory as the JSON; override with `--files-base-path`). Files are classified by extension (`.rpm` → rpms, `.log` → logs, SBOM extensions → sbom, else → artifacts) and uploaded to the appropriate repository. `--rpm-path` and `--sbom-path` are ignored in this mode.
 
 **Signed-by:** When `--signed-by` is set, a `signed_by` label is added to RPMs only, and RPMs are stored in a separate `rpms-signed` repository with its own distribution. Logs and SBOMs are never signed and always go to the standard repositories.
+
+**Overwrite:** When `--overwrite` is set, for each RPM about to be uploaded the tool searches Pulp by the file’s SHA256 (same mechanism as `search-by` checksum mode), keeps only matches that exist in the target RPM repository’s latest version, then calls the repository modify API with `remove_content_units` before uploading and adding the new RPMs. Use with `--signed-by` to scope the search to signed packages.
 
 ### upload-files
 

@@ -95,6 +95,15 @@ def _extract_build_id_namespace_from_results_json(results_json_path: Path) -> Tu
     "--signed-by",
     help="Add pulp_label signed_by and upload to separate signed repos/distributions",
 )
+@click.option(
+    "--overwrite",
+    is_flag=True,
+    default=False,
+    help=(
+        "RPM only: before uploading, search Pulp by each local RPM's SHA256 (and signed_by if set) "
+        "and remove matching package units from the target RPM repository via remove_content_units"
+    ),
+)
 @click.pass_context
 def upload(  # pylint: disable=too-many-arguments,too-many-positional-arguments
     ctx: click.Context,
@@ -106,6 +115,7 @@ def upload(  # pylint: disable=too-many-arguments,too-many-positional-arguments
     results_json: Optional[Path],
     files_base_path: Optional[Path],
     signed_by: Optional[str],
+    overwrite: bool,
 ) -> None:
     """Upload RPMs, logs, and SBOM files to Pulp repositories."""
     # Get shared options from context
@@ -158,6 +168,7 @@ def upload(  # pylint: disable=too-many-arguments,too-many-positional-arguments
             results_json=str(results_json) if results_json else None,
             files_base_path=str(files_base_path) if files_base_path else None,
             signed_by=signed_by.strip() if signed_by and signed_by.strip() else None,
+            overwrite=overwrite,
             debug=debug,
         )
 

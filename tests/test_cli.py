@@ -73,6 +73,7 @@ class TestCLIHelp:
         assert "--rpm-path" in result.output
         assert "--sbom-results" in result.output
         assert "--artifact-results" in result.output
+        assert "--overwrite" in result.output
 
     def test_upload_files_help(self):
         """Test upload-files command help output."""

@@ -47,6 +47,13 @@ from ..api import PulpClient
 from ..models.cli import FoundPackages, SearchByRequest, SearchByResultsJson
 from ..models.pulp_api import RpmPackageResponse
 from ..utils import setup_logging
+from ..utils.rpm_pulp_search import (
+    search_pulp_by_filenames as _search_pulp_by_filenames,
+    search_pulp_by_filenames_with_signed_by as _search_pulp_by_filenames_with_signed_by,
+    search_pulp_by_signed_by as _search_pulp_by_signed_by,
+    search_pulp_for_rpms as _search_pulp_for_rpms,
+    search_pulp_for_rpms_with_signed_by as _search_pulp_for_rpms_with_signed_by,
+)
 from ..utils.error_handling import handle_http_error, handle_generic_error
 from ..utils.rpm_operations import parse_rpm_filename_to_nvr, parse_rpm_filename_to_nvra
 
@@ -113,50 +120,8 @@ def _filenames_to_nvras_deduplicated(filenames: List[str]) -> List[tuple[str, st
 
 
 # -----------------------------------------------------------------------------
-# Pulp API
+# Pulp API (implementations in pulp_tool.utils.rpm_pulp_search)
 # -----------------------------------------------------------------------------
-
-
-def _parse_rpm_response(response: httpx.Response) -> List[RpmPackageResponse]:
-    """Parse paginated RPM response into RpmPackageResponse list."""
-    response.raise_for_status()
-    results_raw = response.json().get("results", [])
-    packages: List[RpmPackageResponse] = []
-    for item in results_raw:
-        try:
-            packages.append(RpmPackageResponse(**item))
-        except Exception:
-            pass
-    return packages
-
-
-def _search_pulp_for_rpms(client: PulpClient, checksums: List[str]) -> List[RpmPackageResponse]:
-    """Query Pulp for RPM packages matching the given checksums."""
-    return _parse_rpm_response(client.get_rpm_by_pkgIDs(checksums))
-
-
-def _search_pulp_by_filenames(client: PulpClient, filenames: List[str]) -> List[RpmPackageResponse]:
-    """Query Pulp for RPM packages matching the given filenames."""
-    return _parse_rpm_response(client.get_rpm_by_filenames(filenames))
-
-
-def _search_pulp_by_signed_by(client: PulpClient, signed_by: str) -> List[RpmPackageResponse]:
-    """Query Pulp for RPM packages matching the given signed_by key."""
-    return _parse_rpm_response(client.get_rpm_by_signed_by([signed_by]))
-
-
-def _search_pulp_for_rpms_with_signed_by(
-    client: PulpClient, checksums: List[str], signed_by: str
-) -> List[RpmPackageResponse]:
-    """Query Pulp for RPM packages matching checksums AND signed_by (single API call)."""
-    return _parse_rpm_response(client.get_rpm_by_checksums_and_signed_by(checksums, signed_by))
-
-
-def _search_pulp_by_filenames_with_signed_by(
-    client: PulpClient, filenames: List[str], signed_by: str
-) -> List[RpmPackageResponse]:
-    """Query Pulp for RPM packages matching filenames AND signed_by (single API call)."""
-    return _parse_rpm_response(client.get_rpm_by_filenames_and_signed_by(filenames, signed_by))
 
 
 def _log_packages_found(packages: List[RpmPackageResponse], max_log: int = 10) -> None:

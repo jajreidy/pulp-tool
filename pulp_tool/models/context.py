@@ -48,6 +48,8 @@ class UploadRpmContext(UploadContext):
         results_json: Optional path to pulp_results.json (upload artifacts from this file)
         files_base_path: Optional base path for resolving artifact keys to file paths (default: dir of results_json)
         signed_by: Optional string; when set, add pulp_label and use separate signed repos
+        overwrite: When True, remove existing RPM package units in the target RPM repo that match
+            local file SHA256 (and signed_by when set) before uploading RPMs
     """
 
     rpm_path: Optional[str] = None
@@ -55,6 +57,7 @@ class UploadRpmContext(UploadContext):
     results_json: Optional[str] = None
     files_base_path: Optional[str] = None
     signed_by: Optional[str] = None
+    overwrite: bool = False
 
 
 class PullContext(KonfluxBaseModel):

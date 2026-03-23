@@ -157,6 +157,60 @@ class FileContentMixin(BaseResourceMixin):
         results, _, _, _ = self._list_resources(endpoint, FileResponse, **query_params)
         return results
 
+    def modify_repository_content(
+        self,
+        repository: str,
+        *,
+        add_content_units: Optional[List[str]] = None,
+        remove_content_units: Optional[List[str]] = None,
+    ) -> Any:
+        """
+        Add and/or remove content units on a repository (modify endpoint).
+
+        API Endpoint: POST /api/v3/repositories/{type}/{type}/{id}/modify/
+
+        Args:
+            repository: Repository href
+            add_content_units: Optional list of content hrefs to add
+            remove_content_units: Optional list of content hrefs to remove
+
+        Returns:
+            TaskResponse model from the modify operation
+
+        Reference:
+            https://docs.pulpproject.org/pulpcore/restapi.html#operation/repositories_modify
+        """
+        import os
+
+        from ...models.pulp_api import TaskResponse
+
+        adds = list(add_content_units or [])
+        removes = list(remove_content_units or [])
+        if not adds and not removes:
+            raise ValueError(
+                "modify_repository_content requires at least one of add_content_units or remove_content_units"
+            )
+
+        modify_path = os.path.join(repository, "modify/")
+        url = str(self.config["base_url"]) + modify_path  # type: ignore[attr-defined]
+        data: Dict[str, List[str]] = {}
+        if adds:
+            data["add_content_units"] = adds
+        if removes:
+            data["remove_content_units"] = removes
+        response = self.session.post(  # type: ignore[attr-defined]
+            url, json=data, timeout=self.timeout, **self.request_params  # type: ignore[attr-defined]
+        )
+        self._check_response(response, "modify repository content")  # type: ignore[attr-defined]
+        task_href = response.json()["task"]
+        if hasattr(self, "get_task"):
+            return self.get_task(task_href)  # type: ignore[attr-defined]
+        task_url = str(self.config["base_url"]) + task_href  # type: ignore[attr-defined]
+        task_response = self.session.get(  # type: ignore[attr-defined]
+            task_url, timeout=self.timeout, **self.request_params  # type: ignore[attr-defined]
+        )
+        return self._parse_response(task_response, TaskResponse, "get task")  # type: ignore[attr-defined]
+
     def add_content(self, repository: str, artifacts: List[str]) -> Any:
         """
         Add a list of artifacts to a repository.
@@ -173,27 +227,7 @@ class FileContentMixin(BaseResourceMixin):
         Reference:
             https://docs.pulpproject.org/pulpcore/restapi.html#operation/repositories_modify
         """
-        import os
-
-        from ...models.pulp_api import TaskResponse
-
-        modify_path = os.path.join(repository, "modify/")
-        url = str(self.config["base_url"]) + modify_path  # type: ignore[attr-defined]
-        data = {"add_content_units": artifacts}
-        response = self.session.post(  # type: ignore[attr-defined]
-            url, json=data, timeout=self.timeout, **self.request_params  # type: ignore[attr-defined]
-        )
-        self._check_response(response, "add content")  # type: ignore[attr-defined]
-        task_href = response.json()["task"]
-        # Get task using TaskMixin method if available, otherwise parse directly
-        if hasattr(self, "get_task"):
-            return self.get_task(task_href)  # type: ignore[attr-defined]
-        # Fallback: parse task response directly
-        task_url = str(self.config["base_url"]) + task_href  # type: ignore[attr-defined]
-        task_response = self.session.get(  # type: ignore[attr-defined]
-            task_url, timeout=self.timeout, **self.request_params  # type: ignore[attr-defined]
-        )
-        return self._parse_response(task_response, TaskResponse, "get task")  # type: ignore[attr-defined]
+        return self.modify_repository_content(repository, add_content_units=artifacts)
 
 
 __all__ = ["FileContentMixin"]
