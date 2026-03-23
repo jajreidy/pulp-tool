@@ -41,6 +41,7 @@ import httpx
 
 # Local imports
 from ..utils import create_session_with_retry
+from ..utils.artifact_detection import rpm_packages_letter_and_basename
 from ..utils.constants import DEFAULT_CHUNK_SIZE, SUPPORTED_ARCHITECTURES
 from ..utils.rpm_operations import parse_rpm_filename_to_nvr
 from .auth import OAuth2ClientCredentialsAuth
@@ -1069,12 +1070,12 @@ class PulpClient(
 
     @staticmethod
     def _build_rpm_distribution_url(relative_path: str, distribution_urls: Dict[str, str]) -> str:
-        """Build distribution URL for RPM artifacts."""
+        """Build distribution URL for RPM artifacts (Packages/<lowercase-first-of-basename>/<basename>)."""
         rpms_url = distribution_urls.get("rpms", "")
         if rpms_url:
-            filename = relative_path.split("/")[-1]
-            first_letter = filename[0].lower() if filename else "a"
-            return f"{rpms_url}Packages/{first_letter}/{filename}"
+            filename, first_letter = rpm_packages_letter_and_basename(relative_path)
+            if filename:
+                return f"{rpms_url}Packages/{first_letter}/{filename}"
         return relative_path
 
     @staticmethod

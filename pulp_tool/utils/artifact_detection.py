@@ -14,6 +14,34 @@ from ..models.artifacts import ArtifactMetadata
 from .constants import ARCH_DETECT_WARNING_MSG, SUPPORTED_ARCHITECTURES
 
 
+def rpm_packages_letter_and_basename(path_or_filename: str) -> Tuple[str, str]:
+    """
+    Basename and createrepo-style Packages subdirectory letter for an RPM.
+
+    The letter is always the lowercase first character of the RPM filename (basename),
+    not the first character of a longer path (e.g. ``Packages/w/`` or ``x86_64/``).
+
+    Args:
+        path_or_filename: RPM filename or path (POSIX-style slashes).
+
+    Returns:
+        Tuple of (rpm basename, single lowercase letter for ``Packages/<letter>/``).
+
+    Example:
+        >>> rpm_packages_letter_and_basename("Packages/W/whale.rpm")
+        ('whale.rpm', 'w')
+        >>> rpm_packages_letter_and_basename("x86_64/libecpg.rpm")
+        ('libecpg.rpm', 'l')
+    """
+    if not path_or_filename or not str(path_or_filename).strip():
+        return "", "a"
+    normalized = str(path_or_filename).strip().replace("\\", "/").rstrip("/")
+    basename = normalized.split("/")[-1]
+    if not basename:
+        return "", "a"
+    return basename, basename[0].lower()
+
+
 def detect_artifact_type(artifact_name: str) -> Optional[str]:
     """
     Detect artifact type from artifact name.
@@ -66,8 +94,10 @@ def build_artifact_url(artifact_name: str, artifact_type: str, distros: Dict[str
     if artifact_type == "log":
         return f"{distros.get('logs', '')}{artifact_name}"
     if artifact_type == "rpm":
-        first_letter = artifact_name[0].lower() if artifact_name else "a"
-        return f"{distros.get('rpms', '')}Packages/{first_letter}/{artifact_name}"
+        rpm_basename, first_letter = rpm_packages_letter_and_basename(artifact_name)
+        if not rpm_basename:
+            return None
+        return f"{distros.get('rpms', '')}Packages/{first_letter}/{rpm_basename}"
 
     return None
 
@@ -94,6 +124,25 @@ def extract_architecture_from_metadata(metadata: Union[Dict[str, Any], ArtifactM
     return metadata.get("labels", {}).get("arch", "noarch")
 
 
+def _embedded_artifact_url(metadata: Any) -> Optional[str]:
+    """
+    Return the download URL from pulp_results.json-style artifact metadata if set.
+
+    When present and non-empty, pull uses this URL as-is instead of synthesizing
+    one from distribution base URLs.
+    """
+    if isinstance(metadata, ArtifactMetadata):
+        raw = metadata.url
+    elif isinstance(metadata, dict):
+        raw = metadata.get("url")
+    else:
+        raw = getattr(metadata, "url", None)
+    if raw is None:
+        return None
+    stripped = str(raw).strip()
+    return stripped if stripped else None
+
+
 def categorize_artifacts_by_type(
     artifacts: Dict[str, Any],
     distros: Dict[str, str],
@@ -105,7 +154,7 @@ def categorize_artifacts_by_type(
 
     Args:
         artifacts: Dictionary of artifacts (can be ArtifactMetadata or dict)
-        distros: Dictionary of distribution URLs
+        distros: Dictionary of distribution URLs (used when an artifact has no ``url`` field)
         content_types: Optional list of content types to filter (rpm, log, sbom)
         archs: Optional list of architectures to filter
 
@@ -124,8 +173,10 @@ def categorize_artifacts_by_type(
             logging.debug("Skipping %s: could not determine artifact type", artifact_name)
             continue
 
-        # Build download URL
-        file_url = build_artifact_url(artifact_name, artifact_type, distros)
+        embedded_url = _embedded_artifact_url(metadata)
+        file_url: Optional[str] = (
+            embedded_url if embedded_url else build_artifact_url(artifact_name, artifact_type, distros)
+        )
         if not file_url:
             logging.debug("Skipping %s: could not build download URL", artifact_name)
             continue
@@ -250,6 +301,7 @@ def group_rpm_paths_by_arch(
 
 __all__ = [
     "detect_artifact_type",
+    "rpm_packages_letter_and_basename",
     "build_artifact_url",
     "extract_architecture_from_metadata",
     "categorize_artifacts_by_type",

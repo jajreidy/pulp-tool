@@ -179,6 +179,14 @@ class TestPulpClientErrorPaths:
         result = PulpClient._build_rpm_distribution_url("test/package.rpm", distribution_urls)
         assert result == "https://example.com/rpms/Packages/p/package.rpm"
 
+    def test_build_rpm_distribution_url_packages_prefix_lowercase_letter(self):
+        """Letter under Packages/ is lowercase first char of RPM basename."""
+        from pulp_tool.api.pulp_client import PulpClient
+
+        distribution_urls = {"rpms": "https://example.com/rpms/"}
+        result = PulpClient._build_rpm_distribution_url("Packages/L/whale.rpm", distribution_urls)
+        assert result == "https://example.com/rpms/Packages/w/whale.rpm"
+
     def test_build_rpm_distribution_url_no_rpms(self):
         """Test _build_rpm_distribution_url without rpms URL."""
         from pulp_tool.api.pulp_client import PulpClient

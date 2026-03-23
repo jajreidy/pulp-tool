@@ -1,9 +1,11 @@
 """Tests for artifact detection utilities."""
 
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from pulp_tool.models.artifacts import ArtifactMetadata
 from pulp_tool.utils.artifact_detection import (
+    _embedded_artifact_url,
     build_artifact_url,
     categorize_artifacts_by_type,
     detect_arch_from_filepath,
@@ -11,6 +13,7 @@ from pulp_tool.utils.artifact_detection import (
     detect_artifact_type,
     extract_architecture_from_metadata,
     group_rpm_paths_by_arch,
+    rpm_packages_letter_and_basename,
 )
 
 
@@ -39,6 +42,32 @@ class TestDetectArtifactType:
         assert detect_artifact_type("file.tar.gz") is None
 
 
+class TestRpmPackagesLetterAndBasename:
+    """Tests for rpm_packages_letter_and_basename."""
+
+    def test_plain_filename(self):
+        assert rpm_packages_letter_and_basename("whale.rpm") == ("whale.rpm", "w")
+        assert rpm_packages_letter_and_basename("Whale.rpm") == ("Whale.rpm", "w")
+
+    def test_nested_path_uses_basename_letter(self):
+        assert rpm_packages_letter_and_basename("Packages/W/whale.rpm") == ("whale.rpm", "w")
+        assert rpm_packages_letter_and_basename("Packages/l/libecpg-debuginfo.rpm") == (
+            "libecpg-debuginfo.rpm",
+            "l",
+        )
+
+    def test_arch_prefix_path(self):
+        assert rpm_packages_letter_and_basename("s390x/libecpg-debuginfo-16.1.el10.s390x.rpm") == (
+            "libecpg-debuginfo-16.1.el10.s390x.rpm",
+            "l",
+        )
+
+    def test_empty_or_no_basename(self):
+        assert rpm_packages_letter_and_basename("") == ("", "a")
+        assert rpm_packages_letter_and_basename("   ") == ("", "a")
+        assert rpm_packages_letter_and_basename("///") == ("", "a")
+
+
 class TestBuildArtifactUrl:
     """Tests for build_artifact_url function."""
 
@@ -47,6 +76,12 @@ class TestBuildArtifactUrl:
         distros = {"rpms": "https://example.com/rpms/"}
         url = build_artifact_url("package.rpm", "rpm", distros)
         assert url == "https://example.com/rpms/Packages/p/package.rpm"
+
+    def test_build_rpm_url_from_packages_path(self):
+        """RPM URL letter comes from basename, not Packages/ or arch prefix."""
+        distros = {"rpms": "https://example.com/rpms/"}
+        url = build_artifact_url("Packages/W/Whale.rpm", "rpm", distros)
+        assert url == "https://example.com/rpms/Packages/w/Whale.rpm"
 
     def test_build_log_url(self):
         """Test building log URL."""
@@ -65,6 +100,11 @@ class TestBuildArtifactUrl:
         distros = {"rpms": "https://example.com/rpms/"}
         url = build_artifact_url("package.rpm", "invalid", distros)
         assert url is None
+
+    def test_build_rpm_url_empty_name_returns_none(self):
+        distros = {"rpms": "https://example.com/rpms/"}
+        assert build_artifact_url("", "rpm", distros) is None
+        assert build_artifact_url("///", "rpm", distros) is None
 
 
 class TestExtractArchitectureFromMetadata:
@@ -91,8 +131,55 @@ class TestExtractArchitectureFromMetadata:
         assert extract_architecture_from_metadata(metadata) == "noarch"
 
 
+class TestEmbeddedArtifactUrl:
+    """Tests for _embedded_artifact_url generic-object branch (getattr url)."""
+
+    def test_non_model_non_dict_with_url_attribute(self):
+        """Objects with a url attribute use getattr path (line 139)."""
+        assert (
+            _embedded_artifact_url(SimpleNamespace(url="  https://pull.example/x.rpm  "))
+            == "https://pull.example/x.rpm"
+        )
+
+    def test_non_model_non_dict_without_url_returns_none(self):
+        """Generic object without url yields None from getattr."""
+        assert _embedded_artifact_url(SimpleNamespace()) is None
+
+
 class TestCategorizeArtifactsByType:
     """Tests for categorize_artifacts_by_type function."""
+
+    def test_categorize_prefers_embedded_url(self):
+        """Use url from results JSON when present instead of building from distros."""
+        embedded = "https://mtls.example.com/api/pulp-content/ns/build/logs/s390x/build.log"
+        artifacts = {
+            "ns/build/s390x/build.log": ArtifactMetadata(
+                labels={"arch": "s390x"},
+                url=embedded,
+                sha256="65cc68fa",
+            ),
+        }
+        wrong_distros = {"logs": "https://wrong.example.com/logs/"}
+
+        with patch("pulp_tool.utils.artifact_detection.build_artifact_url") as mock_build:
+            result = categorize_artifacts_by_type(artifacts, wrong_distros)
+
+        assert len(result) == 1
+        assert result[0][0] == "ns/build/s390x/build.log"
+        assert result[0][1] == embedded
+        mock_build.assert_not_called()
+
+    def test_categorize_embedded_url_dict_metadata(self):
+        """Dict artifact entries with url skip build_artifact_url."""
+        embedded = "https://source.example/rpms/Packages/p/pkg.rpm"
+        artifacts = {
+            "pkg.rpm": {"labels": {"arch": "x86_64"}, "url": embedded, "sha256": "a" * 64},
+        }
+        with patch("pulp_tool.utils.artifact_detection.build_artifact_url") as mock_build:
+            result = categorize_artifacts_by_type(artifacts, {"rpms": "https://other/"})
+        assert len(result) == 1
+        assert result[0][1] == embedded
+        mock_build.assert_not_called()
 
     def test_categorize_basic(self):
         """Test basic artifact categorization."""
