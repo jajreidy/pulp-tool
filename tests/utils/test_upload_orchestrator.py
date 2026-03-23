@@ -2,7 +2,7 @@
 
 import os
 import tempfile
-from concurrent.futures import Future
+from concurrent.futures import Future, ThreadPoolExecutor
 from typing import Any, Dict
 from unittest.mock import Mock, patch
 
@@ -10,7 +10,7 @@ import pytest
 
 from pulp_tool.models.context import UploadFilesContext, UploadRpmContext
 from pulp_tool.models.repository import RepositoryRefs
-from pulp_tool.models.results import PulpResultsModel
+from pulp_tool.models.results import PulpResultsModel, RpmUploadResult
 from pulp_tool.utils.upload_orchestrator import UploadOrchestrator
 
 
@@ -233,6 +233,57 @@ class TestUploadOrchestratorProcessArchitectureUploads:
                 assert result == {"x86_64": {}, "aarch64": {}}
                 mock_submit.assert_called_once()
                 mock_collect.assert_called_once()
+
+    def test_submit_architecture_tasks_target_arch_repo_calls_ensure(self):
+        """Per-arch mode resolves href via pulp_helper.ensure_rpm_repository_for_arch (line 94)."""
+        orchestrator = UploadOrchestrator()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            os.makedirs(os.path.join(tmpdir, "x86_64"))
+            args = UploadRpmContext(
+                build_id="test-build",
+                date_str="2024-01-01 00:00:00",
+                namespace="test-ns",
+                parent_package=None,
+                rpm_path=tmpdir,
+                sbom_path=None,
+                target_arch_repo=True,
+            )
+            mock_client = Mock()
+            repositories = RepositoryRefs(
+                rpms_href="",
+                rpms_prn="",
+                logs_href="",
+                logs_prn="logs-prn",
+                sbom_href="",
+                sbom_prn="sbom-prn",
+                artifacts_href="",
+                artifacts_prn="",
+            )
+            results_model = PulpResultsModel(build_id="test-build", repositories=repositories)
+            mock_helper = Mock()
+            mock_helper.ensure_rpm_repository_for_arch.return_value = "/arch-specific/rpm"
+            done = RpmUploadResult(uploaded_rpms=[], created_resources=[])
+
+            with patch("pulp_tool.utils.upload_orchestrator.upload_rpms_logs", return_value=done) as mock_upload:
+                with ThreadPoolExecutor(max_workers=1) as executor:
+                    future_to_arch = orchestrator._submit_architecture_tasks(
+                        executor,
+                        ["x86_64"],
+                        tmpdir,
+                        args,
+                        mock_client,
+                        "/bulk-ignored",
+                        repositories.logs_prn,
+                        "2024-01-01",
+                        results_model,
+                        pulp_helper=mock_helper,
+                    )
+                    for fut in future_to_arch:
+                        fut.result()
+
+            mock_helper.ensure_rpm_repository_for_arch.assert_called_once_with("x86_64")
+            mock_upload.assert_called_once()
+            assert mock_upload.call_args.kwargs["rpm_repository_href"] == "/arch-specific/rpm"
 
     def test_process_architecture_uploads_no_architectures(self):
         """Test process_architecture_uploads with no architectures (lines 168-170)."""
@@ -515,6 +566,97 @@ class TestUploadOrchestratorProcessUploads:
             assert call_pos[3] == "noarch"  # arch is 4th positional arg
             assert call_kw["rpm_repository_href"] == "/test/rpm-href"
 
+    def test_process_uploads_root_level_rpms_target_arch_repo(self):
+        """Root-level RPMs use ensure_rpm_repository_for_arch when target_arch_repo is set."""
+        orchestrator = UploadOrchestrator()
+
+        args = UploadRpmContext(
+            build_id="test-build",
+            date_str="2024-01-01 00:00:00",
+            namespace="test-ns",
+            parent_package="test-pkg",
+            rpm_path="/test/rpms",
+            sbom_path="/test/sbom.json",
+            target_arch_repo=True,
+        )
+        mock_client = Mock()
+        repositories = RepositoryRefs(
+            rpms_href="",
+            rpms_prn="",
+            logs_href="",
+            logs_prn="logs-prn",
+            sbom_href="",
+            sbom_prn="sbom-prn",
+            artifacts_href="",
+            artifacts_prn="",
+        )
+        mock_helper = Mock()
+        mock_helper.ensure_rpm_repository_for_arch.return_value = "/per-arch/href"
+
+        mock_processed_uploads: Dict[str, Dict[str, list[str]]] = {"x86_64": {"created_resources": []}}
+        root_rpm_files = ["/test/rpms/pkg.noarch.rpm"]
+
+        with (
+            patch.object(orchestrator, "process_architecture_uploads", return_value=mock_processed_uploads),
+            patch("pulp_tool.utils.upload_orchestrator.glob.glob", return_value=root_rpm_files),
+            patch("pulp_tool.utils.upload_orchestrator.os.path.isfile", return_value=True),
+            patch(
+                "pulp_tool.utils.upload_orchestrator.group_rpm_paths_by_arch",
+                return_value={"noarch": root_rpm_files},
+            ),
+            patch(
+                "pulp_tool.utils.upload_orchestrator.upload_rpms",
+                return_value=["/rpm/resource/1"],
+            ) as mock_upload_rpms,
+            patch("pulp_tool.services.upload_service.upload_sbom", return_value=[]),
+            patch("pulp_tool.services.upload_service.collect_results", return_value="https://example.com/results.json"),
+        ):
+            result = orchestrator.process_uploads(mock_client, args, repositories, pulp_helper=mock_helper)
+
+            assert result == "https://example.com/results.json"
+            mock_upload_rpms.assert_called_once()
+            _call_pos, call_kw = mock_upload_rpms.call_args
+            assert call_kw["rpm_repository_href"] == "/per-arch/href"
+            mock_helper.ensure_rpm_repository_for_arch.assert_called_once_with("noarch")
+
+    def test_process_architecture_uploads_target_arch_repo_requires_pulp_helper(self):
+        """process_architecture_uploads raises when target_arch_repo set but pulp_helper is None."""
+        orchestrator = UploadOrchestrator()
+        mock_client = Mock()
+        repositories = RepositoryRefs(
+            rpms_href="",
+            rpms_prn="",
+            logs_href="",
+            logs_prn="logs-prn",
+            sbom_href="",
+            sbom_prn="sbom-prn",
+            artifacts_href="",
+            artifacts_prn="",
+        )
+        results_model = PulpResultsModel(build_id="test-build", repositories=repositories)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            os.makedirs(os.path.join(tmpdir, "x86_64"))
+            args = UploadRpmContext(
+                build_id="test-build",
+                date_str="2024-01-01 00:00:00",
+                namespace="test-ns",
+                parent_package=None,
+                rpm_path=tmpdir,
+                sbom_path=None,
+                target_arch_repo=True,
+            )
+            with pytest.raises(ValueError, match="pulp_helper is required"):
+                orchestrator.process_architecture_uploads(
+                    mock_client,
+                    args,
+                    repositories,
+                    date_str="2024-01-01",
+                    rpm_href="",
+                    results_model=results_model,
+                    pulp_helper=None,
+                )
+
     def test_process_uploads_with_results_json(self):
         """Test process_uploads calls process_uploads_from_results_json when results_json is set."""
         orchestrator = UploadOrchestrator()
@@ -547,7 +689,7 @@ class TestUploadOrchestratorProcessUploads:
             result = orchestrator.process_uploads(mock_client, args, repositories)
 
         assert result == "https://example.com/results-from-json.json"
-        mock_from_json.assert_called_once_with(mock_client, args, repositories)
+        mock_from_json.assert_called_once_with(mock_client, args, repositories, pulp_helper=None)
 
 
 class TestUploadOrchestratorProcessFileUploads:
@@ -908,3 +1050,67 @@ class TestUploadOrchestratorProcessFileUploads:
             archs = [call[0][3] for call in call_args_list]  # Extract arch from each call
             assert "x86_64" in archs
             assert "aarch64" in archs
+
+
+class TestUploadOrchestratorTargetArchRepo:
+    """process_uploads with --target-arch-repo."""
+
+    def test_process_uploads_target_arch_repo_requires_pulp_helper(self):
+        """Per-arch mode requires pulp_helper for ensure_rpm_repository_for_arch."""
+        orchestrator = UploadOrchestrator()
+        args = UploadRpmContext(
+            build_id="test-build",
+            date_str="2024-01-01 00:00:00",
+            namespace="test-ns",
+            parent_package=None,
+            rpm_path="/test/rpms",
+            sbom_path=None,
+            target_arch_repo=True,
+        )
+        mock_client = Mock()
+        repositories = RepositoryRefs(
+            rpms_href="",
+            rpms_prn="",
+            logs_href="",
+            logs_prn="logs-prn",
+            sbom_href="",
+            sbom_prn="sbom-prn",
+            artifacts_href="",
+            artifacts_prn="artifacts-prn",
+        )
+        with pytest.raises(ValueError, match="pulp_helper is required"):
+            orchestrator.process_uploads(mock_client, args, repositories)
+
+    def test_process_uploads_target_arch_repo_allows_empty_rpms_href(self):
+        """Bulk rpms_href may be empty when per-arch repos are created on demand."""
+        orchestrator = UploadOrchestrator()
+        args = UploadRpmContext(
+            build_id="test-build",
+            date_str="2024-01-01 00:00:00",
+            namespace="test-ns",
+            parent_package=None,
+            rpm_path="/test/rpms",
+            sbom_path=None,
+            target_arch_repo=True,
+        )
+        mock_client = Mock()
+        repositories = RepositoryRefs(
+            rpms_href="",
+            rpms_prn="",
+            logs_href="",
+            logs_prn="logs-prn",
+            sbom_href="",
+            sbom_prn="sbom-prn",
+            artifacts_href="",
+            artifacts_prn="artifacts-prn",
+        )
+        mock_helper = Mock()
+        mock_helper.ensure_rpm_repository_for_arch.return_value = "/per-arch/rpm"
+
+        with (
+            patch.object(orchestrator, "process_architecture_uploads", return_value={}),
+            patch("pulp_tool.services.upload_service.collect_results", return_value="https://example.com/results.json"),
+        ):
+            result = orchestrator.process_uploads(mock_client, args, repositories, pulp_helper=mock_helper)
+
+        assert result == "https://example.com/results.json"

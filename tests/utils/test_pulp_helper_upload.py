@@ -50,7 +50,15 @@ class TestPulpHelperUploadMethods:
             )
 
             assert result == {"x86_64": {}}
-            mock_process.assert_called_once()
+            mock_process.assert_called_once_with(
+                mock_pulp_client,
+                args,
+                repositories,
+                date_str="2024-01-01",
+                rpm_href="/test/",
+                results_model=results_model,
+                pulp_helper=helper,
+            )
 
     def test_process_uploads(self, mock_pulp_client):
         """Test process_uploads method (line 142)."""
@@ -82,7 +90,7 @@ class TestPulpHelperUploadMethods:
             result = helper.process_uploads(mock_pulp_client, args, repositories)
 
             assert result == "https://example.com/results.json"
-            mock_process.assert_called_once_with(mock_pulp_client, args, repositories)
+            mock_process.assert_called_once_with(mock_pulp_client, args, repositories, pulp_helper=helper)
 
     def test_process_file_uploads(self, mock_pulp_client):
         """Test process_file_uploads method"""

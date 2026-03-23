@@ -223,7 +223,7 @@ class TestUploadService:
 
         assert result == "https://example.com/results.json"
         service.helper.process_uploads.assert_called_once_with(  # type: ignore[attr-defined]
-            mock_client, context, mock_repos
+            mock_client, context, mock_repos, pulp_helper=service.helper
         )
         # Verify logging calls were made
         assert mock_logging.info.call_count >= 2

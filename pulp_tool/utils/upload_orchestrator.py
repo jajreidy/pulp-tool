@@ -23,6 +23,7 @@ from .artifact_detection import detect_arch_from_filepath, group_rpm_paths_by_ar
 
 if TYPE_CHECKING:
     from ..api.pulp_client import PulpClient
+    from .pulp_helper import PulpHelper
 
 
 class UploadOrchestrator:
@@ -66,6 +67,7 @@ class UploadOrchestrator:
         logs_prn: str,
         date_str: str,
         results_model: PulpResultsModel,
+        pulp_helper: Optional["PulpHelper"] = None,
     ) -> Dict[Any, str]:
         """
         Submit architecture upload tasks to the executor.
@@ -86,6 +88,12 @@ class UploadOrchestrator:
         """
         future_to_arch = {}
         for arch in existing_archs:
+            if args.target_arch_repo is True:
+                if pulp_helper is None:
+                    raise ValueError("pulp_helper is required when target_arch_repo is True")
+                arch_rpm_href = pulp_helper.ensure_rpm_repository_for_arch(arch)
+            else:
+                arch_rpm_href = rpm_href
             arch_path = os.path.join(rpm_path, arch)
             future = executor.submit(
                 upload_rpms_logs,
@@ -93,7 +101,7 @@ class UploadOrchestrator:
                 args,
                 client,
                 arch,
-                rpm_repository_href=rpm_href,
+                rpm_repository_href=arch_rpm_href,
                 file_repository_prn=logs_prn,
                 date=date_str,
                 results_model=results_model,
@@ -145,6 +153,7 @@ class UploadOrchestrator:
         date_str: str,
         rpm_href: str,
         results_model: PulpResultsModel,
+        pulp_helper: Optional["PulpHelper"] = None,
     ) -> Dict[str, Any]:
         """
         Process uploads for all supported architectures.
@@ -191,6 +200,7 @@ class UploadOrchestrator:
                 repositories.logs_prn,
                 date_str,
                 results_model,
+                pulp_helper,
             )
 
             # Collect results as they complete
@@ -199,7 +209,12 @@ class UploadOrchestrator:
         return processed_archs
 
     def process_uploads(
-        self, client: "PulpClient", args: UploadRpmContext, repositories: RepositoryRefs
+        self,
+        client: "PulpClient",
+        args: UploadRpmContext,
+        repositories: RepositoryRefs,
+        *,
+        pulp_helper: Optional["PulpHelper"] = None,
     ) -> Optional[str]:
         """
         Process all upload operations.
@@ -212,6 +227,7 @@ class UploadOrchestrator:
             client: PulpClient instance for API interactions
             args: UploadRpmContext with command line arguments (including date_str)
             repositories: RepositoryRefs containing all repository identifiers
+            pulp_helper: PulpHelper instance (required when target_arch_repo is True)
 
         Returns:
             URL of the uploaded results JSON, or None if upload failed
@@ -220,11 +236,14 @@ class UploadOrchestrator:
         from ..services.upload_service import upload_sbom, collect_results, process_uploads_from_results_json
 
         if args.results_json:
-            return process_uploads_from_results_json(client, args, repositories)
+            return process_uploads_from_results_json(client, args, repositories, pulp_helper=pulp_helper)
 
-        # Ensure RPM repository href exists
-        if not repositories.rpms_href:
-            raise ValueError("RPM repository href is required but not found")
+        # Ensure RPM repository href exists (bulk repo); per-arch mode creates repos at upload time
+        if args.target_arch_repo is not True:
+            if not repositories.rpms_href:
+                raise ValueError("RPM repository href is required but not found")
+        elif pulp_helper is None:
+            raise ValueError("pulp_helper is required when target_arch_repo is True")
 
         # Get date_str from args
         date_str = args.date_str
@@ -234,7 +253,13 @@ class UploadOrchestrator:
 
         # Process each architecture - now updates results_model internally
         processed_uploads = self.process_architecture_uploads(
-            client, args, repositories, date_str=date_str, rpm_href=repositories.rpms_href, results_model=results_model
+            client,
+            args,
+            repositories,
+            date_str=date_str,
+            rpm_href=repositories.rpms_href,
+            results_model=results_model,
+            pulp_helper=pulp_helper,
         )
 
         # Collect all created resources from add_content operations
@@ -256,13 +281,18 @@ class UploadOrchestrator:
                 rpms_by_arch = group_rpm_paths_by_arch(root_rpm_files)
                 for arch, rpm_list in rpms_by_arch.items():
                     logging.warning("Uploading %d root-level RPM(s) for architecture %s", len(rpm_list), arch)
+                    if args.target_arch_repo is True:
+                        assert pulp_helper is not None  # enforced above when target_arch_repo is True
+                        root_rpm_href = pulp_helper.ensure_rpm_repository_for_arch(arch)
+                    else:
+                        root_rpm_href = repositories.rpms_href
                     created_resources.extend(
                         upload_rpms(
                             rpm_list,
                             args,
                             client,
                             arch,
-                            rpm_repository_href=repositories.rpms_href,
+                            rpm_repository_href=root_rpm_href,
                             date=date_str,
                             results_model=results_model,
                         )

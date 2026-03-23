@@ -43,9 +43,10 @@ def validate_repository_setup(
         if prn_key not in repositories or not repositories.get(prn_key):
             errors.append(f"Missing {repo_type} repository PRN")
 
-    # For RPM repositories, also check that href is present
-    if "rpms_href" not in repositories or not repositories.get("rpms_href"):
-        errors.append("Missing rpms repository href")
+    # For RPM repositories, also check that href is present (skipped when rpms created per-arch later)
+    if "rpms" in repo_types:
+        if "rpms_href" not in repositories or not repositories.get("rpms_href"):
+            errors.append("Missing rpms repository href")
 
     # Check that repository references are valid (non-empty strings)
     for repo_key, repo_ref in repositories.items():

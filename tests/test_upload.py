@@ -18,6 +18,8 @@ from pulp_tool.services.upload_service import (
     collect_results,
     process_uploads_from_results_json,
     _classify_artifact_from_key,
+    _populate_results_model,
+    _add_distributions_to_results,
 )
 from pulp_tool.models import PulpResultsModel, RepositoryRefs
 from pulp_tool.models.pulp_api import TaskResponse
@@ -813,8 +815,6 @@ class TestBuildResultsStructure:
 
     def test_build_results_structure(self, mock_pulp_client):
         """Test _populate_results_model function (lines 364-367)."""
-        # Import the function - it's actually _populate_results_model that calls client.build_results_structure
-        from pulp_tool.services.upload_service import _populate_results_model
         from pulp_tool.models import PulpResultsModel, RepositoryRefs
         from pulp_tool.models.context import UploadContext
 
@@ -871,6 +871,67 @@ class TestBuildResultsStructure:
             mock_helper_class.assert_called_once_with(mock_pulp_client, parent_package=context.parent_package)
             # Verify get_distribution_urls was called (line 365)
             mock_helper.get_distribution_urls.assert_called_once_with(context.build_id)
+
+    def test_populate_results_model_target_arch_repo_uses_flagged_distribution_urls(self, mock_pulp_client):
+        """With target_arch_repo, get_distribution_urls is called with target_arch_repo=True."""
+        from pulp_tool.models.artifacts import FileInfoModel
+
+        repositories = RepositoryRefs(
+            rpms_href="/rpms/",
+            rpms_prn="rpms-prn",
+            logs_href="/logs/",
+            logs_prn="logs-prn",
+            sbom_href="/sbom/",
+            sbom_prn="sbom-prn",
+            artifacts_href="/artifacts/",
+            artifacts_prn="artifacts-prn",
+        )
+        results_model = PulpResultsModel(build_id="test-build", repositories=repositories)
+        content_results: list = []
+        file_info_map: dict[str, FileInfoModel] = {}
+        context = UploadRpmContext(
+            build_id="test-build",
+            date_str="2024-01-01",
+            namespace="test-namespace",
+            parent_package="test-package",
+            target_arch_repo=True,
+        )
+        with patch("pulp_tool.services.upload_service.PulpHelper") as mock_helper_class:
+            mock_helper = Mock()
+            mock_helper.get_distribution_urls.return_value = {"logs": "https://example.com/logs/"}
+            mock_helper_class.return_value = mock_helper
+            mock_pulp_client.build_results_structure = Mock()
+            _populate_results_model(mock_pulp_client, results_model, content_results, file_info_map, context)
+            mock_helper.get_distribution_urls.assert_called_once_with("test-build", target_arch_repo=True)
+            mock_pulp_client.build_results_structure.assert_called_once()
+            assert mock_pulp_client.build_results_structure.call_args.kwargs["target_arch_repo"] is True
+
+    def test_add_distributions_to_results_target_arch_repo(self, mock_pulp_client):
+        """With target_arch_repo, _add_distributions_to_results uses flagged get_distribution_urls."""
+        repositories = RepositoryRefs(
+            rpms_href="",
+            rpms_prn="",
+            logs_href="/logs/",
+            logs_prn="logs-prn",
+            sbom_href="/sbom/",
+            sbom_prn="sbom-prn",
+            artifacts_href="/artifacts/",
+            artifacts_prn="artifacts-prn",
+        )
+        results_model = PulpResultsModel(build_id="test-build", repositories=repositories)
+        context = UploadRpmContext(
+            build_id="test-build",
+            date_str="2024-01-01",
+            namespace="test-namespace",
+            parent_package="test-package",
+            target_arch_repo=True,
+        )
+        with patch("pulp_tool.services.upload_service.PulpHelper") as mock_helper_class:
+            mock_helper = Mock()
+            mock_helper.get_distribution_urls.return_value = {"logs": "https://example.com/logs/"}
+            mock_helper_class.return_value = mock_helper
+            _add_distributions_to_results(mock_pulp_client, context, results_model)
+            mock_helper.get_distribution_urls.assert_called_once_with("test-build", target_arch_repo=True)
 
 
 class TestHandleSbomResults:
@@ -1120,6 +1181,51 @@ class TestProcessUploadsFromResultsJson:
         assert call_kw["rpm_repository_href"] == "/test/rpm-signed-href"
         call_context = mock_upload_rpms.call_args[0][1]
         assert call_context.signed_by == "key-123"
+
+    def test_upload_from_results_json_target_arch_repo_uses_ensure_per_arch(self, tmp_path, mock_pulp_client):
+        """target_arch_repo sets bulk rpm_href empty and uses ensure_rpm_repository_for_arch per arch."""
+        rpm_file = tmp_path / "x86_64" / "pkg.rpm"
+        rpm_file.parent.mkdir()
+        rpm_file.write_bytes(b"x")
+
+        results_json_path = tmp_path / "pulp_results.json"
+        results_data = {"artifacts": {"x86_64/pkg.rpm": {"labels": {"arch": "x86_64"}}}}
+        results_json_path.write_text(json.dumps(results_data))
+
+        context = UploadRpmContext(
+            build_id="test-build",
+            date_str="2024-01-01",
+            namespace="test-ns",
+            parent_package="test-pkg",
+            rpm_path="/ignored",
+            results_json=str(results_json_path),
+            target_arch_repo=True,
+        )
+        repositories = RepositoryRefs(
+            rpms_href="",
+            rpms_prn="",
+            logs_href="",
+            logs_prn="logs-prn",
+            sbom_href="",
+            sbom_prn="sbom-prn",
+            artifacts_href="",
+            artifacts_prn="artifacts-prn",
+        )
+        mock_ph_instance = Mock()
+        mock_ph_instance.ensure_rpm_repository_for_arch.return_value = "/per-arch/rpm"
+
+        with (
+            patch("pulp_tool.services.upload_service.PulpHelper", return_value=mock_ph_instance),
+            patch("pulp_tool.utils.uploads.upload_rpms", return_value=["/r/1"]) as mock_upload_rpms,
+            patch("pulp_tool.services.upload_service.collect_results", return_value="https://example.com/r.json"),
+        ):
+            result = process_uploads_from_results_json(
+                mock_pulp_client, context, repositories, pulp_helper=mock_ph_instance
+            )
+
+        assert result == "https://example.com/r.json"
+        mock_ph_instance.ensure_rpm_repository_for_arch.assert_called_once_with("x86_64")
+        assert mock_upload_rpms.call_args.kwargs["rpm_repository_href"] == "/per-arch/rpm"
 
     def test_upload_from_results_json_files_base_path(self, tmp_path, mock_pulp_client):
         """Test override base path for resolving artifact keys."""

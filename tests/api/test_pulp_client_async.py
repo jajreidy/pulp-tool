@@ -171,29 +171,42 @@ class TestPulpClientErrorPaths:
         result = PulpClient._get_content_type_from_href("/api/v3/content/unknown/123/")
         assert result == "unknown"
 
-    def test_build_rpm_distribution_url(self):
+    def test_build_rpm_distribution_url(self, mock_pulp_client):
         """Test _build_rpm_distribution_url."""
-        from pulp_tool.api.pulp_client import PulpClient
-
         distribution_urls = {"rpms": "https://example.com/rpms/"}
-        result = PulpClient._build_rpm_distribution_url("test/package.rpm", distribution_urls)
+        result = mock_pulp_client._build_rpm_distribution_url("test/package.rpm", distribution_urls)
         assert result == "https://example.com/rpms/Packages/p/package.rpm"
 
-    def test_build_rpm_distribution_url_packages_prefix_lowercase_letter(self):
+    def test_build_rpm_distribution_url_packages_prefix_lowercase_letter(self, mock_pulp_client):
         """Letter under Packages/ is lowercase first char of RPM basename."""
-        from pulp_tool.api.pulp_client import PulpClient
-
         distribution_urls = {"rpms": "https://example.com/rpms/"}
-        result = PulpClient._build_rpm_distribution_url("Packages/L/whale.rpm", distribution_urls)
+        result = mock_pulp_client._build_rpm_distribution_url("Packages/L/whale.rpm", distribution_urls)
         assert result == "https://example.com/rpms/Packages/w/whale.rpm"
 
-    def test_build_rpm_distribution_url_no_rpms(self):
+    def test_build_rpm_distribution_url_no_rpms(self, mock_pulp_client):
         """Test _build_rpm_distribution_url without rpms URL."""
-        from pulp_tool.api.pulp_client import PulpClient
-
         distribution_urls: dict[str, str] = {}
-        result = PulpClient._build_rpm_distribution_url("test/package.rpm", distribution_urls)
+        result = mock_pulp_client._build_rpm_distribution_url("test/package.rpm", distribution_urls)
         assert result == "test/package.rpm"
+
+    def test_build_rpm_distribution_url_target_arch_repo_unsigned(self, mock_pulp_client):
+        """RPM URL uses per-arch base when target_arch_repo is set."""
+        labels = {"arch": "x86_64"}
+        result = mock_pulp_client._build_rpm_distribution_url("pkg.rpm", {}, labels, target_arch_repo=True)
+        assert result == ("https://pulp.example.com/api/pulp-content/test-domain/x86_64/Packages/p/pkg.rpm")
+
+    def test_build_rpm_distribution_url_target_arch_repo_with_signed_by_label(self, mock_pulp_client):
+        """signed_by label does not change per-arch distribution path (same as unsigned)."""
+        labels = {"arch": "aarch64", "signed_by": "key-1"}
+        result = mock_pulp_client._build_rpm_distribution_url("pkg.rpm", {}, labels, target_arch_repo=True)
+        assert result == "https://pulp.example.com/api/pulp-content/test-domain/aarch64/Packages/p/pkg.rpm"
+
+    def test_rpm_distribution_base_url_falls_back_to_noarch_when_invalid(self, mock_pulp_client):
+        """Invalid sanitized arch segment uses noarch in per-arch URL (defensive path)."""
+        with patch("pulp_tool.api.pulp_client.validate_build_id", return_value=False):
+            labels = {"arch": "x86_64"}
+            base = mock_pulp_client._rpm_distribution_base_url_from_labels(labels)
+        assert base == "https://pulp.example.com/api/pulp-content/test-domain/noarch/"
 
     def test_build_file_distribution_url_with_arch(self):
         """Test _build_file_distribution_url with arch prefix."""

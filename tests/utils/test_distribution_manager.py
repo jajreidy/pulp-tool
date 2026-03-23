@@ -108,3 +108,20 @@ class TestDistributionManager:
             mock_logging.info.assert_called_once()
             call_args = mock_logging.info.call_args[0]
             assert "Using cached distribution" in call_args[0]
+
+
+class TestDistributionManagerTargetArchRepo:
+    """Distribution URLs when using per-architecture RPM repositories."""
+
+    def test_get_distribution_urls_skips_rpms_when_target_arch_repo(self):
+        """Aggregate rpms URL is omitted when RPM repos are per-architecture."""
+        mock_client = Mock()
+        mock_client.config = {"base_url": "https://pulp.example.com"}
+
+        manager = DistributionManager(mock_client, "test-namespace")
+        urls = manager.get_distribution_urls("my-build", target_arch_repo=True)
+
+        assert "rpms" not in urls
+        assert "logs" in urls
+        assert "sbom" in urls
+        assert "artifacts" in urls

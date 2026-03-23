@@ -1,5 +1,6 @@
 """Tests for RepositoryManager class."""
 
+import asyncio
 from unittest.mock import Mock, patch
 
 import httpx
@@ -618,7 +619,9 @@ class TestRepositoryManagerSetupRepositoriesAsync:
         with patch.object(manager, "_setup_repositories_impl_async", return_value=mock_repositories) as mock_async:
             result = manager._setup_repositories_impl("test-build")
 
-            mock_async.assert_called_once_with("test-build", signed_by=None, skip_artifacts_repo=False)
+            mock_async.assert_called_once_with(
+                "test-build", signed_by=None, skip_artifacts_repo=False, target_arch_repo=False
+            )
             assert result == mock_repositories
 
 
@@ -647,3 +650,107 @@ class TestRepositoryManagerCheckExistingDistribution:
             # Check that the AttributeError was logged with the expected message
             debug_calls = [call[0][0] if call[0] else "" for call in mock_logging.debug.call_args_list]
             assert any("Distribution check method not available" in str(call) for call in debug_calls)
+
+
+class TestRepositoryManagerTargetArchRepo:
+    """Per-architecture RPM repository setup and ensure helpers."""
+
+    def test_setup_repositories_target_arch_repo_no_bulk_rpms(self):
+        """target_arch_repo skips rpms keys; validation does not require rpms_href."""
+        mock_client = Mock()
+        mock_client.namespace = "test-namespace"
+        manager = RepositoryManager(mock_client)
+        mock_repositories = {
+            "logs_prn": "test-logs-prn",
+            "sbom_prn": "test-sbom-prn",
+            "artifacts_prn": "test-artifacts-prn",
+        }
+        with (
+            patch.object(manager, "_setup_repositories_impl", return_value=mock_repositories),
+            patch("pulp_tool.utils.repository_manager.validate_repository_setup", return_value=(True, [])),
+        ):
+            result = manager.setup_repositories("test-build", target_arch_repo=True)
+        assert result.rpms_href == ""
+        assert result.rpms_prn == ""
+
+    def test_ensure_rpm_repository_for_arch(self):
+        """ensure_rpm_repository_for_arch creates arch-named repo and returns href."""
+        mock_client = Mock()
+        mock_client.namespace = "test-namespace"
+        manager = RepositoryManager(mock_client)
+        with patch.object(manager, "_create_or_get_repository_impl", return_value=("prn-1", "/rpm/href/")) as mock_impl:
+            href = manager.ensure_rpm_repository_for_arch("x86_64")
+        assert href == "/rpm/href/"
+        req = mock_impl.call_args[0][0]
+        assert req.name == "x86_64"
+        assert mock_impl.call_args.kwargs.get("build_id") == "arch:x86_64"
+
+    def test_ensure_rpm_repository_for_arch_second_arch_same_pattern(self):
+        """Another arch uses the same naming pattern (no rpms-signed suffix)."""
+        mock_client = Mock()
+        mock_client.namespace = "test-namespace"
+        manager = RepositoryManager(mock_client)
+        with patch.object(manager, "_create_or_get_repository_impl", return_value=("prn-1", "/rpm/s/")) as mock_impl:
+            href = manager.ensure_rpm_repository_for_arch("aarch64")
+        assert href == "/rpm/s/"
+        req = mock_impl.call_args[0][0]
+        assert req.name == "aarch64"
+        assert mock_impl.call_args.kwargs.get("build_id") == "arch:aarch64"
+
+    def test_ensure_rpm_repository_for_arch_rejects_empty_arch(self):
+        """Empty architecture raises ValueError."""
+        mock_client = Mock()
+        manager = RepositoryManager(mock_client)
+        with pytest.raises(ValueError, match="non-empty string"):
+            manager.ensure_rpm_repository_for_arch("   ")
+
+    def test_ensure_rpm_repository_for_arch_rejects_invalid_sanitized_arch(self):
+        """Architecture that fails validate_build_id after sanitize raises ValueError."""
+        mock_client = Mock()
+        manager = RepositoryManager(mock_client)
+        with (
+            patch(
+                "pulp_tool.utils.repository_manager.sanitize_build_id_for_repository",
+                return_value="invalid arch",
+            ),
+            patch("pulp_tool.utils.repository_manager.validate_build_id", return_value=False),
+        ):
+            with pytest.raises(ValueError, match="Invalid architecture"):
+                manager.ensure_rpm_repository_for_arch("anything")
+
+    def test_ensure_rpm_repository_for_arch_empty_distribution_base_path(self):
+        """Defensive check when DistributionRequest has empty base_path."""
+        mock_client = Mock()
+        manager = RepositoryManager(mock_client)
+        mock_dist = Mock()
+        mock_dist.base_path = ""
+        with patch.object(manager, "_validate_full_name"):
+            with patch("pulp_tool.utils.repository_manager.RepositoryRequest", return_value=Mock()):
+                with patch("pulp_tool.utils.repository_manager.DistributionRequest", return_value=mock_dist):
+                    with pytest.raises(ValueError, match="base_path is empty"):
+                        manager.ensure_rpm_repository_for_arch("x86_64")
+
+    def test_ensure_rpm_repository_for_arch_raises_when_no_href(self):
+        """RPM create path without href raises RuntimeError."""
+        mock_client = Mock()
+        manager = RepositoryManager(mock_client)
+        with patch.object(manager, "_create_or_get_repository_impl", return_value=("prn", None)):
+            with pytest.raises(RuntimeError, match="no pulp_href"):
+                manager.ensure_rpm_repository_for_arch("ppc64le")
+
+    def test_setup_repositories_impl_async_target_arch_repo_excludes_rpm_repos(self):
+        """Async setup does not create rpms or rpms-signed when target_arch_repo is set."""
+        from pulp_tool.api import PulpClient
+
+        mock_client = Mock(spec=PulpClient)
+        mock_client.namespace = "test-namespace"
+        manager = RepositoryManager(mock_client)
+        with patch.object(manager, "_create_or_get_repository_impl", return_value=("p", "h")):
+            result = asyncio.run(
+                manager._setup_repositories_impl_async(
+                    "my-build", signed_by="key", skip_artifacts_repo=False, target_arch_repo=True
+                )
+            )
+        assert "rpms_prn" not in result
+        assert "rpms_signed_prn" not in result
+        assert "logs_prn" in result

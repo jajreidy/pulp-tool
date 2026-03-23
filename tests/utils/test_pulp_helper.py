@@ -170,6 +170,15 @@ class TestPulpHelperRepositoryOperations:
         assert prn == "test-prn"
         assert href == "test-href"
 
+    def test_ensure_rpm_repository_for_arch_delegates_to_repository_manager(self, mock_pulp_client):
+        """ensure_rpm_repository_for_arch forwards to RepositoryManager."""
+        helper = PulpHelper(mock_pulp_client)
+        with patch.object(
+            helper._repository_manager, "ensure_rpm_repository_for_arch", return_value="/rpm/href/"
+        ) as mock_ensure:
+            assert helper.ensure_rpm_repository_for_arch("s390x") == "/rpm/href/"
+        mock_ensure.assert_called_once_with("s390x")
+
     def test_create_or_get_repository_invalid_type(self, mock_pulp_client):
         """Test create_or_get_repository method with invalid type."""
         helper = PulpHelper(mock_pulp_client)
