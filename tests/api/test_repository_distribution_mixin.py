@@ -265,6 +265,25 @@ class TestRpmRepositoryMixin:
         assert isinstance(result, RpmRepositoryResponse)
         assert result.name == "test-rpm-repo"
 
+    def test_fetch_rpm_repository_by_href(self, mock_pulp_client, httpx_mock):
+        """Test fetch_rpm_repository_by_href GETs repository detail by pulp_href."""
+        href = "/pulp/api/v3/test-domain/api/v3/repositories/rpm/rpm/abc/"
+        httpx_mock.get(f"https://pulp.example.com{href}").mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "pulp_href": href,
+                    "name": "my-repo",
+                    "latest_version_href": "/pulp/api/v3/test-domain/api/v3/repositories/rpm/rpm/abc/versions/1/",
+                },
+            )
+        )
+        result = mock_pulp_client.fetch_rpm_repository_by_href(href)
+        assert isinstance(result, RpmRepositoryResponse)
+        assert result.name == "my-repo"
+        assert result.latest_version_href is not None
+        assert result.latest_version_href.endswith("/versions/1/")
+
     def test_list_rpm_repositories(self, mock_pulp_client, httpx_mock):
         """Test list_rpm_repositories method (lines 73-74)."""
         httpx_mock.get("https://pulp.example.com/pulp/api/v3/test-domain/api/v3/repositories/rpm/rpm/").mock(

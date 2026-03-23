@@ -17,6 +17,7 @@ from ..models.context import UploadContext
 from .error_handling import handle_generic_error
 from .validation import validate_file_path
 from .rpm_operations import upload_rpms_parallel
+from .rpm_overwrite import remove_rpms_matching_local_files_from_repository
 
 if TYPE_CHECKING:
     from ..api.pulp_client import PulpClient
@@ -200,6 +201,9 @@ def upload_rpms(
         date: Build date string
         results_model: PulpResultsModel to update with upload counts
 
+    When context has overwrite=True (UploadRpmContext), existing RPM package units in the
+    target repository matching local file checksums are removed before upload.
+
     Returns:
         List of created resource hrefs from the add_content operation
     """
@@ -212,6 +216,15 @@ def upload_rpms(
     signed_by_val = getattr(context, "signed_by", None)
     if signed_by_val and isinstance(signed_by_val, str) and signed_by_val.strip():
         labels["signed_by"] = signed_by_val.strip()
+
+    # Use `is True` so unittest.Mock without overwrite does not enable (getattr returns MagicMock).
+    if getattr(context, "overwrite", False) is True:
+        sb_for_search = (
+            signed_by_val.strip()
+            if signed_by_val and isinstance(signed_by_val, str) and signed_by_val.strip()
+            else None
+        )
+        remove_rpms_matching_local_files_from_repository(client, rpms, rpm_repository_href, sb_for_search)
 
     # Upload RPMs in parallel
     rpm_results_artifacts = upload_rpms_parallel(client, rpms, labels, arch)

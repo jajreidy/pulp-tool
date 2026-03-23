@@ -659,6 +659,60 @@ class TestPulpClient:
         assert result.pulp_href == "/pulp/api/v3/tasks/67890/"
         assert result.state == "completed"
 
+    def test_modify_repository_content_remove_only(self, mock_pulp_client, httpx_mock):
+        """Test modify_repository_content with remove_content_units only."""
+        posted: dict = {}
+
+        def capture_modify(request: httpx.Request) -> httpx.Response:
+            posted["body"] = json.loads(request.content.decode())
+            return httpx.Response(202, json={"task": "/pulp/api/v3/tasks/99999/"})
+
+        httpx_mock.post("https://pulp.example.com/pulp/api/v3/repositories/rpm/rpm/12345/modify/").mock(
+            side_effect=capture_modify
+        )
+        httpx_mock.get("https://pulp.example.com/pulp/api/v3/tasks/99999/").mock(
+            return_value=httpx.Response(
+                200, json={"pulp_href": "/pulp/api/v3/tasks/99999/", "state": "completed", "created_resources": []}
+            )
+        )
+        removes = ["/pulp/api/v3/content/rpm/packages/old/"]
+        result = mock_pulp_client.modify_repository_content(
+            "/pulp/api/v3/repositories/rpm/rpm/12345/", remove_content_units=removes
+        )
+        from pulp_tool.models.pulp_api import TaskResponse
+
+        assert isinstance(result, TaskResponse)
+        assert posted["body"] == {"remove_content_units": removes}
+        assert "add_content_units" not in posted["body"]
+
+    def test_modify_repository_content_requires_add_or_remove(self, mock_pulp_client):
+        """modify_repository_content raises if both add and remove are empty."""
+        with pytest.raises(ValueError, match="modify_repository_content requires"):
+            mock_pulp_client.modify_repository_content("/pulp/api/v3/repositories/rpm/rpm/1/")
+
+    def test_modify_repository_content_add_and_remove(self, mock_pulp_client, httpx_mock):
+        """Test modify_repository_content with both add_content_units and remove_content_units."""
+        posted: dict = {}
+
+        def capture_modify(request: httpx.Request) -> httpx.Response:
+            posted["body"] = json.loads(request.content.decode())
+            return httpx.Response(202, json={"task": "/pulp/api/v3/tasks/88888/"})
+
+        httpx_mock.post("https://pulp.example.com/pulp/api/v3/repositories/rpm/rpm/99999/modify/").mock(
+            side_effect=capture_modify
+        )
+        httpx_mock.get("https://pulp.example.com/pulp/api/v3/tasks/88888/").mock(
+            return_value=httpx.Response(
+                200, json={"pulp_href": "/pulp/api/v3/tasks/88888/", "state": "completed", "created_resources": []}
+            )
+        )
+        mock_pulp_client.modify_repository_content(
+            "/pulp/api/v3/repositories/rpm/rpm/99999/",
+            add_content_units=["/add/1/"],
+            remove_content_units=["/rm/1/"],
+        )
+        assert posted["body"] == {"add_content_units": ["/add/1/"], "remove_content_units": ["/rm/1/"]}
+
     def test_get_task(self, mock_pulp_client, httpx_mock):
         """Test _get_task method."""
         # Mock the task endpoint

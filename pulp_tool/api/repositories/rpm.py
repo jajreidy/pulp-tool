@@ -53,6 +53,22 @@ class RpmRepositoryMixin(BaseRepositoryMixin):
         response = self._get_resource(endpoint, RpmRepositoryResponse, name=name)
         return response
 
+    def fetch_rpm_repository_by_href(self, pulp_href: str) -> RpmRepositoryResponse:
+        """
+        Fetch an RPM repository by pulp_href (includes latest_version_href).
+
+        API Endpoint: GET {pulp_href}
+
+        Args:
+            pulp_href: Full repository href (e.g. /pulp/api/v3/repositories/rpm/rpm/{uuid}/)
+
+        Returns:
+            RpmRepositoryResponse model
+        """
+        url = str(self.config["base_url"]) + pulp_href  # type: ignore[attr-defined]
+        response = self.session.get(url, timeout=self.timeout, **self.request_params)  # type: ignore[attr-defined]
+        return self._parse_response(response, RpmRepositoryResponse, "get RPM repository by href")
+
     def list_rpm_repositories(
         self, **query_params: Any
     ) -> tuple[list[RpmRepositoryResponse], Optional[str], Optional[str], int]:

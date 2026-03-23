@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- `upload --overwrite`: RPM-only; remove existing RPM package units in the target repo that match local file SHA256 (and `signed_by` when set) via `remove_content_units` before upload
 - `upload --results-json`: Upload artifacts from pulp_results.json; files resolved from JSON directory or --files-base-path; --build-id and --namespace optional (extracted from artifact labels)
 - DistributionClient username/password (Basic Auth) support; use `username` and `password` in config as alternative to cert/key for pull downloads
 - `pull --distribution-config`: Path to config file for distribution auth (cert/key or username/password); overrides --transfer-dest/--config for auth when set
