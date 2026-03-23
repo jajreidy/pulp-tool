@@ -43,6 +43,7 @@ import httpx
 from ..utils import create_session_with_retry
 from ..utils.artifact_detection import rpm_packages_letter_and_basename
 from ..utils.constants import DEFAULT_CHUNK_SIZE, SUPPORTED_ARCHITECTURES
+from ..utils.validation import sanitize_build_id_for_repository, validate_build_id
 from ..utils.rpm_operations import parse_rpm_filename_to_nvr
 from .auth import OAuth2ClientCredentialsAuth
 
@@ -1068,10 +1069,33 @@ class PulpClient(
             return "file.file"
         return "unknown"
 
-    @staticmethod
-    def _build_rpm_distribution_url(relative_path: str, distribution_urls: Dict[str, str]) -> str:
+    def _rpm_distribution_base_url_from_labels(self, labels: Dict[str, str]) -> str:
+        """Build RPM distribution base URL when using ``--target-arch-repo`` (per-arch base paths)."""
+        base_url_str = str(self.config["base_url"]).rstrip("/")
+        pulp_content = f"{base_url_str}/api/pulp-content/"
+        ns = self.namespace if isinstance(self.namespace, str) else ""
+        arch = (labels.get("arch") or "").strip() or "noarch"
+        arch_seg = sanitize_build_id_for_repository(arch)
+        if not validate_build_id(arch_seg):
+            arch_seg = "noarch"
+        # Per-arch repos do not use a separate *-signed distribution; signed_by is label-only.
+        return f"{pulp_content}{ns}/{arch_seg}/"
+
+    def _build_rpm_distribution_url(
+        self,
+        relative_path: str,
+        distribution_urls: Dict[str, str],
+        labels: Optional[Dict[str, str]] = None,
+        *,
+        target_arch_repo: bool = False,
+    ) -> str:
         """Build distribution URL for RPM artifacts (Packages/<lowercase-first-of-basename>/<basename>)."""
-        rpms_url = distribution_urls.get("rpms", "")
+        labels = labels or {}
+        rpms_url = ""
+        if target_arch_repo:
+            rpms_url = self._rpm_distribution_base_url_from_labels(labels)
+        if not rpms_url:
+            rpms_url = distribution_urls.get("rpms", "")
         if rpms_url:
             filename, first_letter = rpm_packages_letter_and_basename(relative_path)
             if filename:
@@ -1109,9 +1133,14 @@ class PulpClient(
 
         return relative_path
 
-    @staticmethod
     def _build_artifact_distribution_url(
-        relative_path: str, is_rpm: bool, labels: Dict[str, str], distribution_urls: Dict[str, str]
+        self,
+        relative_path: str,
+        is_rpm: bool,
+        labels: Dict[str, str],
+        distribution_urls: Dict[str, str],
+        *,
+        target_arch_repo: bool = False,
     ) -> str:
         """
         Build distribution URL for an artifact based on its type and relative path.
@@ -1121,12 +1150,15 @@ class PulpClient(
             is_rpm: Whether this is an RPM artifact
             labels: Labels from content (may contain arch, etc.)
             distribution_urls: Dictionary mapping repo_type to distribution base URL
+            target_arch_repo: When True, RPM base URLs are derived per architecture from labels
 
         Returns:
             Full distribution URL for the artifact
         """
         if is_rpm:
-            return PulpClient._build_rpm_distribution_url(relative_path, distribution_urls)
+            return self._build_rpm_distribution_url(
+                relative_path, distribution_urls, labels, target_arch_repo=target_arch_repo
+            )
         return PulpClient._build_file_distribution_url(relative_path, labels, distribution_urls)
 
     def find_content(self, search_type: str, search_value: str) -> httpx.Response:
@@ -1703,6 +1735,8 @@ class PulpClient(
         content_results: List[Dict[str, Any]],
         file_info_map: Dict[str, Any],
         distribution_urls: Optional[Dict[str, str]] = None,
+        *,
+        target_arch_repo: bool = False,
     ) -> Any:
         """
         Build the results structure from content and file info using optimized single-pass processing.
@@ -1712,6 +1746,7 @@ class PulpClient(
             content_results: Content data from Pulp
             file_info_map: Mapping of artifact hrefs to file info models
             distribution_urls: Optional dictionary mapping repo_type to distribution base URL
+            target_arch_repo: When True, RPM artifact URLs use per-arch distribution paths from labels
 
         Returns:
             Populated PulpResultsModel
@@ -1776,7 +1811,11 @@ class PulpClient(
 
                 # Construct distribution URL instead of using file_info.file (which is an API href)
                 artifact_url = self._build_artifact_distribution_url(
-                    relative_path, is_rpm, labels, distribution_urls or {}
+                    relative_path,
+                    is_rpm,
+                    labels,
+                    distribution_urls or {},
+                    target_arch_repo=target_arch_repo,
                 )
 
                 # Add artifact to results model

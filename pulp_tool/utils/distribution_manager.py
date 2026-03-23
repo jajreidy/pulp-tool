@@ -39,7 +39,7 @@ class DistributionManager:
             distribution_cache if distribution_cache is not None else {}
         )
 
-    def get_distribution_urls(self, build_id: str) -> Dict[str, str]:
+    def get_distribution_urls(self, build_id: str, target_arch_repo: bool = False) -> Dict[str, str]:
         """
         Get distribution URLs for all repository types.
 
@@ -48,6 +48,7 @@ class DistributionManager:
 
         Args:
             build_id: Build ID for naming repositories and distributions
+            target_arch_repo: If True, omit the aggregate ``rpms`` URL (per-arch RPM URLs are built elsewhere)
 
         Returns:
             Dictionary mapping repo_type to distribution URL
@@ -68,7 +69,7 @@ class DistributionManager:
         logging.debug("Getting distribution URLs for build: %s", sanitized_build_id)
 
         # Get distribution URLs directly using the helper's own methods
-        distribution_urls = self._get_distribution_urls_impl(sanitized_build_id)
+        distribution_urls = self._get_distribution_urls_impl(sanitized_build_id, target_arch_repo=target_arch_repo)
 
         logging.debug("Retrieved %d distribution URLs", len(distribution_urls))
         return distribution_urls
@@ -107,7 +108,7 @@ class DistributionManager:
         )
         return distribution_url
 
-    def _get_distribution_urls_impl(self, build_id: str) -> Dict[str, str]:
+    def _get_distribution_urls_impl(self, build_id: str, target_arch_repo: bool = False) -> Dict[str, str]:
         """
         Get distribution URLs for all repository types.
 
@@ -125,6 +126,8 @@ class DistributionManager:
         base_url = f"{pulp_content_base_url}/"
 
         for repo_type in REPOSITORY_TYPES:
+            if target_arch_repo and repo_type == "rpms":
+                continue
             url = self._get_single_distribution_url(build_id, repo_type, base_url)
             if url:
                 distribution_urls[repo_type] = url

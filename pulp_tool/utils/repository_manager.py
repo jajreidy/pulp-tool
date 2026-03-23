@@ -73,7 +73,11 @@ class RepositoryManager:
             raise ValueError(f"Invalid full_name constructed: build_name={build_name}, repo_type={repo_type}")
 
     def setup_repositories(
-        self, build_id: str, signed_by: Optional[str] = None, skip_artifacts_repo: bool = False
+        self,
+        build_id: str,
+        signed_by: Optional[str] = None,
+        skip_artifacts_repo: bool = False,
+        target_arch_repo: bool = False,
     ) -> RepositoryRefs:
         """
         Setup all required repositories and return their identifiers.
@@ -85,6 +89,7 @@ class RepositoryManager:
             build_id: Build ID for naming repositories and distributions
             signed_by: If set, also create signed repos (rpms-signed, etc.)
             skip_artifacts_repo: If True, do not create artifacts repo (e.g. when saving locally)
+            target_arch_repo: If True, skip bulk rpms/rpms-signed; create per-arch RPM repos at upload time
 
         Returns:
             RepositoryRefs NamedTuple containing all repository PRNs and hrefs
@@ -106,11 +111,16 @@ class RepositoryManager:
 
         # Create repositories directly using the helper's own methods
         repositories = self._setup_repositories_impl(
-            sanitized_build_id, signed_by=signed_by, skip_artifacts_repo=skip_artifacts_repo
+            sanitized_build_id,
+            signed_by=signed_by,
+            skip_artifacts_repo=skip_artifacts_repo,
+            target_arch_repo=target_arch_repo,
         )
 
         # Validate the setup (only base repos; signed repos are optional)
         required = [r for r in REPOSITORY_TYPES if not (skip_artifacts_repo and r == "artifacts")]
+        if target_arch_repo:
+            required = [r for r in required if r != "rpms"]
         is_valid, errors = validate_repository_setup(repositories, required_types=required)
         if not is_valid:
             raise RuntimeError(f"Repository setup validation failed: {', '.join(errors)}")
@@ -210,6 +220,46 @@ class RepositoryManager:
             logging.debug("Repository operation completed: %s/%s", sanitized_build_id, repo_api_type)
 
         return repository_prn, repository_href
+
+    def ensure_rpm_repository_for_arch(self, arch: str) -> str:
+        """
+        Create or get the RPM repository for one architecture (``--target-arch-repo`` mode).
+
+        Repository and distribution name/base_path are ``{sanitized_arch}`` only. With
+        ``--signed-by``, RPMs still use this same per-arch repo; ``signed_by`` is only a label.
+
+        Args:
+            arch: Architecture label (e.g. ``x86_64``, ``noarch``)
+
+        Returns:
+            RPM repository ``pulp_href`` for modify/add_content
+
+        Raises:
+            ValueError: If the architecture cannot be sanitized to a valid repository segment
+            RuntimeError: If the repository has no href (unexpected for RPM repos)
+        """
+        if not arch or not isinstance(arch, str) or not arch.strip():
+            raise ValueError("Architecture must be a non-empty string")
+        sanitized = sanitize_build_id_for_repository(arch.strip())
+        if not validate_build_id(sanitized):
+            raise ValueError(f"Invalid architecture for repository naming: {arch!r} (sanitized: {sanitized!r})")
+
+        full_name = sanitized
+        cache_build_id = f"arch:{sanitized}"
+
+        self._validate_full_name(full_name, sanitized, "rpms")
+        new_repo = RepositoryRequest(name=full_name, autopublish=True)
+        new_distro = DistributionRequest(name=full_name, base_path=full_name)
+        if not new_distro.base_path or not new_distro.base_path.strip():
+            raise ValueError(
+                f"DistributionRequest base_path is empty after creation: "
+                f"name={full_name}, base_path={new_distro.base_path}"
+            )
+
+        _prn, href = self._create_or_get_repository_impl(new_repo, new_distro, "rpms", build_id=cache_build_id)
+        if not href:
+            raise RuntimeError(f"RPM repository for architecture {arch!r} has no pulp_href")
+        return href
 
     def get_repository_methods(self, repo_type: str) -> Dict[str, Any]:
         """
@@ -354,6 +404,7 @@ class RepositoryManager:
         build_id: str,
         signed_by: Optional[str] = None,
         skip_artifacts_repo: bool = False,
+        target_arch_repo: bool = False,
     ) -> Dict[str, str]:
         """
         Async version: Setup all required repositories using asyncio.gather for concurrency.
@@ -367,6 +418,7 @@ class RepositoryManager:
             build_id: Base name for the repositories
             signed_by: If set, also create signed repos
             skip_artifacts_repo: If True, do not create artifacts repo
+            target_arch_repo: If True, omit bulk ``rpms`` and ``rpms-signed`` repositories
 
         Returns:
             Dictionary mapping repository types to their PRNs and hrefs
@@ -376,6 +428,8 @@ class RepositoryManager:
         repo_types = [r for r in REPOSITORY_TYPES if not (skip_artifacts_repo and r == "artifacts")]
         if signed_by:
             repo_types.extend(SIGNED_REPOSITORY_TYPES)
+        if target_arch_repo:
+            repo_types = [r for r in repo_types if r not in ("rpms", "rpms-signed")]
 
         # Use asyncio.gather to run all repository setups concurrently
         # Each operation runs in the event loop without blocking
@@ -604,7 +658,11 @@ class RepositoryManager:
         return distro_task
 
     def _setup_repositories_impl(
-        self, build_id: str, signed_by: Optional[str] = None, skip_artifacts_repo: bool = False
+        self,
+        build_id: str,
+        signed_by: Optional[str] = None,
+        skip_artifacts_repo: bool = False,
+        target_arch_repo: bool = False,
     ) -> Dict[str, str]:
         """
         Setup all required repositories and return their identifiers.
@@ -624,7 +682,12 @@ class RepositoryManager:
         """
         # Run the async version and return results
         return asyncio.run(
-            self._setup_repositories_impl_async(build_id, signed_by=signed_by, skip_artifacts_repo=skip_artifacts_repo)
+            self._setup_repositories_impl_async(
+                build_id,
+                signed_by=signed_by,
+                skip_artifacts_repo=skip_artifacts_repo,
+                target_arch_repo=target_arch_repo,
+            )
         )
 
     def get_distribution_cache(self) -> Dict[Tuple[str, str], str]:

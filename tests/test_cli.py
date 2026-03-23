@@ -74,6 +74,7 @@ class TestCLIHelp:
         assert "--sbom-results" in result.output
         assert "--artifact-results" in result.output
         assert "--overwrite" in result.output
+        assert "--target-arch-repo" in result.output
 
     def test_upload_files_help(self):
         """Test upload-files command help output."""
@@ -280,6 +281,70 @@ class TestUploadCommand:
 
             assert result.exit_code == 0
             assert "RESULTS JSON:" in result.output
+
+    @patch("pulp_tool.cli.upload.PulpClient")
+    @patch("pulp_tool.cli.upload.PulpHelper")
+    def test_upload_target_arch_repo_flag(self, mock_helper_class, mock_client_class):
+        """--target-arch-repo is passed to setup_repositories and UploadRpmContext."""
+        runner = CliRunner()
+
+        mock_client = Mock()
+        mock_client.close = Mock()
+        mock_client_class.create_from_config_file.return_value = mock_client
+
+        mock_helper = Mock()
+        from pulp_tool.models.repository import RepositoryRefs
+
+        mock_repos = RepositoryRefs(
+            rpms_href="",
+            rpms_prn="",
+            logs_href="",
+            logs_prn="",
+            sbom_href="",
+            sbom_prn="",
+            artifacts_href="",
+            artifacts_prn="",
+        )
+        mock_helper.setup_repositories.return_value = mock_repos
+        mock_helper.process_uploads.return_value = "https://example.com/results.json"
+        mock_helper_class.return_value = mock_helper
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            rpm_dir = Path(tmpdir) / "rpms"
+            rpm_dir.mkdir()
+            sbom_path = Path(tmpdir) / "sbom.json"
+            sbom_path.write_text("{}")
+            config_path = Path(tmpdir) / "config.toml"
+            config_path.write_text(
+                '[cli]\nbase_url = "https://pulp.example.com"\napi_root = "/pulp/api/v3"\ndomain = "test-domain"'
+            )
+
+            result = runner.invoke(
+                cli,
+                [
+                    "--build-id",
+                    "test-build",
+                    "--namespace",
+                    "test-ns",
+                    "--config",
+                    str(config_path),
+                    "upload",
+                    "--parent-package",
+                    "test-pkg",
+                    "--rpm-path",
+                    str(rpm_dir),
+                    "--sbom-path",
+                    str(sbom_path),
+                    "--target-arch-repo",
+                ],
+            )
+
+            assert result.exit_code == 0
+            mock_helper.setup_repositories.assert_called_once_with(
+                "test-build", signed_by=None, skip_artifacts_repo=False, target_arch_repo=True
+            )
+            context = mock_helper.process_uploads.call_args[0][1]
+            assert context.target_arch_repo is True
 
     @patch("pulp_tool.cli.upload.PulpClient")
     @patch("pulp_tool.cli.upload.PulpHelper")
@@ -671,7 +736,7 @@ class TestUploadCommand:
 
             assert result.exit_code == 0
             mock_helper.setup_repositories.assert_called_once_with(
-                "test-build", signed_by="key-123", skip_artifacts_repo=False
+                "test-build", signed_by="key-123", skip_artifacts_repo=False, target_arch_repo=False
             )
             mock_helper.process_uploads.assert_called_once()
             call_args = mock_helper.process_uploads.call_args[0]
@@ -745,7 +810,7 @@ class TestUploadCommand:
 
             assert result.exit_code == 0
             mock_helper.setup_repositories.assert_called_once_with(
-                "extracted-build", signed_by=None, skip_artifacts_repo=False
+                "extracted-build", signed_by=None, skip_artifacts_repo=False, target_arch_repo=False
             )
             context = mock_helper.process_uploads.call_args[0][1]
             assert context.build_id == "extracted-build"

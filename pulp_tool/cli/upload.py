@@ -104,6 +104,15 @@ def _extract_build_id_namespace_from_results_json(results_json_path: Path) -> Tu
         "and remove matching package units from the target RPM repository via remove_content_units"
     ),
 )
+@click.option(
+    "--target-arch-repo",
+    is_flag=True,
+    default=False,
+    help=(
+        "RPM only: use each architecture as the RPM repository/distribution name "
+        "(e.g. .../pulp-content/{namespace}/x86_64/) instead of {build}/rpms; logs/SBOM/artifacts stay build-scoped"
+    ),
+)
 @click.pass_context
 def upload(  # pylint: disable=too-many-arguments,too-many-positional-arguments
     ctx: click.Context,
@@ -116,6 +125,7 @@ def upload(  # pylint: disable=too-many-arguments,too-many-positional-arguments
     files_base_path: Optional[Path],
     signed_by: Optional[str],
     overwrite: bool,
+    target_arch_repo: bool,
 ) -> None:
     """Upload RPMs, logs, and SBOM files to Pulp repositories."""
     # Get shared options from context
@@ -169,6 +179,7 @@ def upload(  # pylint: disable=too-many-arguments,too-many-positional-arguments
             files_base_path=str(files_base_path) if files_base_path else None,
             signed_by=signed_by.strip() if signed_by and signed_by.strip() else None,
             overwrite=overwrite,
+            target_arch_repo=target_arch_repo,
             debug=debug,
         )
 
@@ -178,13 +189,16 @@ def upload(  # pylint: disable=too-many-arguments,too-many-positional-arguments
         skip_artifacts = bool(args.artifact_results and "," not in args.artifact_results.strip())
         repository_helper = PulpHelper(client, parent_package=parent_package)
         repositories = repository_helper.setup_repositories(
-            build_id, signed_by=args.signed_by, skip_artifacts_repo=skip_artifacts
+            build_id,
+            signed_by=args.signed_by,
+            skip_artifacts_repo=skip_artifacts,
+            target_arch_repo=target_arch_repo,
         )
         logging.info("Repository setup completed")
 
         # Process uploads
         logging.info("Starting upload process")
-        results_json_url = repository_helper.process_uploads(client, args, repositories)
+        results_json_url = repository_helper.process_uploads(client, args, repositories, pulp_helper=repository_helper)
 
         # Check if results JSON URL was generated successfully
         if not results_json_url:

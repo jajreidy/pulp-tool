@@ -50,6 +50,9 @@ class UploadRpmContext(UploadContext):
         signed_by: Optional string; when set, add pulp_label and use separate signed repos
         overwrite: When True, remove existing RPM package units in the target RPM repo that match
             local file SHA256 (and signed_by when set) before uploading RPMs
+        target_arch_repo: When True, RPM repos use architecture as name/base_path (e.g. x86_64) instead
+            of build_id/rpms; created lazily per arch at upload time. With signed_by, the same per-arch
+            repo is used (signed_by is label-only; no rpms-signed path segment).
     """
 
     rpm_path: Optional[str] = None
@@ -58,6 +61,7 @@ class UploadRpmContext(UploadContext):
     files_base_path: Optional[str] = None
     signed_by: Optional[str] = None
     overwrite: bool = False
+    target_arch_repo: bool = False
 
 
 class PullContext(KonfluxBaseModel):

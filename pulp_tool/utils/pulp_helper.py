@@ -56,6 +56,7 @@ class PulpHelper:
         build_id: str,
         signed_by: Optional[str] = None,
         skip_artifacts_repo: bool = False,
+        target_arch_repo: bool = False,
     ) -> RepositoryRefs:
         """
         Setup all required repositories and return their identifiers.
@@ -67,15 +68,28 @@ class PulpHelper:
             build_id: Build ID for naming repositories and distributions
             signed_by: If set, also create signed repos (rpms-signed, etc.)
             skip_artifacts_repo: If True, do not create artifacts repo (e.g. when saving locally)
+            target_arch_repo: If True, skip bulk rpms/rpms-signed; use ensure_rpm_repository_for_arch per arch
 
         Returns:
             RepositoryRefs NamedTuple containing all repository PRNs and hrefs
         """
         return self._repository_manager.setup_repositories(
-            build_id, signed_by=signed_by, skip_artifacts_repo=skip_artifacts_repo
+            build_id,
+            signed_by=signed_by,
+            skip_artifacts_repo=skip_artifacts_repo,
+            target_arch_repo=target_arch_repo,
         )
 
-    def get_distribution_urls(self, build_id: str) -> dict[str, str]:
+    def ensure_rpm_repository_for_arch(self, arch: str) -> str:
+        """
+        Create or get the RPM repository for an architecture (target-arch-repo mode).
+
+        Returns:
+            Repository pulp_href for modify/add_content
+        """
+        return self._repository_manager.ensure_rpm_repository_for_arch(arch)
+
+    def get_distribution_urls(self, build_id: str, target_arch_repo: bool = False) -> dict[str, str]:
         """
         Get distribution URLs for all repository types.
 
@@ -144,11 +158,22 @@ class PulpHelper:
             Dictionary mapping architecture names to their upload results
         """
         return self._upload_orchestrator.process_architecture_uploads(
-            client, args, repositories, date_str=date_str, rpm_href=rpm_href, results_model=results_model
+            client,
+            args,
+            repositories,
+            date_str=date_str,
+            rpm_href=rpm_href,
+            results_model=results_model,
+            pulp_helper=self,
         )
 
     def process_uploads(
-        self, client: "PulpClient", args: UploadRpmContext, repositories: RepositoryRefs
+        self,
+        client: "PulpClient",
+        args: UploadRpmContext,
+        repositories: RepositoryRefs,
+        *,
+        pulp_helper: Optional["PulpHelper"] = None,
     ) -> Optional[str]:
         """
         Process all upload operations.
@@ -159,11 +184,12 @@ class PulpHelper:
             client: PulpClient instance for API interactions
             args: UploadRpmContext with command line arguments (including date_str)
             repositories: RepositoryRefs containing all repository identifiers
+            pulp_helper: Helper instance for per-arch RPM repos when ``target_arch_repo`` is set
 
         Returns:
             URL of the uploaded results JSON, or None if upload failed
         """
-        return self._upload_orchestrator.process_uploads(client, args, repositories)
+        return self._upload_orchestrator.process_uploads(client, args, repositories, pulp_helper=pulp_helper or self)
 
     def process_file_uploads(
         self, client: "PulpClient", context: UploadFilesContext, repositories: RepositoryRefs

@@ -128,6 +128,7 @@ Upload RPM packages, logs, and SBOM files.
 | `--files-base-path` | No | Base path for resolving artifact keys to file paths (default: directory of `--results-json`; requires `--results-json`) |
 | `--signed-by` | No | Add `signed_by` pulp_label and upload to separate signed repos/distributions |
 | `--overwrite` | No | RPM only: before upload, find packages in the target RPM repo by each local file’s SHA256 (and `signed_by` when set) and remove them via `remove_content_units` |
+| `--target-arch-repo` | No | RPM only: use each architecture as the RPM repo/distribution base path (e.g. `…/pulp-content/{namespace}/x86_64/`) instead of `{build}/rpms`; logs, SBOM, and artifacts stay `{build}/…`. With `--signed-by`, paths stay `{arch}/` only (`signed_by` is a label). Repos are created per arch at upload time. Works with `--results-json` |
 | `--artifact-results` | No | Comma-separated paths or folder for local `pulp_results.json` |
 | `--sbom-results` | No | Path to write SBOM results |
 | `-d, --debug` | No | Verbosity: `-d` INFO, `-dd` DEBUG, `-ddd` HTTP logs |
@@ -137,6 +138,8 @@ Upload RPM packages, logs, and SBOM files.
 **Signed-by:** When `--signed-by` is set, a `signed_by` label is added to RPMs only, and RPMs are stored in a separate `rpms-signed` repository with its own distribution. Logs and SBOMs are never signed and always go to the standard repositories.
 
 **Overwrite:** When `--overwrite` is set, for each RPM about to be uploaded the tool searches Pulp by the file’s SHA256 (same mechanism as `search-by` checksum mode), keeps only matches that exist in the target RPM repository’s latest version, then calls the repository modify API with `remove_content_units` before uploading and adding the new RPMs. Use with `--signed-by` to scope the search to signed packages.
+
+**Target-arch-repo:** When `--target-arch-repo` is set, RPM repositories and distributions are named by architecture only (`{arch}`), including when `--signed-by` is set (no separate `rpms-signed` path). Published paths look like `…/pulp-content/{namespace}/{arch}/`. The aggregate `{build}/rpms` repo is not created; RPM repos are created when each arch is uploaded. Results JSON uses each artifact’s `arch` label to build RPM URLs. Logs, SBOM, and generic artifacts still use `{build}/logs`, `{build}/sbom`, and `{build}/artifacts`.
 
 ### upload-files
 
