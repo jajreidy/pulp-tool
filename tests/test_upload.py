@@ -20,6 +20,7 @@ from pulp_tool.services.upload_service import (
     _classify_artifact_from_key,
     _populate_results_model,
     _add_distributions_to_results,
+    _distribution_urls_for_context,
 )
 from pulp_tool.models import PulpResultsModel, RepositoryRefs
 from pulp_tool.models.pulp_api import TaskResponse
@@ -810,6 +811,26 @@ class TestParseOciReference:
             mock_logging.debug.assert_called()
 
 
+class TestDistributionUrlsForContext:
+    """Tests for _distribution_urls_for_context helper."""
+
+    def test_signed_by_requests_include_signed_rpm_distro(self):
+        """Non-empty signed_by uses get_distribution_urls(..., include_signed_rpm_distro=True)."""
+        helper = Mock()
+        helper.get_distribution_urls.return_value = {"rpms": "https://example.com/rpms/"}
+        context = UploadRpmContext(
+            build_id="test-build",
+            date_str="2024-01-01",
+            namespace="test-ns",
+            parent_package=None,
+            signed_by=" gpg-key ",
+            target_arch_repo=False,
+        )
+        result = _distribution_urls_for_context(helper, "test-build", context)
+        assert result == {"rpms": "https://example.com/rpms/"}
+        helper.get_distribution_urls.assert_called_once_with("test-build", include_signed_rpm_distro=True)
+
+
 class TestBuildResultsStructure:
     """Test _populate_results_model function."""
 
@@ -1224,7 +1245,7 @@ class TestProcessUploadsFromResultsJson:
             )
 
         assert result == "https://example.com/r.json"
-        mock_ph_instance.ensure_rpm_repository_for_arch.assert_called_once_with("x86_64")
+        mock_ph_instance.ensure_rpm_repository_for_arch.assert_called_once_with("test-build", "x86_64")
         assert mock_upload_rpms.call_args.kwargs["rpm_repository_href"] == "/per-arch/rpm"
 
     def test_upload_from_results_json_files_base_path(self, tmp_path, mock_pulp_client):

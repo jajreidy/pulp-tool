@@ -39,7 +39,13 @@ class DistributionManager:
             distribution_cache if distribution_cache is not None else {}
         )
 
-    def get_distribution_urls(self, build_id: str, target_arch_repo: bool = False) -> Dict[str, str]:
+    def get_distribution_urls(
+        self,
+        build_id: str,
+        *,
+        target_arch_repo: bool = False,
+        include_signed_rpm_distro: bool = False,
+    ) -> Dict[str, str]:
         """
         Get distribution URLs for all repository types.
 
@@ -48,7 +54,8 @@ class DistributionManager:
 
         Args:
             build_id: Build ID for naming repositories and distributions
-            target_arch_repo: If True, omit the aggregate ``rpms`` URL (per-arch RPM URLs are built elsewhere)
+            target_arch_repo: If True, omit aggregate ``rpms`` URL (per-arch RPM URLs elsewhere)
+            include_signed_rpm_distro: If True, add ``rpms_signed`` URL for ``{build}/rpms-signed/``
 
         Returns:
             Dictionary mapping repo_type to distribution URL
@@ -69,7 +76,11 @@ class DistributionManager:
         logging.debug("Getting distribution URLs for build: %s", sanitized_build_id)
 
         # Get distribution URLs directly using the helper's own methods
-        distribution_urls = self._get_distribution_urls_impl(sanitized_build_id, target_arch_repo=target_arch_repo)
+        distribution_urls = self._get_distribution_urls_impl(
+            sanitized_build_id,
+            target_arch_repo=target_arch_repo,
+            include_signed_rpm_distro=include_signed_rpm_distro,
+        )
 
         logging.debug("Retrieved %d distribution URLs", len(distribution_urls))
         return distribution_urls
@@ -108,12 +119,20 @@ class DistributionManager:
         )
         return distribution_url
 
-    def _get_distribution_urls_impl(self, build_id: str, target_arch_repo: bool = False) -> Dict[str, str]:
+    def _get_distribution_urls_impl(
+        self,
+        build_id: str,
+        *,
+        target_arch_repo: bool = False,
+        include_signed_rpm_distro: bool = False,
+    ) -> Dict[str, str]:
         """
         Get distribution URLs for all repository types.
 
         Args:
             build_id: Base name for the repositories (may include namespace prefix)
+            target_arch_repo: If True, omit aggregate ``rpms`` URL
+            include_signed_rpm_distro: If True, add ``rpms_signed`` for signed RPM distribution
 
         Returns:
             Dictionary mapping repo_type to distribution URL
@@ -131,6 +150,11 @@ class DistributionManager:
             url = self._get_single_distribution_url(build_id, repo_type, base_url)
             if url:
                 distribution_urls[repo_type] = url
+
+        if include_signed_rpm_distro and not target_arch_repo:
+            signed_url = self._get_single_distribution_url(build_id, "rpms-signed", base_url)
+            if signed_url:
+                distribution_urls["rpms_signed"] = signed_url
 
         return distribution_urls
 

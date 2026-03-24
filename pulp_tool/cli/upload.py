@@ -110,7 +110,8 @@ def _extract_build_id_namespace_from_results_json(results_json_path: Path) -> Tu
     default=False,
     help=(
         "RPM only: use each architecture as the RPM repository/distribution name "
-        "(e.g. .../pulp-content/{namespace}/x86_64/) instead of {build}/rpms; logs/SBOM/artifacts stay build-scoped"
+        "(e.g. .../pulp-content/{namespace}/x86_64/Packages/...) instead of {build}/rpms; "
+        "logs/SBOM/artifacts stay build-scoped. With --signed-by, same arch repo; signed_by is label-only."
     ),
 )
 @click.pass_context
@@ -192,7 +193,7 @@ def upload(  # pylint: disable=too-many-arguments,too-many-positional-arguments
             build_id,
             signed_by=args.signed_by,
             skip_artifacts_repo=skip_artifacts,
-            target_arch_repo=target_arch_repo,
+            target_arch_repo=args.target_arch_repo,
         )
         logging.info("Repository setup completed")
 

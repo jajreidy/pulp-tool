@@ -163,6 +163,17 @@ def upload_sbom(
     return task_response.created_resources
 
 
+def _distribution_urls_for_context(helper: PulpHelper, build_id: str, context: UploadContext) -> Dict[str, str]:
+    """Resolve distribution URL map for results JSON (per-arch vs signed aggregate RPM base)."""
+    target_arch = bool(getattr(context, "target_arch_repo", False))
+    signed_by = getattr(context, "signed_by", None)
+    if target_arch:
+        return helper.get_distribution_urls(build_id, target_arch_repo=True)
+    if signed_by and str(signed_by).strip():
+        return helper.get_distribution_urls(build_id, include_signed_rpm_distro=True)
+    return helper.get_distribution_urls(build_id)
+
+
 def _classify_artifact_from_key(key: str) -> str:
     """
     Classify artifact type from key (path/filename).
@@ -200,7 +211,7 @@ def process_uploads_from_results_json(
         client: PulpClient instance
         context: UploadRpmContext with results_json, files_base_path, signed_by
         repositories: RepositoryRefs (with signed refs when signed_by set)
-        pulp_helper: PulpHelper for per-arch RPM repos when ``target_arch_repo`` is set
+        pulp_helper: Optional PulpHelper for per-arch RPM repos when ``target_arch_repo`` is set
 
     Returns:
         URL of the uploaded results JSON, or None if upload failed
@@ -228,16 +239,15 @@ def process_uploads_from_results_json(
     base_path = Path(context.files_base_path or os.path.dirname(context.results_json)).resolve()
     use_signed = bool(context.signed_by and context.signed_by.strip())
 
-    # Only RPMs use signed repos; logs and SBOMs are never signed
-    if context.target_arch_repo:
-        rpm_href = ""
-    else:
-        rpm_href = repositories.rpms_signed_href if use_signed else repositories.rpms_href
+    # Only RPMs use signed aggregate repo; with target_arch_repo, signed_by is label-only on arch repos
+    rpm_href = (
+        "" if context.target_arch_repo else (repositories.rpms_signed_href if use_signed else repositories.rpms_href)
+    )
     logs_prn = repositories.logs_prn
     sbom_prn = repositories.sbom_prn
     artifacts_prn = repositories.artifacts_prn
 
-    if not context.target_arch_repo and use_signed and not rpm_href and not repositories.rpms_signed_prn:
+    if use_signed and not context.target_arch_repo and not rpm_href and not repositories.rpms_signed_prn:
         logging.error("signed_by set but signed repositories not available")
         raise ValueError("signed_by requires signed repositories")
 
@@ -302,7 +312,9 @@ def process_uploads_from_results_json(
 
     # Upload RPMs
     for arch, rpm_list in rpms_by_arch.items():
-        arch_href = helper.ensure_rpm_repository_for_arch(arch) if context.target_arch_repo else rpm_href
+        arch_href = (
+            helper.ensure_rpm_repository_for_arch(context.build_id, arch) if context.target_arch_repo else rpm_href
+        )
         created_resources.extend(
             upload_rpms(
                 rpm_list,
@@ -583,11 +595,8 @@ def _populate_results_model(
     """
     # Get distribution URLs to construct proper artifact URLs
     repository_helper = PulpHelper(client, parent_package=context.parent_package)
-    target_arch_repo = getattr(context, "target_arch_repo", False)
-    if target_arch_repo:
-        distribution_urls = repository_helper.get_distribution_urls(context.build_id, target_arch_repo=True)
-    else:
-        distribution_urls = repository_helper.get_distribution_urls(context.build_id)
+    distribution_urls = _distribution_urls_for_context(repository_helper, context.build_id, context)
+    target_arch_repo = bool(getattr(context, "target_arch_repo", False))
 
     client.build_results_structure(
         results_model,
@@ -610,11 +619,7 @@ def _add_distributions_to_results(
         results_model: Model to add distributions to
     """
     repository_helper = PulpHelper(client, parent_package=context.parent_package)
-    target_arch_repo = getattr(context, "target_arch_repo", False)
-    if target_arch_repo:
-        distribution_urls = repository_helper.get_distribution_urls(context.build_id, target_arch_repo=True)
-    else:
-        distribution_urls = repository_helper.get_distribution_urls(context.build_id)
+    distribution_urls = _distribution_urls_for_context(repository_helper, context.build_id, context)
 
     if distribution_urls:
         for repo_type, url in distribution_urls.items():

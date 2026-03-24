@@ -24,6 +24,7 @@ from .constants import (
     API_TYPES,
     REPOSITORY_TYPES,
     SIGNED_REPOSITORY_TYPES,
+    SUPPORTED_ARCHITECTURES,
 )
 from .validation import (
     strip_namespace_from_build_id,
@@ -31,6 +32,20 @@ from .validation import (
     validate_build_id,
     validate_repository_setup,
 )
+
+
+def _resource_log_label(full_name: str) -> str:
+    """
+    Short label for log messages: last path segment of the Pulp repository/distribution name.
+
+    Examples:
+        test-build-1/rpms-signed -> rpms-signed
+        test-build-1/rpms -> rpms
+        x86_64 -> x86_64
+    """
+    if not full_name:
+        return full_name
+    return full_name.rstrip("/").rsplit("/", 1)[-1]
 
 
 class RepositoryManager:
@@ -87,9 +102,9 @@ class RepositoryManager:
 
         Args:
             build_id: Build ID for naming repositories and distributions
-            signed_by: If set, also create signed repos (rpms-signed, etc.)
+            signed_by: If set, also create signed repos (rpms-signed, etc.) unless target_arch_repo
             skip_artifacts_repo: If True, do not create artifacts repo (e.g. when saving locally)
-            target_arch_repo: If True, skip bulk rpms/rpms-signed; create per-arch RPM repos at upload time
+            target_arch_repo: If True, skip aggregate rpms/rpms-signed; per-arch RPM repos at upload time
 
         Returns:
             RepositoryRefs NamedTuple containing all repository PRNs and hrefs
@@ -118,9 +133,11 @@ class RepositoryManager:
         )
 
         # Validate the setup (only base repos; signed repos are optional)
-        required = [r for r in REPOSITORY_TYPES if not (skip_artifacts_repo and r == "artifacts")]
-        if target_arch_repo:
-            required = [r for r in required if r != "rpms"]
+        required = [
+            r
+            for r in REPOSITORY_TYPES
+            if not (skip_artifacts_repo and r == "artifacts") and not (target_arch_repo and r == "rpms")
+        ]
         is_valid, errors = validate_repository_setup(repositories, required_types=required)
         if not is_valid:
             raise RuntimeError(f"Repository setup validation failed: {', '.join(errors)}")
@@ -128,9 +145,11 @@ class RepositoryManager:
         logging.debug("Repository setup completed successfully")
 
         # Convert dictionary to NamedTuple for type safety
+        rpms_href = "" if target_arch_repo else repositories.get("rpms_href", "")
+        rpms_prn = "" if target_arch_repo else repositories.get("rpms_prn", "")
         return RepositoryRefs(
-            rpms_href=repositories.get("rpms_href", ""),
-            rpms_prn=repositories.get("rpms_prn", ""),
+            rpms_href=rpms_href,
+            rpms_prn=rpms_prn,
             logs_href=repositories.get("logs_href", ""),
             logs_prn=repositories.get("logs_prn", ""),
             sbom_href=repositories.get("sbom_href", ""),
@@ -146,6 +165,41 @@ class RepositoryManager:
             artifacts_signed_href=repositories.get("artifacts_signed_href", ""),
             artifacts_signed_prn=repositories.get("artifacts_signed_prn", ""),
         )
+
+    def ensure_rpm_repository_for_arch(self, build_id: str, arch: str) -> str:
+        """
+        Create or get the RPM repository whose distribution uses the architecture as base_path.
+
+        Used with ``target_arch_repo`` so RPM URLs are
+        ``/api/pulp-content/{namespace}/{arch}/Packages/...`` instead of ``.../{build}/rpms/...``.
+        """
+        if arch not in SUPPORTED_ARCHITECTURES:
+            raise ValueError(f"Unsupported architecture for RPM repository: {arch}")
+        if not build_id or not isinstance(build_id, str) or not build_id.strip():
+            raise ValueError(f"Invalid build ID: {build_id}")
+
+        sanitized_build_id = sanitize_build_id_for_repository(build_id)
+        if not validate_build_id(sanitized_build_id):
+            raise ValueError(f"Invalid build ID: {build_id} (sanitized: {sanitized_build_id})")
+
+        full_name = arch.strip()
+        self._validate_full_name(full_name, full_name, "rpm")
+        new_repository = RepositoryRequest(name=full_name, autopublish=True)
+        new_distribution = DistributionRequest(name=full_name, base_path=full_name)
+        if not new_distribution.base_path or not new_distribution.base_path.strip():
+            raise ValueError(f"Invalid distribution base_path for arch repository {arch}")
+
+        cache_type = f"rpm_arch:{arch}"
+        _prn, repository_href = self._create_or_get_repository_impl(
+            new_repository,
+            new_distribution,
+            "rpm",
+            build_id=sanitized_build_id,
+            distribution_cache_type=cache_type,
+        )
+        if not repository_href:
+            raise RuntimeError(f"No repository href for architecture RPM repository {arch}")
+        return repository_href
 
     def create_or_get_repository(
         self,
@@ -221,46 +275,6 @@ class RepositoryManager:
 
         return repository_prn, repository_href
 
-    def ensure_rpm_repository_for_arch(self, arch: str) -> str:
-        """
-        Create or get the RPM repository for one architecture (``--target-arch-repo`` mode).
-
-        Repository and distribution name/base_path are ``{sanitized_arch}`` only. With
-        ``--signed-by``, RPMs still use this same per-arch repo; ``signed_by`` is only a label.
-
-        Args:
-            arch: Architecture label (e.g. ``x86_64``, ``noarch``)
-
-        Returns:
-            RPM repository ``pulp_href`` for modify/add_content
-
-        Raises:
-            ValueError: If the architecture cannot be sanitized to a valid repository segment
-            RuntimeError: If the repository has no href (unexpected for RPM repos)
-        """
-        if not arch or not isinstance(arch, str) or not arch.strip():
-            raise ValueError("Architecture must be a non-empty string")
-        sanitized = sanitize_build_id_for_repository(arch.strip())
-        if not validate_build_id(sanitized):
-            raise ValueError(f"Invalid architecture for repository naming: {arch!r} (sanitized: {sanitized!r})")
-
-        full_name = sanitized
-        cache_build_id = f"arch:{sanitized}"
-
-        self._validate_full_name(full_name, sanitized, "rpms")
-        new_repo = RepositoryRequest(name=full_name, autopublish=True)
-        new_distro = DistributionRequest(name=full_name, base_path=full_name)
-        if not new_distro.base_path or not new_distro.base_path.strip():
-            raise ValueError(
-                f"DistributionRequest base_path is empty after creation: "
-                f"name={full_name}, base_path={new_distro.base_path}"
-            )
-
-        _prn, href = self._create_or_get_repository_impl(new_repo, new_distro, "rpms", build_id=cache_build_id)
-        if not href:
-            raise RuntimeError(f"RPM repository for architecture {arch!r} has no pulp_href")
-        return href
-
     def get_repository_methods(self, repo_type: str) -> Dict[str, Any]:
         """
         Get the appropriate client methods for the repository type.
@@ -317,7 +331,7 @@ class RepositoryManager:
 
         results = response_data.get("results", [])
         if results:
-            logging.warning("Found existing %s repository: %s", repo_type.capitalize(), full_name)
+            logging.warning("Found existing repository %s: %s", _resource_log_label(full_name), full_name)
             result = results[0]
             return result["prn"], result.get("pulp_href")
 
@@ -327,7 +341,11 @@ class RepositoryManager:
         self, methods: Dict[str, Any], new_repository: RepositoryRequest, repo_type: str
     ) -> Tuple[str, Optional[str]]:
         """Create a new repository and return its details."""
-        logging.warning("Creating new %s repository: %s", repo_type.capitalize(), new_repository.name)
+        logging.warning(
+            "Creating new repository %s: %s",
+            _resource_log_label(new_repository.name),
+            new_repository.name,
+        )
         repository_response = methods["create"](new_repository)
         self.client.check_response(repository_response, f"create {repo_type} repository")
 
@@ -411,14 +429,14 @@ class RepositoryManager:
 
         This method creates or retrieves all necessary repositories (rpms, logs, sbom, artifacts)
         and their distributions concurrently using asyncio.gather for better performance.
-        When signed_by is set, also creates rpms-signed. When skip_artifacts_repo is True,
-        skips the artifacts repository (e.g. when saving results locally).
+        When signed_by is set, also creates rpms-signed (unless target_arch_repo). When
+        skip_artifacts_repo is True, skips the artifacts repository (e.g. when saving locally).
 
         Args:
             build_id: Base name for the repositories
-            signed_by: If set, also create signed repos
+            signed_by: If set, also create signed repos (ignored for RPM when target_arch_repo)
             skip_artifacts_repo: If True, do not create artifacts repo
-            target_arch_repo: If True, omit bulk ``rpms`` and ``rpms-signed`` repositories
+            target_arch_repo: If True, skip aggregate ``rpms`` and ``rpms-signed`` repositories
 
         Returns:
             Dictionary mapping repository types to their PRNs and hrefs
@@ -426,10 +444,10 @@ class RepositoryManager:
         logging.debug("Setting up repositories async for: %s", build_id)
 
         repo_types = [r for r in REPOSITORY_TYPES if not (skip_artifacts_repo and r == "artifacts")]
-        if signed_by:
-            repo_types.extend(SIGNED_REPOSITORY_TYPES)
         if target_arch_repo:
             repo_types = [r for r in repo_types if r not in ("rpms", "rpms-signed")]
+        elif signed_by:
+            repo_types.extend(SIGNED_REPOSITORY_TYPES)
 
         # Use asyncio.gather to run all repository setups concurrently
         # Each operation runs in the event loop without blocking
@@ -502,6 +520,8 @@ class RepositoryManager:
         new_distribution: DistributionRequest,
         repo_type: str,
         build_id: Optional[str] = None,
+        *,
+        distribution_cache_type: Optional[str] = None,
     ) -> Tuple[str, Optional[str]]:
         """
         Create or get a repository and distribution of the specified type.
@@ -539,16 +559,22 @@ class RepositoryManager:
                 f"name={new_distribution.name}, repository={repository_prn}"
             )
         task_id = self._create_distribution_task(
-            methods, new_distribution, repo_type, is_new_repository, build_id=build_id
+            methods,
+            new_distribution,
+            repo_type,
+            is_new_repository,
+            build_id=build_id,
+            distribution_cache_type=distribution_cache_type,
         )
 
         # If distribution was created, wait for it to complete and cache the base_path
+        cache_key_type = distribution_cache_type or repo_type
         if task_id:
             base_path = self._wait_for_distribution_task(methods, task_id, repo_type, build_id or new_repository.name)
             if build_id and base_path:
                 # Cache the base_path so we don't need to query it later
-                self._distribution_cache[(build_id, repo_type)] = base_path
-                logging.debug("Cached distribution base_path for %s/%s: %s", build_id, repo_type, base_path)
+                self._distribution_cache[(build_id, cache_key_type)] = base_path
+                logging.debug("Cached distribution base_path for %s/%s: %s", build_id, cache_key_type, base_path)
 
         return repository_prn, repository_href
 
@@ -574,7 +600,7 @@ class RepositoryManager:
             logging.debug("Distribution check response data: %s", response_data)
 
             if response_data.get("results"):
-                logging.warning("Found existing %s distribution: %s", repo_type.capitalize(), full_name)
+                logging.warning("Found existing distribution %s: %s", _resource_log_label(full_name), full_name)
                 return True
 
             logging.debug("No existing %s distribution found for: %s", repo_type, full_name)
@@ -613,6 +639,8 @@ class RepositoryManager:
         repo_type: str,
         is_new_repository: bool = False,
         build_id: Optional[str] = None,
+        *,
+        distribution_cache_type: Optional[str] = None,
     ) -> str:
         """Create a distribution for a repository and return the task ID.
 
@@ -641,10 +669,10 @@ class RepositoryManager:
             )
             logging.error(error_msg)
             raise ValueError(error_msg)
-        # Create distribution with namespace/build_id/repo_type basepath
+        # Distribution name and base_path are kept identical to the repository name (see _create_or_get_repository_impl)
         logging.warning(
-            "Creating new %s distribution: %s with basepath: %s",
-            repo_type.capitalize(),
+            "Creating new distribution %s — name=%r base_path=%r (same as repository)",
+            _resource_log_label(str(new_distribution.name)),
             new_distribution.name,
             base_path_value,
         )
@@ -652,7 +680,7 @@ class RepositoryManager:
 
         # Cache the base_path for future URL construction
         if build_id:
-            cache_key = (build_id, repo_type)
+            cache_key = (build_id, distribution_cache_type or repo_type)
             self._distribution_cache[cache_key] = new_distribution.base_path
 
         return distro_task
@@ -669,11 +697,12 @@ class RepositoryManager:
 
         This method creates or retrieves all necessary repositories (rpms, logs, sbom, artifacts)
         and their distributions concurrently using async/await for better performance than threads.
-        When signed_by is set, also creates signed repos.
+        When signed_by is set, also creates signed repos (unless target_arch_repo).
 
         Args:
             build_id: Base name for the repositories
             signed_by: If set, also create signed repos
+            target_arch_repo: If True, skip aggregate RPM repositories
 
         Returns:
             Dictionary mapping repository types to their PRNs and hrefs:

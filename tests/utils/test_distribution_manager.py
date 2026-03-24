@@ -125,3 +125,21 @@ class TestDistributionManagerTargetArchRepo:
         assert "logs" in urls
         assert "sbom" in urls
         assert "artifacts" in urls
+
+    def test_get_distribution_urls_adds_rpms_signed_when_include_flag(self):
+        """include_signed_rpm_distro adds rpms_signed when lookup succeeds."""
+        mock_client = Mock()
+        mock_client.config = {"base_url": "https://pulp.example.com"}
+
+        manager = DistributionManager(mock_client, "test-namespace")
+
+        def fake_get(build_id: str, repo_type: str, base: str) -> str:
+            if repo_type == "rpms-signed":
+                return "https://pulp.example.com/api/pulp-content/ns/b/rpms-signed/"
+            return f"{base.rstrip('/')}/{build_id}/{repo_type}/"
+
+        with patch.object(manager, "_get_single_distribution_url", side_effect=fake_get):
+            urls = manager.get_distribution_urls("my-build", include_signed_rpm_distro=True)
+
+        assert urls["rpms_signed"] == "https://pulp.example.com/api/pulp-content/ns/b/rpms-signed/"
+        assert "rpms" in urls
