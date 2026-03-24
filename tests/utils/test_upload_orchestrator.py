@@ -281,7 +281,7 @@ class TestUploadOrchestratorProcessArchitectureUploads:
                     for fut in future_to_arch:
                         fut.result()
 
-            mock_helper.ensure_rpm_repository_for_arch.assert_called_once_with("x86_64")
+            mock_helper.ensure_rpm_repository_for_arch.assert_called_once_with("test-build", "x86_64")
             mock_upload.assert_called_once()
             assert mock_upload.call_args.kwargs["rpm_repository_href"] == "/arch-specific/rpm"
 
@@ -617,7 +617,7 @@ class TestUploadOrchestratorProcessUploads:
             mock_upload_rpms.assert_called_once()
             _call_pos, call_kw = mock_upload_rpms.call_args
             assert call_kw["rpm_repository_href"] == "/per-arch/href"
-            mock_helper.ensure_rpm_repository_for_arch.assert_called_once_with("noarch")
+            mock_helper.ensure_rpm_repository_for_arch.assert_called_once_with("test-build", "noarch")
 
     def test_process_architecture_uploads_target_arch_repo_requires_pulp_helper(self):
         """process_architecture_uploads raises when target_arch_repo set but pulp_helper is None."""
@@ -646,7 +646,7 @@ class TestUploadOrchestratorProcessUploads:
                 sbom_path=None,
                 target_arch_repo=True,
             )
-            with pytest.raises(ValueError, match="pulp_helper is required"):
+            with pytest.raises(ValueError, match="target_arch_repo requires PulpHelper"):
                 orchestrator.process_architecture_uploads(
                     mock_client,
                     args,
@@ -1078,7 +1078,7 @@ class TestUploadOrchestratorTargetArchRepo:
             artifacts_href="",
             artifacts_prn="artifacts-prn",
         )
-        with pytest.raises(ValueError, match="pulp_helper is required"):
+        with pytest.raises(ValueError, match="target_arch_repo requires PulpHelper"):
             orchestrator.process_uploads(mock_client, args, repositories)
 
     def test_process_uploads_target_arch_repo_allows_empty_rpms_href(self):

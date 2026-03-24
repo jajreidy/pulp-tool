@@ -736,7 +736,10 @@ class TestUploadCommand:
 
             assert result.exit_code == 0
             mock_helper.setup_repositories.assert_called_once_with(
-                "test-build", signed_by="key-123", skip_artifacts_repo=False, target_arch_repo=False
+                "test-build",
+                signed_by="key-123",
+                skip_artifacts_repo=False,
+                target_arch_repo=False,
             )
             mock_helper.process_uploads.assert_called_once()
             call_args = mock_helper.process_uploads.call_args[0]
@@ -810,7 +813,10 @@ class TestUploadCommand:
 
             assert result.exit_code == 0
             mock_helper.setup_repositories.assert_called_once_with(
-                "extracted-build", signed_by=None, skip_artifacts_repo=False, target_arch_repo=False
+                "extracted-build",
+                signed_by=None,
+                skip_artifacts_repo=False,
+                target_arch_repo=False,
             )
             context = mock_helper.process_uploads.call_args[0][1]
             assert context.build_id == "extracted-build"

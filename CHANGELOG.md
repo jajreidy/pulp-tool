@@ -8,7 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-- `upload --target-arch-repo`: RPM-only; per-architecture RPM repos/distributions (e.g. `{namespace}/{arch}/`); logs/SBOM/artifacts remain build-scoped; lazy repo creation at upload; supported with `--results-json`, `--signed-by`, and `--overwrite`
+- `upload --target-arch-repo`: per-architecture RPM repos/distributions (``{namespace}/{arch}/Packages/...``); logs/SBOM/artifacts stay build-scoped; lazy repo creation at upload; works with `--results-json`, `--signed-by`, and `--overwrite`; with `--signed-by`, same arch repo and `signed_by` is label-only
 - `upload --overwrite`: RPM-only; remove existing RPM package units in the target repo that match local file SHA256 (and `signed_by` when set) via `remove_content_units` before upload
 - `upload --results-json`: Upload artifacts from pulp_results.json; files resolved from JSON directory or --files-base-path; --build-id and --namespace optional (extracted from artifact labels)
 - DistributionClient username/password (Basic Auth) support; use `username` and `password` in config as alternative to cert/key for pull downloads
@@ -21,10 +21,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Username/password (Basic Auth) support for packages.redhat.com
 
 ### Changed
-- `upload --target-arch-repo` with `--signed-by`: RPM repo/distribution paths remain `{arch}/` only (no `{arch}/rpms-signed`); signing is via `signed_by` label on content
+- Repository setup logs use the concrete repo slug (e.g. ``rpms-signed``) instead of a generic ``Rpms`` label; distribution creation logs state that ``name`` and ``base_path`` match the repository name on one line
+- `upload --target-arch-repo` with `--signed-by`: RPM paths remain `{arch}/` only (no `{arch}/rpms-signed`); signing is via `signed_by` label on content
 - `pull`: use each artifact's ``url`` from pulp_results.json when present instead of synthesizing download URLs from distribution entries
 
 ### Fixed
+- Results JSON RPM URLs with `--signed-by`: use the `rpms-signed` distribution base (`distributions.rpms_signed` / correct artifact `url`) instead of the unsigned `rpms` path
 - RPM distribution URLs: ``Packages/<letter>/`` uses the lowercase first character of the RPM **basename** only (correct for paths like ``Packages/W/foo.rpm``, ``arch/pkg.rpm``, or plain ``foo.rpm``)
 - Clear error when no auth credentials provided (client_id/client_secret or username/password)
 

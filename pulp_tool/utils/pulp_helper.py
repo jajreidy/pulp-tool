@@ -66,9 +66,9 @@ class PulpHelper:
 
         Args:
             build_id: Build ID for naming repositories and distributions
-            signed_by: If set, also create signed repos (rpms-signed, etc.)
+            signed_by: If set, also create signed repos (rpms-signed, etc.) unless target_arch_repo
             skip_artifacts_repo: If True, do not create artifacts repo (e.g. when saving locally)
-            target_arch_repo: If True, skip bulk rpms/rpms-signed; use ensure_rpm_repository_for_arch per arch
+            target_arch_repo: If True, skip aggregate rpms/rpms-signed; per-arch RPM repos at upload time
 
         Returns:
             RepositoryRefs NamedTuple containing all repository PRNs and hrefs
@@ -80,16 +80,13 @@ class PulpHelper:
             target_arch_repo=target_arch_repo,
         )
 
-    def ensure_rpm_repository_for_arch(self, arch: str) -> str:
-        """
-        Create or get the RPM repository for an architecture (target-arch-repo mode).
-
-        Returns:
-            Repository pulp_href for modify/add_content
-        """
-        return self._repository_manager.ensure_rpm_repository_for_arch(arch)
-
-    def get_distribution_urls(self, build_id: str, target_arch_repo: bool = False) -> dict[str, str]:
+    def get_distribution_urls(
+        self,
+        build_id: str,
+        *,
+        target_arch_repo: bool = False,
+        include_signed_rpm_distro: bool = False,
+    ) -> dict[str, str]:
         """
         Get distribution URLs for all repository types.
 
@@ -98,11 +95,21 @@ class PulpHelper:
 
         Args:
             build_id: Build ID for naming repositories and distributions
+            target_arch_repo: If True, omit aggregate ``rpms`` distribution URL
+            include_signed_rpm_distro: If True, include ``rpms_signed`` URL
 
         Returns:
             Dictionary mapping repo_type to distribution URL
         """
-        return self._distribution_manager.get_distribution_urls(build_id)
+        return self._distribution_manager.get_distribution_urls(
+            build_id,
+            target_arch_repo=target_arch_repo,
+            include_signed_rpm_distro=include_signed_rpm_distro,
+        )
+
+    def ensure_rpm_repository_for_arch(self, build_id: str, arch: str) -> str:
+        """Create or get RPM repository for ``target_arch_repo`` mode (base_path = arch)."""
+        return self._repository_manager.ensure_rpm_repository_for_arch(build_id, arch)
 
     def create_or_get_repository(
         self,

@@ -1078,8 +1078,18 @@ class PulpClient(
         arch_seg = sanitize_build_id_for_repository(arch)
         if not validate_build_id(arch_seg):
             arch_seg = "noarch"
-        # Per-arch repos do not use a separate *-signed distribution; signed_by is label-only.
         return f"{pulp_content}{ns}/{arch_seg}/"
+
+    def _build_rpm_packages_url_for_arch(self, arch: str, relative_path: str) -> str:
+        """Build RPM content URL under per-arch distribution (namespace/arch/Packages/...)."""
+        base_url_str = str(self.config["base_url"]).rstrip("/")
+        pulp_content_base_url = f"{base_url_str}/api/pulp-content"
+        ns = self.namespace if isinstance(self.namespace, str) else ""
+        base = f"{pulp_content_base_url}/{ns}/{arch}/"
+        filename, first_letter = rpm_packages_letter_and_basename(relative_path)
+        if filename:
+            return f"{base}Packages/{first_letter}/{filename}"
+        return relative_path
 
     def _build_rpm_distribution_url(
         self,
@@ -1091,11 +1101,22 @@ class PulpClient(
     ) -> str:
         """Build distribution URL for RPM artifacts (Packages/<lowercase-first-of-basename>/<basename>)."""
         labels = labels or {}
-        rpms_url = ""
         if target_arch_repo:
+            arch = (labels.get("arch") or "").strip()
+            if arch and arch in SUPPORTED_ARCHITECTURES:
+                return self._build_rpm_packages_url_for_arch(arch, relative_path)
             rpms_url = self._rpm_distribution_base_url_from_labels(labels)
-        if not rpms_url:
-            rpms_url = distribution_urls.get("rpms", "")
+            filename, first_letter = rpm_packages_letter_and_basename(relative_path)
+            if filename:
+                return f"{rpms_url}Packages/{first_letter}/{filename}"
+            return relative_path
+        if labels.get("signed_by") and distribution_urls.get("rpms_signed"):
+            rpms_url = distribution_urls["rpms_signed"]
+            if rpms_url:
+                filename, first_letter = rpm_packages_letter_and_basename(relative_path)
+                if filename:
+                    return f"{rpms_url}Packages/{first_letter}/{filename}"
+        rpms_url = distribution_urls.get("rpms", "")
         if rpms_url:
             filename, first_letter = rpm_packages_letter_and_basename(relative_path)
             if filename:
@@ -1150,14 +1171,17 @@ class PulpClient(
             is_rpm: Whether this is an RPM artifact
             labels: Labels from content (may contain arch, etc.)
             distribution_urls: Dictionary mapping repo_type to distribution base URL
-            target_arch_repo: When True, RPM base URLs are derived per architecture from labels
+            target_arch_repo: When True, RPM URLs use per-arch paths from labels (or sanitized fallback)
 
         Returns:
             Full distribution URL for the artifact
         """
         if is_rpm:
             return self._build_rpm_distribution_url(
-                relative_path, distribution_urls, labels, target_arch_repo=target_arch_repo
+                relative_path,
+                distribution_urls,
+                labels=labels,
+                target_arch_repo=target_arch_repo,
             )
         return PulpClient._build_file_distribution_url(relative_path, labels, distribution_urls)
 
@@ -1746,7 +1770,7 @@ class PulpClient(
             content_results: Content data from Pulp
             file_info_map: Mapping of artifact hrefs to file info models
             distribution_urls: Optional dictionary mapping repo_type to distribution base URL
-            target_arch_repo: When True, RPM artifact URLs use per-arch distribution paths from labels
+            target_arch_repo: When True, RPM URLs use per-arch distribution paths from labels
 
         Returns:
             Populated PulpResultsModel

@@ -8,7 +8,7 @@ import pytest
 
 from pulp_tool.models.repository import RepositoryRefs
 from pulp_tool.models.pulp_api import RpmRepositoryRequest, TaskResponse
-from pulp_tool.utils.repository_manager import RepositoryManager
+from pulp_tool.utils.repository_manager import RepositoryManager, _resource_log_label
 
 
 class TestRepositoryManagerSetupRepositories:
@@ -652,6 +652,11 @@ class TestRepositoryManagerCheckExistingDistribution:
             assert any("Distribution check method not available" in str(call) for call in debug_calls)
 
 
+def test_resource_log_label_empty_string():
+    """_resource_log_label returns empty string unchanged (early return)."""
+    assert _resource_log_label("") == ""
+
+
 class TestRepositoryManagerTargetArchRepo:
     """Per-architecture RPM repository setup and ensure helpers."""
 
@@ -679,11 +684,13 @@ class TestRepositoryManagerTargetArchRepo:
         mock_client.namespace = "test-namespace"
         manager = RepositoryManager(mock_client)
         with patch.object(manager, "_create_or_get_repository_impl", return_value=("prn-1", "/rpm/href/")) as mock_impl:
-            href = manager.ensure_rpm_repository_for_arch("x86_64")
+            href = manager.ensure_rpm_repository_for_arch("test-build", "x86_64")
         assert href == "/rpm/href/"
         req = mock_impl.call_args[0][0]
         assert req.name == "x86_64"
-        assert mock_impl.call_args.kwargs.get("build_id") == "arch:x86_64"
+        assert mock_impl.call_args[0][2] == "rpm"
+        assert mock_impl.call_args.kwargs.get("build_id") == "test-build"
+        assert mock_impl.call_args.kwargs.get("distribution_cache_type") == "rpm_arch:x86_64"
 
     def test_ensure_rpm_repository_for_arch_second_arch_same_pattern(self):
         """Another arch uses the same naming pattern (no rpms-signed suffix)."""
@@ -691,32 +698,37 @@ class TestRepositoryManagerTargetArchRepo:
         mock_client.namespace = "test-namespace"
         manager = RepositoryManager(mock_client)
         with patch.object(manager, "_create_or_get_repository_impl", return_value=("prn-1", "/rpm/s/")) as mock_impl:
-            href = manager.ensure_rpm_repository_for_arch("aarch64")
+            href = manager.ensure_rpm_repository_for_arch("test-build", "aarch64")
         assert href == "/rpm/s/"
         req = mock_impl.call_args[0][0]
         assert req.name == "aarch64"
-        assert mock_impl.call_args.kwargs.get("build_id") == "arch:aarch64"
+        assert mock_impl.call_args.kwargs.get("build_id") == "test-build"
+        assert mock_impl.call_args.kwargs.get("distribution_cache_type") == "rpm_arch:aarch64"
 
-    def test_ensure_rpm_repository_for_arch_rejects_empty_arch(self):
-        """Empty architecture raises ValueError."""
+    def test_ensure_rpm_repository_for_arch_rejects_unsupported_arch(self):
+        """Whitespace-only or unknown arch is not in SUPPORTED_ARCHITECTURES."""
         mock_client = Mock()
         manager = RepositoryManager(mock_client)
-        with pytest.raises(ValueError, match="non-empty string"):
-            manager.ensure_rpm_repository_for_arch("   ")
+        with pytest.raises(ValueError, match="Unsupported architecture"):
+            manager.ensure_rpm_repository_for_arch("test-build", "   ")
+        with pytest.raises(ValueError, match="Unsupported architecture"):
+            manager.ensure_rpm_repository_for_arch("test-build", "bogus")
 
-    def test_ensure_rpm_repository_for_arch_rejects_invalid_sanitized_arch(self):
-        """Architecture that fails validate_build_id after sanitize raises ValueError."""
+    def test_ensure_rpm_repository_for_arch_rejects_invalid_build_id(self):
+        """Invalid or unsanitizable build_id raises ValueError."""
         mock_client = Mock()
         manager = RepositoryManager(mock_client)
+        with pytest.raises(ValueError, match="Invalid build ID"):
+            manager.ensure_rpm_repository_for_arch("", "x86_64")
         with (
             patch(
                 "pulp_tool.utils.repository_manager.sanitize_build_id_for_repository",
-                return_value="invalid arch",
+                return_value="bad",
             ),
             patch("pulp_tool.utils.repository_manager.validate_build_id", return_value=False),
         ):
-            with pytest.raises(ValueError, match="Invalid architecture"):
-                manager.ensure_rpm_repository_for_arch("anything")
+            with pytest.raises(ValueError, match="Invalid build ID"):
+                manager.ensure_rpm_repository_for_arch("raw", "x86_64")
 
     def test_ensure_rpm_repository_for_arch_empty_distribution_base_path(self):
         """Defensive check when DistributionRequest has empty base_path."""
@@ -727,16 +739,16 @@ class TestRepositoryManagerTargetArchRepo:
         with patch.object(manager, "_validate_full_name"):
             with patch("pulp_tool.utils.repository_manager.RepositoryRequest", return_value=Mock()):
                 with patch("pulp_tool.utils.repository_manager.DistributionRequest", return_value=mock_dist):
-                    with pytest.raises(ValueError, match="base_path is empty"):
-                        manager.ensure_rpm_repository_for_arch("x86_64")
+                    with pytest.raises(ValueError, match="Invalid distribution base_path"):
+                        manager.ensure_rpm_repository_for_arch("test-build", "x86_64")
 
     def test_ensure_rpm_repository_for_arch_raises_when_no_href(self):
         """RPM create path without href raises RuntimeError."""
         mock_client = Mock()
         manager = RepositoryManager(mock_client)
         with patch.object(manager, "_create_or_get_repository_impl", return_value=("prn", None)):
-            with pytest.raises(RuntimeError, match="no pulp_href"):
-                manager.ensure_rpm_repository_for_arch("ppc64le")
+            with pytest.raises(RuntimeError, match="No repository href"):
+                manager.ensure_rpm_repository_for_arch("test-build", "ppc64le")
 
     def test_setup_repositories_impl_async_target_arch_repo_excludes_rpm_repos(self):
         """Async setup does not create rpms or rpms-signed when target_arch_repo is set."""
