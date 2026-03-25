@@ -57,6 +57,8 @@ class PulpHelper:
         signed_by: Optional[str] = None,
         skip_artifacts_repo: bool = False,
         target_arch_repo: bool = False,
+        skip_logs_repo: bool = False,
+        skip_sbom_repo: bool = False,
     ) -> RepositoryRefs:
         """
         Setup all required repositories and return their identifiers.
@@ -69,6 +71,8 @@ class PulpHelper:
             signed_by: If set, also create signed repos (rpms-signed, etc.) unless target_arch_repo
             skip_artifacts_repo: If True, do not create artifacts repo (e.g. when saving locally)
             target_arch_repo: If True, skip aggregate rpms/rpms-signed; per-arch RPM repos at upload time
+            skip_logs_repo: If True, do not create logs repository
+            skip_sbom_repo: If True, do not create SBOM repository
 
         Returns:
             RepositoryRefs NamedTuple containing all repository PRNs and hrefs
@@ -78,7 +82,13 @@ class PulpHelper:
             signed_by=signed_by,
             skip_artifacts_repo=skip_artifacts_repo,
             target_arch_repo=target_arch_repo,
+            skip_logs_repo=skip_logs_repo,
+            skip_sbom_repo=skip_sbom_repo,
         )
+
+    def distribution_url_for_base_path(self, base_path: str) -> str:
+        """Pulp-content base URL for a distribution ``base_path`` (e.g. architecture name)."""
+        return self._distribution_manager.distribution_url_for_base_path(base_path)
 
     def get_distribution_urls(
         self,
@@ -86,6 +96,8 @@ class PulpHelper:
         *,
         target_arch_repo: bool = False,
         include_signed_rpm_distro: bool = False,
+        skip_logs_repo: bool = False,
+        skip_sbom_repo: bool = False,
     ) -> dict[str, str]:
         """
         Get distribution URLs for all repository types.
@@ -97,6 +109,8 @@ class PulpHelper:
             build_id: Build ID for naming repositories and distributions
             target_arch_repo: If True, omit aggregate ``rpms`` distribution URL
             include_signed_rpm_distro: If True, include ``rpms_signed`` URL
+            skip_logs_repo: If True, omit ``logs`` URL
+            skip_sbom_repo: If True, omit ``sbom`` URL
 
         Returns:
             Dictionary mapping repo_type to distribution URL
@@ -105,17 +119,35 @@ class PulpHelper:
             build_id,
             target_arch_repo=target_arch_repo,
             include_signed_rpm_distro=include_signed_rpm_distro,
+            skip_logs_repo=skip_logs_repo,
+            skip_sbom_repo=skip_sbom_repo,
         )
 
     def get_distribution_urls_for_upload_context(self, build_id: str, context: UploadContext) -> dict[str, str]:
         """Distribution URL map for results JSON (per-arch vs signed aggregate RPM base)."""
         target_arch = bool(getattr(context, "target_arch_repo", False))
         signed_by = getattr(context, "signed_by", None)
+        skip_logs = bool(getattr(context, "skip_logs_repo", False))
+        skip_sbom = bool(getattr(context, "skip_sbom_repo", False))
         if target_arch:
-            return self.get_distribution_urls(build_id, target_arch_repo=True)
+            return self.get_distribution_urls(
+                build_id,
+                target_arch_repo=True,
+                skip_logs_repo=skip_logs,
+                skip_sbom_repo=skip_sbom,
+            )
         if signed_by and str(signed_by).strip():
-            return self.get_distribution_urls(build_id, include_signed_rpm_distro=True)
-        return self.get_distribution_urls(build_id)
+            return self.get_distribution_urls(
+                build_id,
+                include_signed_rpm_distro=True,
+                skip_logs_repo=skip_logs,
+                skip_sbom_repo=skip_sbom,
+            )
+        return self.get_distribution_urls(
+            build_id,
+            skip_logs_repo=skip_logs,
+            skip_sbom_repo=skip_sbom,
+        )
 
     def ensure_rpm_repository_for_arch(self, build_id: str, arch: str) -> str:
         """Create or get RPM repository for ``target_arch_repo`` mode (base_path = arch)."""

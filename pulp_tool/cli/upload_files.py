@@ -117,6 +117,8 @@ def upload_files(  # pylint: disable=too-many-arguments,too-many-positional-argu
         sbom_files_list = list(sbom_files)
 
         # Create context object with generated date_str
+        skip_logs_repo = not log_files_list
+        skip_sbom_repo = not sbom_files_list
         args = UploadFilesContext(
             build_id=build_id,
             date_str=date_str,
@@ -131,6 +133,8 @@ def upload_files(  # pylint: disable=too-many-arguments,too-many-positional-argu
             artifact_results=artifact_results,
             sbom_results=sbom_results,
             debug=debug,
+            skip_logs_repo=skip_logs_repo,
+            skip_sbom_repo=skip_sbom_repo,
         )
 
         # Setup repositories using helper
@@ -138,7 +142,12 @@ def upload_files(  # pylint: disable=too-many-arguments,too-many-positional-argu
         # Skip artifacts repo when saving results locally (folder path, no comma)
         skip_artifacts = bool(artifact_results and "," not in artifact_results.strip())
         repository_helper = PulpHelper(client, parent_package=parent_package)
-        repositories = repository_helper.setup_repositories(build_id, skip_artifacts_repo=skip_artifacts)
+        repositories = repository_helper.setup_repositories(
+            build_id,
+            skip_artifacts_repo=skip_artifacts,
+            skip_logs_repo=skip_logs_repo,
+            skip_sbom_repo=skip_sbom_repo,
+        )
         logging.info("Repository setup completed")
 
         # Process file uploads

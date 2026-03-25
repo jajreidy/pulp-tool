@@ -109,6 +109,34 @@ class TestDistributionManager:
             call_args = mock_logging.info.call_args[0]
             assert "Using cached distribution" in call_args[0]
 
+    def test_distribution_url_for_base_path(self):
+        """Per-arch and arbitrary base_path URLs include namespace and trailing slash."""
+        mock_client = Mock()
+        mock_client.config = {"base_url": "https://pulp.example.com"}
+        manager = DistributionManager(mock_client, "my-ns")
+        assert manager.distribution_url_for_base_path("x86_64") == (
+            "https://pulp.example.com/api/pulp-content/my-ns/x86_64/"
+        )
+
+    def test_distribution_url_for_base_path_empty_raises(self):
+        """Empty base_path raises ValueError."""
+        mock_client = Mock()
+        mock_client.config = {"base_url": "https://pulp.example.com"}
+        manager = DistributionManager(mock_client, "ns")
+        with pytest.raises(ValueError, match="Invalid base_path"):
+            manager.distribution_url_for_base_path("  ")
+
+    def test_get_distribution_urls_skip_logs_and_sbom(self):
+        """skip_logs_repo / skip_sbom_repo omit those keys from the map."""
+        mock_client = Mock()
+        mock_client.config = {"base_url": "https://pulp.example.com"}
+        manager = DistributionManager(mock_client, "test-namespace")
+        urls = manager.get_distribution_urls("b1", skip_logs_repo=True, skip_sbom_repo=True)
+        assert "logs" not in urls
+        assert "sbom" not in urls
+        assert "rpms" in urls
+        assert "artifacts" in urls
+
 
 class TestDistributionManagerTargetArchRepo:
     """Distribution URLs when using per-architecture RPM repositories."""

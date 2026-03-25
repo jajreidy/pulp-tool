@@ -341,10 +341,17 @@ class TestUploadCommand:
 
             assert result.exit_code == 0
             mock_helper.setup_repositories.assert_called_once_with(
-                "test-build", signed_by=None, skip_artifacts_repo=False, target_arch_repo=True
+                "test-build",
+                signed_by=None,
+                skip_artifacts_repo=False,
+                target_arch_repo=True,
+                skip_logs_repo=True,
+                skip_sbom_repo=False,
             )
             context = mock_helper.process_uploads.call_args[0][1]
             assert context.target_arch_repo is True
+            assert context.skip_logs_repo is True
+            assert context.skip_sbom_repo is False
 
     @patch("pulp_tool.cli.upload.PulpClient")
     @patch("pulp_tool.cli.upload.PulpHelper")
@@ -740,6 +747,8 @@ class TestUploadCommand:
                 signed_by="key-123",
                 skip_artifacts_repo=False,
                 target_arch_repo=False,
+                skip_logs_repo=True,
+                skip_sbom_repo=True,
             )
             mock_helper.process_uploads.assert_called_once()
             call_args = mock_helper.process_uploads.call_args[0]
@@ -817,6 +826,8 @@ class TestUploadCommand:
                 signed_by=None,
                 skip_artifacts_repo=False,
                 target_arch_repo=False,
+                skip_logs_repo=True,
+                skip_sbom_repo=True,
             )
             context = mock_helper.process_uploads.call_args[0][1]
             assert context.build_id == "extracted-build"
@@ -1412,7 +1423,12 @@ class TestUploadFilesCommand:
             assert result.exit_code == 0
             assert "RESULTS JSON:" in result.output
             assert "https://example.com/results.json" in result.output
-            mock_helper.setup_repositories.assert_called_once_with("test-build", skip_artifacts_repo=False)
+            mock_helper.setup_repositories.assert_called_once_with(
+                "test-build",
+                skip_artifacts_repo=False,
+                skip_logs_repo=False,
+                skip_sbom_repo=False,
+            )
             mock_helper.process_file_uploads.assert_called_once()
 
     @patch("pulp_tool.cli.upload_files.PulpClient")
@@ -1472,7 +1488,12 @@ class TestUploadFilesCommand:
             )
 
             assert result.exit_code == 0
-            mock_helper.setup_repositories.assert_called_once_with("test-build", skip_artifacts_repo=True)
+            mock_helper.setup_repositories.assert_called_once_with(
+                "test-build",
+                skip_artifacts_repo=True,
+                skip_logs_repo=True,
+                skip_sbom_repo=True,
+            )
 
     @patch("pulp_tool.cli.upload_files.PulpClient")
     @patch("pulp_tool.cli.upload_files.PulpHelper")

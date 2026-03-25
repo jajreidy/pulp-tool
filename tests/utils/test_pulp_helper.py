@@ -140,6 +140,13 @@ class TestPulpHelperDistributionMethods:
 
         assert result == mock_distribution_urls
 
+    def test_distribution_url_for_base_path_delegates(self, mock_pulp_client):
+        """PulpHelper.distribution_url_for_base_path forwards to DistributionManager."""
+        helper = PulpHelper(mock_pulp_client)
+        assert helper.distribution_url_for_base_path("x86_64") == (
+            "https://pulp.example.com/api/pulp-content/test-domain/x86_64/"
+        )
+
 
 class TestPulpHelperRepositoryOperations:
     """Test PulpHelper repository creation/retrieval operations."""

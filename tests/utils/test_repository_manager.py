@@ -620,7 +620,12 @@ class TestRepositoryManagerSetupRepositoriesAsync:
             result = manager._setup_repositories_impl("test-build")
 
             mock_async.assert_called_once_with(
-                "test-build", signed_by=None, skip_artifacts_repo=False, target_arch_repo=False
+                "test-build",
+                signed_by=None,
+                skip_artifacts_repo=False,
+                target_arch_repo=False,
+                skip_logs_repo=False,
+                skip_sbom_repo=False,
             )
             assert result == mock_repositories
 
@@ -766,3 +771,27 @@ class TestRepositoryManagerTargetArchRepo:
         assert "rpms_prn" not in result
         assert "rpms_signed_prn" not in result
         assert "logs_prn" in result
+
+    def test_setup_repositories_impl_async_skips_logs_and_sbom_when_flags(self):
+        """Async setup omits logs and sbom repos when skip flags set."""
+        from pulp_tool.api import PulpClient
+
+        mock_client = Mock(spec=PulpClient)
+        mock_client.namespace = "test-namespace"
+        manager = RepositoryManager(mock_client)
+        with patch.object(manager, "_create_or_get_repository_impl", return_value=("p", None)) as mock_create:
+            result = asyncio.run(
+                manager._setup_repositories_impl_async(
+                    "my-build",
+                    signed_by=None,
+                    skip_artifacts_repo=False,
+                    target_arch_repo=False,
+                    skip_logs_repo=True,
+                    skip_sbom_repo=True,
+                )
+            )
+        assert "logs_prn" not in result
+        assert "sbom_prn" not in result
+        assert "rpms_prn" in result
+        assert "artifacts_prn" in result
+        assert mock_create.call_count == 2

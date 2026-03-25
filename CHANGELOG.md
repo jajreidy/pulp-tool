@@ -8,6 +8,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- `make test-diff-coverage` runs `diff-cover` at 100% vs `COMPARE_BRANCH` (default `origin/main`) after `make test`, matching the PR merge gate; `scripts/check-all.sh` also generates `coverage.xml` and runs `diff-cover` when the tool and compare ref exist (`DIFF_COVER_COMPARE_BRANCH` optional)
+- `upload --target-arch-repo`: `pulp_results.json` includes per-architecture RPM distribution base URLs under `distributions` with keys `rpm_<arch>` (e.g. `rpm_x86_64`); serialized `distributions` uses sorted keys for stable `{name: url}` output, alongside build-scoped entries when those repos exist
+- Upload optionally skips creating logs and SBOM repositories when no log or SBOM uploads are expected; `skip_logs_repo` / `skip_sbom_repo` on `UploadContext` and `PulpHelper.setup_repositories` (defaults preserve creating all repos for programmatic callers who omit the flags)
 - `upload --target-arch-repo`: per-architecture RPM repos/distributions (``{namespace}/{arch}/Packages/...``); logs/SBOM/artifacts stay build-scoped; lazy repo creation at upload; works with `--results-json`, `--signed-by`, and `--overwrite`; with `--signed-by`, same arch repo and `signed_by` is label-only
 - `upload --overwrite`: RPM-only; remove existing RPM package units in the target repo that match local file SHA256 (and `signed_by` when set) via `remove_content_units` before upload
 - `upload --results-json`: Upload artifacts from pulp_results.json; files resolved from JSON directory or --files-base-path; --build-id and --namespace optional (extracted from artifact labels)
@@ -21,6 +24,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Username/password (Basic Auth) support for packages.redhat.com
 
 ### Changed
+- `upload --target-arch-repo`: `pulp_results.json` `distributions` keys for per-arch RPM bases are `rpm_<arch>` instead of bare architecture names (e.g. `rpm_x86_64` not `x86_64`)
+- `upload` / `upload-files`: infer whether log and SBOM repos are needed before repository setup (directory `*.log` scan or `--results-json` artifact keys; SBOM via `--sbom-path` or SBOM-classified keys); omitted types are excluded from results `distributions`; clear errors if uploads are attempted without the matching repository
 - Upload orchestration uses `RpmUploadResult` per architecture instead of ad-hoc dicts; gather/collect uses `PulpContentRow`, `ExtraArtifactRef`, and `FileInfoMap` for clearer typed data flow
 - Upload flow populates `pulp_results.json` artifact entries incrementally as RPMs, logs, SBOMs, and generic files finish; final gather still reconciles via merge (keeps incremental entries when keys already exist)
 - Repository setup logs use the concrete repo slug (e.g. ``rpms-signed``) instead of a generic ``Rpms`` label; distribution creation logs state that ``name`` and ``base_path`` match the repository name on one line

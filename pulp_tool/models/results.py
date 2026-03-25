@@ -152,7 +152,7 @@ class PulpResultsModel(KonfluxBaseModel):
         Add a distribution URL.
 
         Args:
-            repo_type: Type of repository (rpms, logs, sbom, artifacts)
+            repo_type: Distribution slot name (e.g. ``logs``, ``rpms``, ``rpm_x86_64`` for per-arch RPM bases)
             url: Distribution base URL
         """
         # pylint: disable=unsupported-assignment-operation  # Pydantic mutable field
@@ -184,7 +184,8 @@ class PulpResultsModel(KonfluxBaseModel):
                 }
                 for key, info in self.artifacts.items()  # pylint: disable=no-member  # Pydantic field
             },
-            "distributions": self.distributions,
+            # Sorted string keys → stable { "name": "url", ... } in serialized pulp_results.json
+            "distributions": dict(sorted(self.distributions.items())),
         }
 
     @property

@@ -83,7 +83,12 @@ class TestPulpHelperUploadMethods:
             out = helper.get_distribution_urls_for_upload_context("b123", context)
 
         assert out == {"rpms": "https://per-arch/"}
-        mock_urls.assert_called_once_with("b123", target_arch_repo=True)
+        mock_urls.assert_called_once_with(
+            "b123",
+            target_arch_repo=True,
+            skip_logs_repo=False,
+            skip_sbom_repo=False,
+        )
 
     def test_get_distribution_urls_for_upload_context_signed_by_branch(self, mock_pulp_client):
         """Non-target_arch_repo + non-empty signed_by uses include_signed_rpm_distro."""
@@ -103,7 +108,35 @@ class TestPulpHelperUploadMethods:
             out = helper.get_distribution_urls_for_upload_context("b123", context)
 
         assert out == {"rpms": "https://signed/"}
-        mock_urls.assert_called_once_with("b123", include_signed_rpm_distro=True)
+        mock_urls.assert_called_once_with(
+            "b123",
+            include_signed_rpm_distro=True,
+            skip_logs_repo=False,
+            skip_sbom_repo=False,
+        )
+
+    def test_get_distribution_urls_for_upload_context_passes_skip_repo_flags(self, mock_pulp_client):
+        """skip_logs_repo and skip_sbom_repo are forwarded to get_distribution_urls."""
+        helper = PulpHelper(mock_pulp_client)
+        context = UploadRpmContext(
+            build_id="b123",
+            date_str="2024-01-01 00:00:00",
+            namespace="ns",
+            parent_package="pkg",
+            rpm_path="/r",
+            skip_logs_repo=True,
+            skip_sbom_repo=True,
+        )
+
+        with patch.object(helper, "get_distribution_urls", return_value={"artifacts": "https://a/"}) as mock_urls:
+            out = helper.get_distribution_urls_for_upload_context("b123", context)
+
+        assert out == {"artifacts": "https://a/"}
+        mock_urls.assert_called_once_with(
+            "b123",
+            skip_logs_repo=True,
+            skip_sbom_repo=True,
+        )
 
     def test_process_uploads(self, mock_pulp_client):
         """Test process_uploads method (line 142)."""

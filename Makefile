@@ -1,6 +1,8 @@
 # Makefile for pulp-tool development tasks
 
-.PHONY: help install install-dev test lint format check clean
+COMPARE_BRANCH ?= origin/main
+
+.PHONY: help install install-dev test test-diff-coverage lint format check clean
 
 # Default target
 help:
@@ -8,10 +10,13 @@ help:
 	@echo "  make install      - Install package"
 	@echo "  make install-dev  - Install package with dev dependencies"
 	@echo "  make test         - Run tests with coverage"
+	@echo "  make test-diff-coverage - make test + diff-cover 100% vs COMPARE_BRANCH (same gate as PR CI)"
 	@echo "  make lint         - Run all linters"
 	@echo "  make format       - Format code with Black"
 	@echo "  make check        - Run all checks (lint + test)"
 	@echo "  make clean        - Clean build artifacts"
+	@echo ""
+	@echo "  Diff coverage base: COMPARE_BRANCH=origin/main (override for e.g. origin/release-1.0)"
 
 # Installation
 install:
@@ -24,6 +29,13 @@ install-dev:
 # Testing
 test:
 	python3 -m pytest -v --tb=short --cov=pulp_tool --cov-report=term-missing --cov-report=html --cov-report=xml --cov-fail-under=85
+
+# Same as GitHub Actions: 100% coverage on lines changed vs merge base (requires coverage.xml from test).
+# Requires diff-cover (included in pip install -e ".[dev]" / make install-dev).
+test-diff-coverage: test
+	@command -v diff-cover >/dev/null 2>&1 || { echo "diff-cover not found. Run: make install-dev"; exit 1; }
+	@echo "Diff coverage vs $(COMPARE_BRANCH) (fail under 100%)..."
+	diff-cover coverage.xml --compare-branch=$(COMPARE_BRANCH) --fail-under=100
 
 test-fast:
 	python3 -m pytest -v --tb=short

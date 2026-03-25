@@ -29,7 +29,11 @@ if TYPE_CHECKING:
     from ..api.pulp_client import PulpClient
 
 from ..utils import PulpHelper, validate_file_path, create_labels
-from ..utils.constants import SBOM_EXTENSIONS, SUPPORTED_ARCHITECTURES
+from ..utils.constants import (
+    SBOM_EXTENSIONS,
+    SUPPORTED_ARCHITECTURES,
+    results_json_rpm_arch_distribution_key,
+)
 
 # ============================================================================
 # Constants
@@ -146,6 +150,12 @@ def upload_sbom(
         logging.error("SBOM file not found: %s", sbom_path)
         return []
 
+    if not sbom_repository_prn or not str(sbom_repository_prn).strip():
+        raise ValueError(
+            "Cannot upload SBOM: SBOM repository PRN is empty. "
+            "Ensure the SBOM repository is created when uploading SBOM files."
+        )
+
     logging.warning("Uploading SBOM: %s", sbom_path)
     labels = create_labels(context.build_id, "", context.namespace, context.parent_package, date)
     validate_file_path(sbom_path, "SBOM")
@@ -204,6 +214,33 @@ def _classify_artifact_from_key(key: str) -> str:
         if key_lower.endswith(ext):
             return "sbom"
     return "artifacts"
+
+
+def scan_results_json_for_log_and_sbom_keys(results_json_path: str) -> Tuple[bool, bool]:
+    """
+    Return (has_log_artifacts, has_sbom_artifacts) from keys in ``artifacts`` of a pulp_results.json.
+
+    Missing or invalid JSON yields (False, False).
+    """
+    try:
+        with open(results_json_path, encoding="utf-8") as f:
+            data = json.load(f)
+    except (OSError, json.JSONDecodeError):
+        return False, False
+    has_logs = False
+    has_sbom = False
+    artifacts = data.get("artifacts") or {}
+    if not isinstance(artifacts, dict):
+        return False, False
+    for key in artifacts:
+        kind = _classify_artifact_from_key(str(key))
+        if kind == "logs":
+            has_logs = True
+        elif kind == "sbom":
+            has_sbom = True
+        if has_logs and has_sbom:
+            break
+    return has_logs, has_sbom
 
 
 def process_uploads_from_results_json(
@@ -323,6 +360,17 @@ def process_uploads_from_results_json(
             sboms_to_upload.append(str(file_path))
         else:
             artifacts_to_upload.append((str(file_path), labels))
+
+    if logs_to_upload and not (repositories.logs_prn or "").strip():
+        raise ValueError(
+            "Cannot upload log artifacts: logs repository was not created. "
+            "Use a run that creates the logs repository when results include log files."
+        )
+    if sboms_to_upload and not (repositories.sbom_prn or "").strip():
+        raise ValueError(
+            "Cannot upload SBOM artifacts: SBOM repository was not created. "
+            "Use a run that creates the SBOM repository when results include SBOM files."
+        )
 
     # Upload RPMs
     for arch, rpm_list in rpms_by_arch.items():
@@ -671,6 +719,19 @@ def _add_distributions_to_results(
     else:
         logging.warning("No distribution URLs found")
 
+    if bool(getattr(context, "target_arch_repo", False)) and results_model.artifacts:
+        arch_urls: Dict[str, str] = {}
+        for info in results_model.artifacts.values():
+            arch = (info.labels.get("arch") or "").strip()
+            if arch in SUPPORTED_ARCHITECTURES:
+                arch_urls[arch] = repository_helper.distribution_url_for_base_path(arch)
+        for arch in sorted(arch_urls.keys()):
+            dist_key = results_json_rpm_arch_distribution_key(arch)
+            results_model.add_distribution(dist_key, arch_urls[arch])
+            logging.debug("Per-arch distribution URL for %s (%s): %s", dist_key, arch, arch_urls[arch])
+        if arch_urls:
+            logging.info("Added %d per-arch RPM distribution URL(s)", len(arch_urls))
+
 
 def collect_results(
     client: "PulpClient",
@@ -958,6 +1019,7 @@ __all__ = [
     "UploadService",
     "upload_sbom",
     "collect_results",
+    "scan_results_json_for_log_and_sbom_keys",
     "_serialize_results_to_json",
     "_save_results_to_folder",
     "_upload_and_get_results_url",
