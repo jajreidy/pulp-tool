@@ -114,6 +114,11 @@ def my_function(client: "PulpClient", value: Optional[str] = None) -> bool:
 # Run all tests with coverage (preferred; enforces 85%+)
 make test
 
+# Before a PR: full suite + 100% coverage on git diff vs origin/main (matches CI)
+# git fetch origin   # ensure compare branch exists
+make test-diff-coverage
+# Override base branch: make test-diff-coverage COMPARE_BRANCH=origin/my-base
+
 # Or with pytest directly
 pytest -v --tb=short --cov=pulp_tool --cov-report=term-missing --cov-fail-under=85
 
@@ -130,6 +135,7 @@ pytest -m integration
 - All new code must include tests
 - Overall test coverage must remain at or above 85%
 - New and changed lines must have 100% coverage (enforced in CI via diff coverage)
+- **Before opening or updating a PR**, run `make test-diff-coverage` after `git fetch origin` so your local report matches the merge gate (`diff-cover` vs `origin/main` by default). Use `make test-diff-coverage COMPARE_BRANCH=origin/<base>` if the PR targets another branch.
 - Tests should be fast and isolated
 - Use fixtures from `tests/conftest.py` when possible
 - Mark slow tests with `@pytest.mark.slow`
@@ -166,13 +172,15 @@ def test_upload_content_success():
 1. **Update CHANGELOG.md**: Add an entry describing your changes
 2. **Update documentation**: If adding features, update README.md as needed
 3. **Run all checks**: Ensure `make check` passes (or run `make lint`, then `pre-commit run --all-files` twice, then `make test`)
-4. **Write tests**: Add tests for new functionality (new/changed code requires 100% diff coverage)
-5. **Update type hints**: Ensure all functions have proper type annotations
+4. **Verify PR diff coverage**: Run `make test-diff-coverage` (requires `git fetch origin` so `origin/main` or your `COMPARE_BRANCH` exists); CI fails below 100% on the diff
+5. **Write tests**: Add tests for new functionality (new/changed code requires 100% diff coverage)
+6. **Update type hints**: Ensure all functions have proper type annotations
 
 ### PR Checklist
 
 - [ ] Code follows the project's style guidelines
 - [ ] All tests pass (`make test`)
+- [ ] PR diff coverage is 100% (`make test-diff-coverage` after `git fetch origin`)
 - [ ] All linters pass (`make lint`)
 - [ ] Pre-commit hooks pass (`pre-commit run --all-files`, run twice after fixing issues)
 - [ ] Test coverage is maintained or improved (85%+ overall, 100% for new/changed lines)

@@ -17,7 +17,9 @@ import httpx
 
 from ..api import PulpClient
 from ..models.context import UploadRpmContext
+from ..services.upload_service import scan_results_json_for_log_and_sbom_keys
 from ..utils import PulpHelper, setup_logging
+from ..utils.uploads import rpm_directory_has_log_files
 from ..utils.error_handling import handle_http_error, handle_generic_error
 
 
@@ -156,6 +158,16 @@ def upload(  # pylint: disable=too-many-arguments,too-many-positional-arguments
     if not rpm_path:
         rpm_path = os.getcwd()
 
+    if results_json:
+        json_logs, json_sbom = scan_results_json_for_log_and_sbom_keys(str(results_json))
+        needs_logs = json_logs
+        needs_sbom = json_sbom or bool(sbom_path and str(sbom_path).strip())
+    else:
+        needs_logs = rpm_directory_has_log_files(rpm_path)
+        needs_sbom = bool(sbom_path and str(sbom_path).strip())
+    skip_logs_repo = not needs_logs
+    skip_sbom_repo = not needs_sbom
+
     setup_logging(debug, use_wrapping=True)
 
     client = None
@@ -182,6 +194,8 @@ def upload(  # pylint: disable=too-many-arguments,too-many-positional-arguments
             overwrite=overwrite,
             target_arch_repo=target_arch_repo,
             debug=debug,
+            skip_logs_repo=skip_logs_repo,
+            skip_sbom_repo=skip_sbom_repo,
         )
 
         # Setup repositories using helper
@@ -194,6 +208,8 @@ def upload(  # pylint: disable=too-many-arguments,too-many-positional-arguments
             signed_by=args.signed_by,
             skip_artifacts_repo=skip_artifacts,
             target_arch_repo=args.target_arch_repo,
+            skip_logs_repo=skip_logs_repo,
+            skip_sbom_repo=skip_sbom_repo,
         )
         logging.info("Repository setup completed")
 

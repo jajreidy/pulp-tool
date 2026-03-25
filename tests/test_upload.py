@@ -9,6 +9,7 @@ import json
 
 from pulp_tool.services.upload_service import (
     upload_sbom,
+    scan_results_json_for_log_and_sbom_keys,
     _build_artifact_map,
     _serialize_results_to_json,
     _save_results_to_folder,
@@ -70,6 +71,29 @@ class TestUploadSbom:
         ):
 
             upload_sbom(mock_pulp_client, args, "test-repo", "2024-01-01", results_model, args.sbom_path)
+
+    def test_upload_sbom_empty_repository_prn_raises(self, mock_pulp_client):
+        """SBOM upload requires a non-empty repository PRN."""
+        args = Mock()
+        args.build_id = "test-build"
+        args.namespace = "test-namespace"
+        args.parent_package = "test-package"
+
+        repositories = RepositoryRefs(
+            rpms_href="/rpms/",
+            rpms_prn="rpms-prn",
+            logs_href="/logs/",
+            logs_prn="logs-prn",
+            sbom_href="/sbom/",
+            sbom_prn="sbom-prn",
+            artifacts_href="/artifacts/",
+            artifacts_prn="artifacts-prn",
+        )
+        results_model = PulpResultsModel(build_id="test-build", repositories=repositories)
+
+        with patch("os.path.exists", return_value=True), patch("pulp_tool.services.upload_service.validate_file_path"):
+            with pytest.raises(ValueError, match="SBOM repository PRN is empty"):
+                upload_sbom(mock_pulp_client, args, "", "2024-01-01", results_model, "/tmp/x.json")
 
     def test_upload_sbom_no_signed_by_label(self, mock_pulp_client):
         """Test upload_sbom does not add signed_by (SBOMs are never signed)."""
@@ -1038,7 +1062,47 @@ class TestBuildResultsStructure:
             assert mock_pulp_client.build_results_structure.call_args.kwargs["target_arch_repo"] is True
 
     def test_add_distributions_to_results_target_arch_repo(self, mock_pulp_client):
-        """With target_arch_repo, _add_distributions_to_results uses get_distribution_urls_for_upload_context."""
+        """With target_arch_repo, per-arch RPM distribution URLs are added from artifact arch labels."""
+        repositories = RepositoryRefs(
+            rpms_href="",
+            rpms_prn="",
+            logs_href="/logs/",
+            logs_prn="logs-prn",
+            sbom_href="/sbom/",
+            sbom_prn="sbom-prn",
+            artifacts_href="/artifacts/",
+            artifacts_prn="artifacts-prn",
+        )
+        results_model = PulpResultsModel(build_id="test-build", repositories=repositories)
+        results_model.add_artifact(
+            "pkg.rpm",
+            "https://example.com/pkg.rpm",
+            "deadbeef",
+            {"arch": "x86_64", "build_id": "test-build", "namespace": "test-namespace"},
+        )
+        context = UploadRpmContext(
+            build_id="test-build",
+            date_str="2024-01-01",
+            namespace="test-namespace",
+            parent_package="test-package",
+            target_arch_repo=True,
+        )
+        with patch("pulp_tool.services.upload_service.PulpHelper") as mock_helper_class:
+            mock_helper = Mock()
+            mock_helper.get_distribution_urls_for_upload_context.return_value = {"logs": "https://example.com/logs/"}
+            mock_helper.distribution_url_for_base_path.return_value = (
+                "https://pulp.example.com/api/pulp-content/test-namespace/x86_64/"
+            )
+            mock_helper_class.return_value = mock_helper
+            _add_distributions_to_results(mock_pulp_client, context, results_model)
+            mock_helper.get_distribution_urls_for_upload_context.assert_called_once_with("test-build", context)
+            mock_helper.distribution_url_for_base_path.assert_called_once_with("x86_64")
+            assert results_model.distributions["rpm_x86_64"] == (
+                "https://pulp.example.com/api/pulp-content/test-namespace/x86_64/"
+            )
+
+    def test_add_distributions_to_results_warns_when_no_distribution_urls(self, mock_pulp_client, caplog):
+        """When no build-scoped distribution URLs are returned, log a warning."""
         repositories = RepositoryRefs(
             rpms_href="",
             rpms_prn="",
@@ -1055,14 +1119,15 @@ class TestBuildResultsStructure:
             date_str="2024-01-01",
             namespace="test-namespace",
             parent_package="test-package",
-            target_arch_repo=True,
+            target_arch_repo=False,
         )
         with patch("pulp_tool.services.upload_service.PulpHelper") as mock_helper_class:
             mock_helper = Mock()
-            mock_helper.get_distribution_urls_for_upload_context.return_value = {"logs": "https://example.com/logs/"}
+            mock_helper.get_distribution_urls_for_upload_context.return_value = {}
             mock_helper_class.return_value = mock_helper
-            _add_distributions_to_results(mock_pulp_client, context, results_model)
-            mock_helper.get_distribution_urls_for_upload_context.assert_called_once_with("test-build", context)
+            with caplog.at_level(logging.WARNING):
+                _add_distributions_to_results(mock_pulp_client, context, results_model)
+            assert "No distribution URLs found" in caplog.text
 
 
 class TestHandleSbomResults:
@@ -1221,8 +1286,103 @@ class TestClassifyArtifactFromKey:
         assert _classify_artifact_from_key("data.txt") == "artifacts"
 
 
+class TestScanResultsJsonForLogAndSbomKeys:
+    """Tests for scan_results_json_for_log_and_sbom_keys."""
+
+    def test_detects_log_and_sbom_keys(self, tmp_path):
+        """Artifact keys classified as logs and sbom set both flags."""
+        p = tmp_path / "r.json"
+        p.write_text(json.dumps({"artifacts": {"aarch64/build.log": {}, "report.spdx.json": {}}}))
+        assert scan_results_json_for_log_and_sbom_keys(str(p)) == (True, True)
+
+    def test_logs_only(self, tmp_path):
+        p = tmp_path / "r.json"
+        p.write_text(json.dumps({"artifacts": {"foo.log": {}}}))
+        assert scan_results_json_for_log_and_sbom_keys(str(p)) == (True, False)
+
+    def test_sbom_only(self, tmp_path):
+        p = tmp_path / "r.json"
+        p.write_text(json.dumps({"artifacts": {"manifest-without-sbom-in-name.json": {}}}))
+        assert scan_results_json_for_log_and_sbom_keys(str(p)) == (False, True)
+
+    def test_invalid_json_returns_false_false(self, tmp_path):
+        p = tmp_path / "bad.json"
+        p.write_text("not valid json")
+        assert scan_results_json_for_log_and_sbom_keys(str(p)) == (False, False)
+
+    def test_non_dict_artifacts_returns_false_false(self, tmp_path):
+        """``artifacts`` must be a dict; a truthy non-dict (e.g. list) hits the guard branch."""
+        p = tmp_path / "r.json"
+        # [] is falsy: ``data.get("artifacts") or {}`` would become {} and skip the guard.
+        p.write_text(json.dumps({"artifacts": ["not-a-dict-entry"]}))
+        assert scan_results_json_for_log_and_sbom_keys(str(p)) == (False, False)
+
+
 class TestProcessUploadsFromResultsJson:
     """Test process_uploads_from_results_json function."""
+
+    def test_raises_when_logs_present_but_logs_repo_skipped(self, tmp_path, mock_pulp_client):
+        """Guard: log uploads require logs_prn."""
+        arch_dir = tmp_path / "x86_64"
+        arch_dir.mkdir()
+        log_path = arch_dir / "build.log"
+        log_path.write_text("log line")
+
+        results_json_path = tmp_path / "pulp_results.json"
+        results_json_path.write_text(json.dumps({"artifacts": {"x86_64/build.log": {"labels": {"arch": "x86_64"}}}}))
+
+        context = UploadRpmContext(
+            build_id="test-build",
+            date_str="2024-01-01",
+            namespace="test-ns",
+            parent_package="test-pkg",
+            rpm_path="/ignored",
+            results_json=str(results_json_path),
+            skip_logs_repo=True,
+        )
+        repositories = RepositoryRefs(
+            rpms_href="/rpm",
+            rpms_prn="rprn",
+            logs_href="",
+            logs_prn="",
+            sbom_href="",
+            sbom_prn="sbom-prn",
+            artifacts_href="",
+            artifacts_prn="artifacts-prn",
+        )
+
+        with pytest.raises(ValueError, match="logs repository was not created"):
+            process_uploads_from_results_json(mock_pulp_client, context, repositories)
+
+    def test_raises_when_sbom_present_but_sbom_repo_skipped(self, tmp_path, mock_pulp_client):
+        sbom_path = tmp_path / "sbom.spdx.json"
+        sbom_path.write_text("{}")
+
+        results_json_path = tmp_path / "pulp_results.json"
+        results_json_path.write_text(json.dumps({"artifacts": {"sbom.spdx.json": {}}}))
+
+        context = UploadRpmContext(
+            build_id="test-build",
+            date_str="2024-01-01",
+            namespace="test-ns",
+            parent_package="test-pkg",
+            rpm_path="/ignored",
+            results_json=str(results_json_path),
+            skip_sbom_repo=True,
+        )
+        repositories = RepositoryRefs(
+            rpms_href="/rpm",
+            rpms_prn="rprn",
+            logs_href="",
+            logs_prn="logs-prn",
+            sbom_href="",
+            sbom_prn="",
+            artifacts_href="",
+            artifacts_prn="artifacts-prn",
+        )
+
+        with pytest.raises(ValueError, match="SBOM repository was not created"):
+            process_uploads_from_results_json(mock_pulp_client, context, repositories)
 
     def test_upload_from_results_json_basic(self, tmp_path, mock_pulp_client):
         """Test upload from JSON without signed-by."""

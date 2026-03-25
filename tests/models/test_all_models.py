@@ -451,6 +451,8 @@ class TestPulpResultsModel:
         model = PulpResultsModel(build_id="test-build", repositories=repositories)
 
         model.add_artifact("test.rpm", "https://pulp.example.com/test.rpm", "abc123", {"arch": "x86_64"})
+        model.add_distribution("zebra", "https://pulp.example.com/zebra/")
+        model.add_distribution("alpha", "https://pulp.example.com/alpha/")
         model.add_distribution("rpms", "https://pulp.example.com/rpms/")
 
         result = model.to_json_dict()
@@ -459,6 +461,7 @@ class TestPulpResultsModel:
         assert "distributions" in result
         assert "test.rpm" in result["artifacts"]
         assert result["artifacts"]["test.rpm"]["url"] == "https://pulp.example.com/test.rpm"
+        assert list(result["distributions"].keys()) == ["alpha", "rpms", "zebra"]
         assert result["distributions"]["rpms"] == "https://pulp.example.com/rpms/"
 
     def test_tracking_functionality(self):

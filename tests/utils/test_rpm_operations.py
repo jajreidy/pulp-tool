@@ -283,6 +283,42 @@ class TestRPMUtilities:
 
         assert result.uploaded_rpms == []
 
+    def test_upload_rpms_logs_raises_when_logs_present_but_empty_prn(self, mock_pulp_client, temp_dir):
+        """Log files require a non-empty logs repository PRN."""
+        from pulp_tool.models import PulpResultsModel, RepositoryRefs
+
+        args = Mock()
+        args.build_id = "test-build"
+        args.namespace = "test-namespace"
+        args.parent_package = "test-package"
+
+        repositories = RepositoryRefs(
+            rpms_href="/rpms/",
+            rpms_prn="rpms-prn",
+            logs_href="/logs/",
+            logs_prn="logs-prn",
+            sbom_href="/sbom/",
+            sbom_prn="sbom-prn",
+            artifacts_href="/artifacts/",
+            artifacts_prn="artifacts-prn",
+        )
+        results_model = PulpResultsModel(build_id="test-build", repositories=repositories)
+
+        rpm_path = os.path.join(temp_dir, "pkg.rpm")
+        log_path = os.path.join(temp_dir, "x.log")
+        with patch("glob.glob", side_effect=[[rpm_path], [log_path]]):
+            with pytest.raises(ValueError, match="logs repository PRN"):
+                upload_rpms_logs(
+                    temp_dir,
+                    args,
+                    mock_pulp_client,
+                    "x86_64",
+                    rpm_repository_href="test-repo",
+                    file_repository_prn="",
+                    date="2024-01-01 12:00:00",
+                    results_model=results_model,
+                )
+
     def test_upload_rpms_parallel_empty_list(self, mock_pulp_client):
         """Test upload_rpms_parallel with empty list."""
         result = upload_rpms_parallel(mock_pulp_client, [], {}, "x86_64")

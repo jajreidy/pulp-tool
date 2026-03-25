@@ -93,6 +93,8 @@ class RepositoryManager:
         signed_by: Optional[str] = None,
         skip_artifacts_repo: bool = False,
         target_arch_repo: bool = False,
+        skip_logs_repo: bool = False,
+        skip_sbom_repo: bool = False,
     ) -> RepositoryRefs:
         """
         Setup all required repositories and return their identifiers.
@@ -105,6 +107,8 @@ class RepositoryManager:
             signed_by: If set, also create signed repos (rpms-signed, etc.) unless target_arch_repo
             skip_artifacts_repo: If True, do not create artifacts repo (e.g. when saving locally)
             target_arch_repo: If True, skip aggregate rpms/rpms-signed; per-arch RPM repos at upload time
+            skip_logs_repo: If True, do not create logs repository
+            skip_sbom_repo: If True, do not create SBOM repository
 
         Returns:
             RepositoryRefs NamedTuple containing all repository PRNs and hrefs
@@ -130,13 +134,18 @@ class RepositoryManager:
             signed_by=signed_by,
             skip_artifacts_repo=skip_artifacts_repo,
             target_arch_repo=target_arch_repo,
+            skip_logs_repo=skip_logs_repo,
+            skip_sbom_repo=skip_sbom_repo,
         )
 
         # Validate the setup (only base repos; signed repos are optional)
         required = [
             r
             for r in REPOSITORY_TYPES
-            if not (skip_artifacts_repo and r == "artifacts") and not (target_arch_repo and r == "rpms")
+            if not (skip_artifacts_repo and r == "artifacts")
+            and not (target_arch_repo and r == "rpms")
+            and not (skip_logs_repo and r == "logs")
+            and not (skip_sbom_repo and r == "sbom")
         ]
         is_valid, errors = validate_repository_setup(repositories, required_types=required)
         if not is_valid:
@@ -423,6 +432,8 @@ class RepositoryManager:
         signed_by: Optional[str] = None,
         skip_artifacts_repo: bool = False,
         target_arch_repo: bool = False,
+        skip_logs_repo: bool = False,
+        skip_sbom_repo: bool = False,
     ) -> Dict[str, str]:
         """
         Async version: Setup all required repositories using asyncio.gather for concurrency.
@@ -437,6 +448,8 @@ class RepositoryManager:
             signed_by: If set, also create signed repos (ignored for RPM when target_arch_repo)
             skip_artifacts_repo: If True, do not create artifacts repo
             target_arch_repo: If True, skip aggregate ``rpms`` and ``rpms-signed`` repositories
+            skip_logs_repo: If True, skip ``logs`` repository
+            skip_sbom_repo: If True, skip ``sbom`` repository
 
         Returns:
             Dictionary mapping repository types to their PRNs and hrefs
@@ -444,6 +457,10 @@ class RepositoryManager:
         logging.debug("Setting up repositories async for: %s", build_id)
 
         repo_types = [r for r in REPOSITORY_TYPES if not (skip_artifacts_repo and r == "artifacts")]
+        if skip_logs_repo:
+            repo_types = [r for r in repo_types if r != "logs"]
+        if skip_sbom_repo:
+            repo_types = [r for r in repo_types if r != "sbom"]
         if target_arch_repo:
             repo_types = [r for r in repo_types if r not in ("rpms", "rpms-signed")]
         elif signed_by:
@@ -691,6 +708,8 @@ class RepositoryManager:
         signed_by: Optional[str] = None,
         skip_artifacts_repo: bool = False,
         target_arch_repo: bool = False,
+        skip_logs_repo: bool = False,
+        skip_sbom_repo: bool = False,
     ) -> Dict[str, str]:
         """
         Setup all required repositories and return their identifiers.
@@ -716,6 +735,8 @@ class RepositoryManager:
                 signed_by=signed_by,
                 skip_artifacts_repo=skip_artifacts_repo,
                 target_arch_repo=target_arch_repo,
+                skip_logs_repo=skip_logs_repo,
+                skip_sbom_repo=skip_sbom_repo,
             )
         )
 

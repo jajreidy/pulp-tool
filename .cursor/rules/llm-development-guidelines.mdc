@@ -69,13 +69,13 @@ When you do generate it, use a clear heading such as `### PR description (GitHub
    make test
    ```
    **IMPORTANT**: Use the full test suite, not only a single test file, so regressions surface. If anything fails, fix it and **run `make test` again**. **Repeat** until all tests pass.
-7. **Verify 100% diff coverage for GitHub merge** - Every new or changed line in the PR must be executed by tests (CI blocks merge below 100% on the diff). Use coverage output from `make test` and/or:
+7. **Verify 100% diff coverage for GitHub merge** - CI uses `diff-cover` on the PR diff vs the base branch (same as `make test-diff-coverage`). After `git fetch origin`, run:
    ```bash
-   python3 -m pytest --cov=pulp_tool --cov-report=term-missing
+   make test-diff-coverage
    ```
-   If the diff is not fully covered, add or extend tests and **return to step 6** until tests pass and the PR diff would satisfy diff coverage.
+   For a PR targeting a branch other than `main`, use `make test-diff-coverage COMPARE_BRANCH=origin/<base>`. If this fails, add or extend tests and **return to step 6** until the diff is fully covered. Use `python3 -m pytest --cov=pulp_tool --cov-report=term-missing` only for debugging specific files; the **authoritative local gate** is `make test-diff-coverage`.
 
-**Never skip linting, pre-commit (must finish with a fully passing run), or tests (must finish with a fully passing `make test` and diff-ready coverage)** - They will fail in CI/CD and waste pipeline resources.
+**Never skip linting, pre-commit (must finish with a fully passing run), or tests (must finish with a fully passing `make test` and `make test-diff-coverage` before a PR)** - They will fail in CI/CD and waste pipeline resources.
 
 ## Linting Tools
 
@@ -189,6 +189,12 @@ pre-commit run flake8 --all-files
 # Run all tests with coverage (REQUIRED for new changes)
 make test
 
+# Same as PR CI: 100% of lines changed vs merge base (run after git fetch origin)
+make test-diff-coverage
+
+# Optional: non-main base branch
+make test-diff-coverage COMPARE_BRANCH=origin/my-release-branch
+
 # Run tests without coverage (faster, but won't verify coverage)
 make test-fast
 
@@ -199,7 +205,7 @@ python3 -m pytest tests/path/to/test_file.py -v
 python3 -m pytest --cov=pulp_tool/path/to/module --cov-report=term-missing tests/
 ```
 
-**IMPORTANT**: New changes require **100% coverage on the PR diff** for GitHub merge. Always run `make test` and confirm your branch would pass diff coverage before opening or updating a PR.
+**IMPORTANT**: New changes require **100% coverage on the PR diff** for GitHub merge. Always run `make test-diff-coverage` (not only `make test`) before opening or updating a PR, after ensuring the compare branch exists locally (`git fetch origin`).
 
 ### Comprehensive Checks
 
@@ -207,7 +213,8 @@ python3 -m pytest --cov=pulp_tool/path/to/module --cov-report=term-missing tests
 # Run all checks (lint + test)
 make check
 
-# Run comprehensive check script (lint + test + coverage)
+# Lint + tests + optional 100% diff-cover (see scripts/check-all.sh header)
+git fetch origin
 ./scripts/check-all.sh
 ```
 
@@ -234,6 +241,7 @@ make format                  # Fix formatting if needed
 # Loop until pre-commit passes completely:
 pre-commit run --all-files   # fix failures → run again → repeat until green
 make test                    # fix failures / coverage → run again → repeat until green
+make test-diff-coverage      # before PR: 100% on git diff vs origin/main (git fetch origin first)
 ```
 
 ### 2. Fix Linting Errors Immediately
@@ -283,21 +291,23 @@ When in doubt, check the configuration files:
 Run tests with coverage until the branch is PR-ready:
 
 ```bash
-make test    # Full test suite with coverage (REQUIRED)
+make test                 # Full test suite with coverage (REQUIRED)
+make test-diff-coverage   # After git fetch origin: 100% on PR diff vs origin/main (REQUIRED before PR)
 ```
 
-Review the coverage report for **lines that belong to your PR diff**. If anything is uncovered or tests fail:
+`make test-diff-coverage` runs `diff-cover` on `coverage.xml` and lists **only uncovered lines that are part of the git diff**—the same signal as GitHub PR CI. If anything is uncovered or tests fail:
 
 1. Fix tests or implementation, add tests for uncovered paths (edge cases, branches, errors)
-2. Re-run `make test` until **all tests pass** and **100% of the diff** is covered (GitHub merge gate).
+2. Re-run `make test` then `make test-diff-coverage` until both pass.
 
 Treat “green once” as insufficient if a later fix breaks coverage—re-run the full suite after each substantive change.
 
 ### 7. Use Scripts for Comprehensive Checks
 
-The `scripts/check-all.sh` script runs all checks including tests:
+The `scripts/check-all.sh` script runs linters, tests (with `coverage.xml`), and—when `diff-cover` is installed and `origin/main` (or `DIFF_COVER_COMPARE_BRANCH`) exists—checks PR-style diff coverage at 100%:
 
 ```bash
+git fetch origin   # recommended so diff-cover can compare
 ./scripts/check-all.sh
 ```
 
@@ -360,13 +370,12 @@ Example addition under `[Unreleased]`:
 
 **Solution**: The **merge gate is 100% coverage on the PR diff**. Ensure every new or changed line in the branch is executed by tests:
 
-1. Run `make test` to see coverage report
-2. Identify uncovered lines in your changes (match them to the diff GitHub/CI reports)
-3. Write tests for all uncovered code paths
-4. Include edge cases, error conditions, and all branches
-5. Re-run `make test` until all tests pass **and** diff coverage is 100% on your changes
+1. Run `git fetch origin` (or your PR base remote ref) so the compare branch exists
+2. Run `make test-diff-coverage`; it prints only **diff** uncovered lines (same tool as CI)
+3. Write tests for all uncovered code paths (edge cases, errors, branches)
+4. Re-run `make test` then `make test-diff-coverage` until both pass
 
-The CI/CD pipeline uses `diff-cover` (or equivalent) to check only new/changed lines against the merge base; **anything short of 100% on that diff blocks merging the PR in GitHub.** Keep extending tests and re-running `make test` until that bar is met.
+The CI/CD pipeline uses `diff-cover` against the merge base; **anything short of 100% on that diff blocks merging the PR in GitHub.**
 
 ## References
 
@@ -385,14 +394,16 @@ The CI/CD pipeline uses `diff-cover` (or equivalent) to check only new/changed l
 1. ✅ Run `make lint` to check for linting errors
 2. ✅ Run `make format` to ensure proper formatting
 3. ✅ Run `pre-commit run --all-files` and **repeat** (fix → re-run) until **all hooks pass**
-4. ✅ Run `make test` (full suite) and **repeat** (fix → re-run) until **all tests pass** and **100% diff coverage** is satisfied for GitHub merge
-5. ✅ If there are substantive edits that could ship as a PR, **ask whether the user wants PR materials**; **only after they confirm**, draft the paste-ready GitHub PR description **and** update `CHANGELOG.md` when required (same turn)—see **GitHub PR description (ask first; generate on confirmation)** and **Update CHANGELOG.md when drafting the PR**
+4. ✅ Run `make test` (full suite) and **repeat** (fix → re-run) until **all tests pass**
+5. ✅ Run `make test-diff-coverage` after `git fetch origin` and **repeat** (fix → re-run) until **100% diff coverage** passes (same gate as PR CI)
+6. ✅ If there are substantive edits that could ship as a PR, **ask whether the user wants PR materials**; **only after they confirm**, draft the paste-ready GitHub PR description **and** update `CHANGELOG.md` when required (same turn)—see **GitHub PR description (ask first; generate on confirmation)** and **Update CHANGELOG.md when drafting the PR**
 
 **Critical Requirements**:
 - **Pre-commit must end clean** - Run `pre-commit run --all-files` in a loop until zero failures; do not stop after one failed run without a subsequent fully passing run
-- **Tests must end green with diff coverage** - Run `make test` in a loop until the suite passes and new/changed lines are covered for the PR diff
-- **100% diff coverage for GitHub merge** - CI enforces this; extend tests and re-run until the diff is fully covered
+- **Tests must end green** - Run `make test` in a loop until the suite passes
+- **100% diff coverage before a PR** - Run `make test-diff-coverage` (compare branch defaults to `origin/main`); CI enforces the same; extend tests and re-run until the diff is fully covered
 - **Ask before PR text** - End with a short question about drafting the GitHub PR; provide the full paste-ready body only after the user says they are ready
 - **`CHANGELOG.md` at PR draft time only** - Do not touch the changelog on every iteration; add `[Unreleased]` entries when the user confirms PR drafting (unless they explicitly ask earlier)
+- **`make test-diff-coverage`** - Treat as required before declaring a branch PR-ready alongside `make test`
 
 Following this workflow ensures your changes will pass CI/CD checks and avoids unnecessary pipeline runs.

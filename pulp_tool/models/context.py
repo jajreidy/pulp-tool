@@ -23,6 +23,8 @@ class UploadContext(KonfluxBaseModel):
         debug: Verbosity level (0=WARNING, 1=INFO, 2=DEBUG, 3+=DEBUG with HTTP logs)
         artifact_results: Optional artifact results configuration
         sbom_results: Optional path to write SBOM results
+        skip_logs_repo: When True, logs repo was not created; omit logs distribution URLs
+        skip_sbom_repo: When True, SBOM repo was not created; omit sbom distribution URLs
     """
 
     build_id: str
@@ -33,6 +35,8 @@ class UploadContext(KonfluxBaseModel):
     debug: int = 0
     artifact_results: Optional[str] = None
     sbom_results: Optional[str] = None
+    skip_logs_repo: bool = False
+    skip_sbom_repo: bool = False
 
 
 class UploadRpmContext(UploadContext):

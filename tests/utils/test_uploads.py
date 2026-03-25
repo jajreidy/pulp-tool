@@ -6,7 +6,10 @@ log uploads, and artifact uploads to repositories.
 """
 
 import os
+import tempfile
 from unittest.mock import Mock, patch
+
+import pytest
 from httpx import HTTPError
 
 from pulp_tool.utils import (
@@ -15,6 +18,7 @@ from pulp_tool.utils import (
     upload_artifacts_to_repository,
     upload_rpms,
 )
+from pulp_tool.utils.uploads import rpm_directory_has_log_files
 
 
 class TestLabelUtilities:
@@ -86,6 +90,18 @@ class TestUploadUtilities:
         mock_pulp_client.create_file_content.assert_called_once()
         mock_pulp_client.wait_for_finished_task.assert_called_once()
         assert created_resources == ["/content/file/1/"]
+
+    def test_upload_log_empty_repository_prn_raises(self, mock_pulp_client, temp_file):
+        """upload_log requires a non-empty file repository PRN."""
+        with pytest.raises(ValueError, match="logs repository PRN"):
+            upload_log(
+                mock_pulp_client,
+                "",
+                temp_file,
+                build_id="test-build",
+                labels={"build_id": "test-build"},
+                arch="x86_64",
+            )
 
     def test_upload_log_incremental_uses_task_relative_path(self, mock_pulp_client, temp_file):
         """results_model + distribution_urls: relative_path from task.result when dict."""
@@ -610,3 +626,29 @@ class TestUploadRpms:
             assert results_model.uploaded_counts.rpms == 1
             # Should not call add_content when artifacts list is empty
             mock_add_content.assert_not_called()
+
+
+class TestRpmDirectoryHasLogFiles:
+    """Tests for rpm_directory_has_log_files."""
+
+    def test_true_when_log_under_arch(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            arch_dir = os.path.join(tmp, "x86_64")
+            os.makedirs(arch_dir)
+            with open(os.path.join(arch_dir, "x.log"), "w", encoding="utf-8") as f:
+                f.write("l")
+            assert rpm_directory_has_log_files(tmp) is True
+
+    def test_true_when_log_at_root(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            with open(os.path.join(tmp, "root.log"), "w", encoding="utf-8") as f:
+                f.write("l")
+            assert rpm_directory_has_log_files(tmp) is True
+
+    def test_false_when_no_logs(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            os.makedirs(os.path.join(tmp, "x86_64"))
+            assert rpm_directory_has_log_files(tmp) is False
+
+    def test_false_when_path_invalid(self):
+        assert rpm_directory_has_log_files("/nonexistent/path/xyz") is False

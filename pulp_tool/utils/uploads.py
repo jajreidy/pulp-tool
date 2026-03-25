@@ -16,6 +16,7 @@ from ..models.results import RpmUploadResult, PulpResultsModel
 from ..models.context import UploadContext
 from .error_handling import handle_generic_error
 from .validation import validate_file_path
+from .constants import SUPPORTED_ARCHITECTURES
 from .rpm_operations import upload_rpms_parallel
 from .rpm_overwrite import remove_rpms_matching_local_files_from_repository
 
@@ -79,6 +80,11 @@ def upload_log(
         List of created resource hrefs from the upload task
     """
     validate_file_path(log_path, "Log")
+
+    if not file_repository_prn or not str(file_repository_prn).strip():
+        raise ValueError(
+            "Log upload requires a logs repository PRN. Create the logs repository or unset skip_logs_repo."
+        )
 
     content_upload_response = client.create_file_content(
         file_repository_prn, log_path, build_id=build_id, pulp_label=labels, arch=arch
@@ -335,6 +341,13 @@ def upload_rpms_logs(
         logging.debug("No RPMs or logs found in %s", rpm_path)
         return RpmUploadResult()
 
+    if logs:
+        if not file_repository_prn or not str(file_repository_prn).strip():
+            raise ValueError(
+                "Log files are present but logs repository PRN is empty. "
+                "Create the logs repository when uploading logs (do not set skip_logs_repo)."
+            )
+
     logging.warning("Processing %s: %d RPMs, %d logs", arch, len(rpms), len(logs))
     labels = create_labels(context.build_id, arch, context.namespace, context.parent_package, date)
 
@@ -380,10 +393,25 @@ def upload_rpms_logs(
     )
 
 
+def rpm_directory_has_log_files(rpm_path: str) -> bool:
+    """
+    Return True if ``rpm_path`` contains any ``*.log`` under a supported arch subdirectory or at root.
+    """
+    if not rpm_path or not os.path.isdir(rpm_path):
+        return False
+
+    for arch in SUPPORTED_ARCHITECTURES:
+        arch_dir = os.path.join(rpm_path, arch)
+        if os.path.isdir(arch_dir) and glob.glob(os.path.join(arch_dir, LOG_FILE_PATTERN)):
+            return True
+    return bool(glob.glob(os.path.join(rpm_path, LOG_FILE_PATTERN)))
+
+
 __all__ = [
     "create_labels",
     "upload_log",
     "upload_artifacts_to_repository",
     "upload_rpms",
     "upload_rpms_logs",
+    "rpm_directory_has_log_files",
 ]

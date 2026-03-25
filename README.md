@@ -139,7 +139,7 @@ Upload RPM packages, logs, and SBOM files.
 
 **Overwrite:** When `--overwrite` is set, for each RPM about to be uploaded the tool searches Pulp by the file’s SHA256 (same mechanism as `search-by` checksum mode), keeps only matches that exist in the target RPM repository’s latest version, then calls the repository modify API with `remove_content_units` before uploading and adding the new RPMs. Use with `--signed-by` to scope the search to signed packages.
 
-**Target-arch-repo:** When `--target-arch-repo` is set, RPM repositories and distributions are named by architecture only (`{arch}`), including when `--signed-by` is set (no separate `rpms-signed` path). Published paths look like `…/pulp-content/{namespace}/{arch}/`. The aggregate `{build}/rpms` repo is not created; RPM repos are created when each arch is uploaded. Results JSON uses each artifact’s `arch` label to build RPM URLs. Logs, SBOM, and generic artifacts still use `{build}/logs`, `{build}/sbom`, and `{build}/artifacts`.
+**Target-arch-repo:** When `--target-arch-repo` is set, RPM repositories and distributions are named by architecture only (`{arch}`), including when `--signed-by` is set (no separate `rpms-signed` path). Published paths look like `…/pulp-content/{namespace}/{arch}/`. The aggregate `{build}/rpms` repo is not created; RPM repos are created when each arch is uploaded. `pulp_results.json` `distributions` maps string names to base URLs (sorted keys when serialized); per-arch RPM bases use keys `rpm_<arch>` (e.g. `rpm_x86_64`). Logs, SBOM, and generic artifacts still use `{build}/logs`, `{build}/sbom`, and `{build}/artifacts`.
 
 ### upload-files
 
@@ -291,14 +291,15 @@ dist.pull_data(filename="pkg.rpm", file_url="...", arch="x86_64", artifact_type=
 ## Development
 
 ```bash
-make install-dev   # Install with dev deps + pre-commit
+make install-dev   # Install with dev deps + pre-commit (includes diff-cover)
 make test          # Run tests with coverage (85%+ required)
+make test-diff-coverage  # After git fetch origin: 100% coverage on git diff vs origin/main (PR CI gate)
 make lint          # Black, flake8, pylint, mypy
 make format        # Format with Black
 make check         # Lint + test
 ```
 
-Before committing: `pre-commit run --all-files` (run twice after fixes). See [CONTRIBUTING.md](CONTRIBUTING.md).
+Before committing: `pre-commit run --all-files` (run twice after fixes). Before a PR: `git fetch origin` and `make test-diff-coverage`. See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Troubleshooting
 
@@ -314,7 +315,7 @@ Before committing: `pre-commit run --all-files` (run twice after fixes). See [CO
 1. Fork the repository
 2. Create a feature branch
 3. Make changes and add tests
-4. Run `make test` and `pre-commit run --all-files`
+4. Run `make test`, `make test-diff-coverage` (after `git fetch origin`), and `pre-commit run --all-files`
 5. Submit a pull request
 
 ## License

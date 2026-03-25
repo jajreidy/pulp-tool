@@ -39,12 +39,27 @@ class DistributionManager:
             distribution_cache if distribution_cache is not None else {}
         )
 
+    def distribution_url_for_base_path(self, base_path: str) -> str:
+        """
+        Build the pulp-content distribution base URL for an arbitrary base_path segment.
+
+        Used for per-arch RPM distributions (``base_path`` = architecture name).
+        """
+        if not base_path or not str(base_path).strip():
+            raise ValueError(f"Invalid base_path for distribution URL: {base_path}")
+        trimmed = str(base_path).strip()
+        base_url_str = str(self.client.config["base_url"])
+        pulp_content_base_url = f"{base_url_str}/api/pulp-content"
+        return f"{pulp_content_base_url}/{self.namespace}/{trimmed}/"
+
     def get_distribution_urls(
         self,
         build_id: str,
         *,
         target_arch_repo: bool = False,
         include_signed_rpm_distro: bool = False,
+        skip_logs_repo: bool = False,
+        skip_sbom_repo: bool = False,
     ) -> Dict[str, str]:
         """
         Get distribution URLs for all repository types.
@@ -56,6 +71,8 @@ class DistributionManager:
             build_id: Build ID for naming repositories and distributions
             target_arch_repo: If True, omit aggregate ``rpms`` URL (per-arch RPM URLs elsewhere)
             include_signed_rpm_distro: If True, add ``rpms_signed`` URL for ``{build}/rpms-signed/``
+            skip_logs_repo: If True, omit ``logs`` distribution URL
+            skip_sbom_repo: If True, omit ``sbom`` distribution URL
 
         Returns:
             Dictionary mapping repo_type to distribution URL
@@ -80,6 +97,8 @@ class DistributionManager:
             sanitized_build_id,
             target_arch_repo=target_arch_repo,
             include_signed_rpm_distro=include_signed_rpm_distro,
+            skip_logs_repo=skip_logs_repo,
+            skip_sbom_repo=skip_sbom_repo,
         )
 
         logging.debug("Retrieved %d distribution URLs", len(distribution_urls))
@@ -125,6 +144,8 @@ class DistributionManager:
         *,
         target_arch_repo: bool = False,
         include_signed_rpm_distro: bool = False,
+        skip_logs_repo: bool = False,
+        skip_sbom_repo: bool = False,
     ) -> Dict[str, str]:
         """
         Get distribution URLs for all repository types.
@@ -133,6 +154,8 @@ class DistributionManager:
             build_id: Base name for the repositories (may include namespace prefix)
             target_arch_repo: If True, omit aggregate ``rpms`` URL
             include_signed_rpm_distro: If True, add ``rpms_signed`` for signed RPM distribution
+            skip_logs_repo: If True, omit ``logs``
+            skip_sbom_repo: If True, omit ``sbom``
 
         Returns:
             Dictionary mapping repo_type to distribution URL
@@ -146,6 +169,10 @@ class DistributionManager:
 
         for repo_type in REPOSITORY_TYPES:
             if target_arch_repo and repo_type == "rpms":
+                continue
+            if skip_logs_repo and repo_type == "logs":
+                continue
+            if skip_sbom_repo and repo_type == "sbom":
                 continue
             url = self._get_single_distribution_url(build_id, repo_type, base_url)
             if url:

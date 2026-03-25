@@ -31,6 +31,15 @@ ARTIFACT_TYPES = ["rpms", "sboms", "logs"]
 # Results JSON filename for upload artifacts
 RESULTS_JSON_FILENAME = "pulp_results.json"
 
+# Key prefix for per-arch RPM distribution base URLs in pulp_results.json ``distributions`` (e.g. rpm_x86_64)
+RESULTS_JSON_RPM_ARCH_DISTRIBUTION_KEY_PREFIX = "rpm_"
+
+
+def results_json_rpm_arch_distribution_key(arch: str) -> str:
+    """Return the ``distributions`` map key for a per-arch RPM base URL in pulp_results.json."""
+    return f"{RESULTS_JSON_RPM_ARCH_DISTRIBUTION_KEY_PREFIX}{arch.strip()}"
+
+
 # Minimum file size (bytes) - 0 means file must not be empty
 MIN_FILE_SIZE = 0
 
@@ -183,6 +192,8 @@ __all__ = [
     "ARTIFACT_TYPES",
     # File and Path
     "RESULTS_JSON_FILENAME",
+    "RESULTS_JSON_RPM_ARCH_DISTRIBUTION_KEY_PREFIX",
+    "results_json_rpm_arch_distribution_key",
     "MIN_FILE_SIZE",
     "SBOM_EXTENSIONS",
     # API and Network
