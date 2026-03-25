@@ -1,10 +1,45 @@
 """Artifact-related models for Konflux Pulp."""
 
-from typing import Optional, Dict, Any, List
+from typing import Dict, List, Optional, Any
 
-from pydantic import Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from .base import KonfluxBaseModel
+
+
+class PulpContentRow(BaseModel):
+    """One content unit from Pulp's content API (RPM package, file unit, etc.); fields vary by type."""
+
+    model_config = ConfigDict(extra="allow")
+
+    pulp_href: str = ""
+    pulp_labels: Dict[str, Any] = Field(default_factory=dict)
+    artifacts: Dict[str, Any] = Field(default_factory=dict)
+    relative_path: Optional[str] = None
+
+
+class ExtraArtifactRef(BaseModel):
+    """Content href from upload `created_resources` used when gather-by-build_id returns empty."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    pulp_href: Optional[str] = None
+    file: Optional[str] = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def _legacy_dict_href_keys(cls, data: Any) -> Any:
+        """Support legacy {"pulp_href"} and odd test shapes {"file": href} / {"extra": href}."""
+        if isinstance(data, dict):
+            d = dict(data)
+            if not (d.get("pulp_href") or "").strip():
+                for k in ("file", "extra"):
+                    v = d.get(k)
+                    if isinstance(v, str) and v.strip():
+                        d["pulp_href"] = v.strip()
+                        break
+            return d
+        return data
 
 
 class DownloadTask(KonfluxBaseModel):
@@ -262,7 +297,7 @@ class ContentData(KonfluxBaseModel):
         artifacts: List of artifact information dictionaries
     """
 
-    content_results: List[Dict[str, Any]] = Field(default_factory=list)
+    content_results: List[PulpContentRow] = Field(default_factory=list)
     artifacts: List[Dict[str, str]] = Field(default_factory=list)
 
     @property
@@ -301,6 +336,9 @@ class FileInfoModel(KonfluxBaseModel):
     size: Optional[int] = None
 
 
+FileInfoMap = Dict[str, FileInfoModel]
+
+
 __all__ = [
     "DownloadTask",
     "ArtifactFile",
@@ -309,5 +347,8 @@ __all__ = [
     "ArtifactJsonResponse",
     "ArtifactData",
     "ContentData",
+    "ExtraArtifactRef",
+    "FileInfoMap",
     "FileInfoModel",
+    "PulpContentRow",
 ]

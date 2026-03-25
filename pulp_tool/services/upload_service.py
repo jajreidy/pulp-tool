@@ -23,7 +23,7 @@ from ..models.pulp_api import TaskResponse
 from ..models.context import UploadContext, UploadRpmContext
 from ..models.repository import RepositoryRefs
 from ..models.results import PulpResultsModel
-from ..models.artifacts import FileInfoModel
+from ..models.artifacts import ContentData, ExtraArtifactRef, FileInfoMap, FileInfoModel, PulpContentRow
 
 if TYPE_CHECKING:
     from ..api.pulp_client import PulpClient
@@ -124,6 +124,9 @@ def upload_sbom(
     date: str,
     results_model: PulpResultsModel,
     sbom_path: str,
+    *,
+    distribution_urls: Optional[Dict[str, str]] = None,
+    target_arch_repo: bool = False,
 ) -> List[str]:
     """
     Upload SBOM file to repository.
@@ -159,19 +162,29 @@ def upload_sbom(
     # Update upload counts
     results_model.uploaded_counts.sboms += 1
 
+    if distribution_urls is not None:
+        rel_path: Optional[str] = None
+        if task_response.result and isinstance(task_response.result, dict):
+            rel_path = task_response.result.get("relative_path")
+        if not rel_path:
+            rel_path = os.path.basename(sbom_path)
+        client.add_uploaded_artifact_to_results_model(
+            results_model,
+            local_path=sbom_path,
+            labels=labels,
+            is_rpm=False,
+            distribution_urls=distribution_urls,
+            target_arch_repo=target_arch_repo,
+            file_relative_path=rel_path,
+        )
+
     # Return the created resources from the task
     return task_response.created_resources
 
 
 def _distribution_urls_for_context(helper: PulpHelper, build_id: str, context: UploadContext) -> Dict[str, str]:
     """Resolve distribution URL map for results JSON (per-arch vs signed aggregate RPM base)."""
-    target_arch = bool(getattr(context, "target_arch_repo", False))
-    signed_by = getattr(context, "signed_by", None)
-    if target_arch:
-        return helper.get_distribution_urls(build_id, target_arch_repo=True)
-    if signed_by and str(signed_by).strip():
-        return helper.get_distribution_urls(build_id, include_signed_rpm_distro=True)
-    return helper.get_distribution_urls(build_id)
+    return helper.get_distribution_urls_for_upload_context(build_id, context)
 
 
 def _classify_artifact_from_key(key: str) -> str:
@@ -219,6 +232,7 @@ def process_uploads_from_results_json(
     from ..utils.uploads import upload_rpms, upload_log
 
     helper = pulp_helper or PulpHelper(client, parent_package=context.parent_package)
+    distribution_urls = helper.get_distribution_urls_for_upload_context(context.build_id, context)
 
     if not context.results_json:
         return None
@@ -324,6 +338,8 @@ def process_uploads_from_results_json(
                 rpm_repository_href=arch_href,
                 date=date_str,
                 results_model=results_model,
+                distribution_urls=distribution_urls,
+                target_arch_repo=context.target_arch_repo,
             )
         )
 
@@ -338,13 +354,25 @@ def process_uploads_from_results_json(
             build_id=context.build_id,
             labels=log_labels,
             arch=arch,
+            results_model=results_model,
+            distribution_urls=distribution_urls,
+            target_arch_repo=context.target_arch_repo,
         )
         created_resources.extend(log_resources)
         results_model.uploaded_counts.logs += 1
 
     # Upload SBOMs
     for sbom_path in sboms_to_upload:
-        sbom_resources = upload_sbom(client, context, sbom_prn, date_str, results_model, sbom_path)
+        sbom_resources = upload_sbom(
+            client,
+            context,
+            sbom_prn,
+            date_str,
+            results_model,
+            sbom_path,
+            distribution_urls=distribution_urls,
+            target_arch_repo=context.target_arch_repo,
+        )
         created_resources.extend(sbom_resources)
 
     # Upload generic artifacts
@@ -358,8 +386,21 @@ def process_uploads_from_results_json(
         if task_response.created_resources:
             created_resources.extend(task_response.created_resources)
         results_model.uploaded_counts.files += 1
+        if distribution_urls is not None:
+            fn = os.path.basename(file_path)
+            arch_part = labels.get("arch") or None
+            rel_path = f"{arch_part}/{fn}" if arch_part else fn
+            client.add_uploaded_artifact_to_results_model(
+                results_model,
+                local_path=file_path,
+                labels=labels,
+                is_rpm=False,
+                distribution_urls=distribution_urls,
+                target_arch_repo=context.target_arch_repo,
+                file_relative_path=rel_path,
+            )
 
-    extra_artifacts = [{"pulp_href": href} for href in created_resources]
+    extra_artifacts = [ExtraArtifactRef(pulp_href=href) for href in created_resources]
     return collect_results(client, context, date_str, results_model, extra_artifacts)
 
 
@@ -501,8 +542,8 @@ def _extract_results_url(client: "PulpClient", context: UploadContext, task_resp
 
 
 def _gather_and_validate_content(
-    client: "PulpClient", context: UploadContext, extra_artifacts: Optional[List[Dict[str, str]]]
-) -> Any:
+    client: "PulpClient", context: UploadContext, extra_artifacts: Optional[List[ExtraArtifactRef]]
+) -> Optional[ContentData]:
     """
     Gather content data and validate it's not empty.
 
@@ -531,7 +572,7 @@ def _gather_and_validate_content(
     return content_data
 
 
-def _build_artifact_map(client: "PulpClient", content_results: List[Dict[str, Any]]) -> Dict[str, FileInfoModel]:
+def _build_artifact_map(client: "PulpClient", content_results: List[PulpContentRow]) -> FileInfoMap:
     """
     Build map of artifact hrefs to file information.
 
@@ -548,14 +589,14 @@ def _build_artifact_map(client: "PulpClient", content_results: List[Dict[str, An
     artifact_hrefs = [
         {"pulp_href": artifact_href}
         for content in content_results
-        for artifact_href in content.get("artifacts", {}).values()
+        for artifact_href in (content.artifacts or {}).values()
         if artifact_href and "/artifacts/" in artifact_href
     ]
 
     logging.info("Extracted %d artifact hrefs to query for file locations", len(artifact_hrefs))
 
     # Get file locations for valid artifact hrefs
-    file_info_map: Dict[str, FileInfoModel] = {}
+    file_info_map: FileInfoMap = {}
     if artifact_hrefs:
         logging.debug("Querying file locations for artifact hrefs: %s", [a["pulp_href"] for a in artifact_hrefs[:3]])
         file_locations_json = client.get_file_locations(artifact_hrefs).json()["results"]
@@ -579,8 +620,8 @@ def _build_artifact_map(client: "PulpClient", content_results: List[Dict[str, An
 def _populate_results_model(
     client: "PulpClient",
     results_model: PulpResultsModel,
-    content_results: list,
-    file_info_map: Dict[str, FileInfoModel],
+    content_results: List[PulpContentRow],
+    file_info_map: FileInfoMap,
     context: "UploadContext",
 ) -> None:
     """
@@ -604,6 +645,7 @@ def _populate_results_model(
         file_info_map,
         distribution_urls,
         target_arch_repo=target_arch_repo,
+        merge=True,
     )
 
 
@@ -635,7 +677,7 @@ def collect_results(
     context: UploadContext,
     date: str,
     results_model: PulpResultsModel,
-    extra_artifacts: Optional[List[Dict[str, str]]] = None,
+    extra_artifacts: Optional[List[ExtraArtifactRef]] = None,
 ) -> Optional[str]:
     """
     Collect results and upload JSON directly from memory.
@@ -669,12 +711,19 @@ def collect_results(
         return str(output_path) if output_path else None
 
     if not content_data:
+        if results_model.artifact_count or results_model.distributions:
+            logging.info("No gathered content; using incrementally populated results model only")
+            _add_distributions_to_results(client, context, results_model)
+            json_content = _serialize_results_to_json(results_model.to_json_dict())
+            return _upload_and_get_results_url(
+                client, context, results_model.repositories.artifacts_prn, json_content, date
+            )
         return None
 
     # Build artifact map
     file_info_map = _build_artifact_map(client, content_data.content_results)
 
-    # Populate results model
+    # Populate results model (merge skips keys already added during upload)
     _populate_results_model(client, results_model, content_data.content_results, file_info_map, context)
 
     # Add distribution URLs

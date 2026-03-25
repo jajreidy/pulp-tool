@@ -4,7 +4,7 @@ from unittest.mock import patch
 
 from pulp_tool.utils import PulpHelper
 from pulp_tool.models.context import UploadFilesContext, UploadRpmContext
-from pulp_tool.models.results import PulpResultsModel
+from pulp_tool.models.results import PulpResultsModel, RpmUploadResult
 from pulp_tool.models.repository import RepositoryRefs
 
 
@@ -37,8 +37,12 @@ class TestPulpHelperUploadMethods:
 
         results_model = PulpResultsModel(build_id="test-build", repositories=repositories)
 
-        with patch.object(helper._upload_orchestrator, "process_architecture_uploads") as mock_process:
-            mock_process.return_value = {"x86_64": {}}
+        with (
+            patch.object(helper, "get_distribution_urls_for_upload_context", return_value={"rpms": "https://x/"}),
+            patch.object(helper._upload_orchestrator, "process_architecture_uploads") as mock_process,
+        ):
+            rpm_res = RpmUploadResult()
+            mock_process.return_value = {"x86_64": rpm_res}
 
             result = helper.process_architecture_uploads(
                 mock_pulp_client,
@@ -49,7 +53,7 @@ class TestPulpHelperUploadMethods:
                 results_model=results_model,
             )
 
-            assert result == {"x86_64": {}}
+            assert result == {"x86_64": rpm_res}
             mock_process.assert_called_once_with(
                 mock_pulp_client,
                 args,
@@ -57,8 +61,49 @@ class TestPulpHelperUploadMethods:
                 date_str="2024-01-01",
                 rpm_href="/test/",
                 results_model=results_model,
+                distribution_urls={"rpms": "https://x/"},
                 pulp_helper=helper,
+                target_arch_repo=False,
             )
+
+    def test_get_distribution_urls_for_upload_context_target_arch_repo_branch(self, mock_pulp_client):
+        """target_arch_repo=True calls get_distribution_urls with target_arch_repo=True (line 115)."""
+        helper = PulpHelper(mock_pulp_client)
+        context = UploadRpmContext(
+            build_id="b123",
+            date_str="2024-01-01 00:00:00",
+            namespace="ns",
+            parent_package="pkg",
+            rpm_path="/r",
+            sbom_path="/s",
+            target_arch_repo=True,
+        )
+
+        with patch.object(helper, "get_distribution_urls", return_value={"rpms": "https://per-arch/"}) as mock_urls:
+            out = helper.get_distribution_urls_for_upload_context("b123", context)
+
+        assert out == {"rpms": "https://per-arch/"}
+        mock_urls.assert_called_once_with("b123", target_arch_repo=True)
+
+    def test_get_distribution_urls_for_upload_context_signed_by_branch(self, mock_pulp_client):
+        """Non-target_arch_repo + non-empty signed_by uses include_signed_rpm_distro."""
+        helper = PulpHelper(mock_pulp_client)
+        context = UploadRpmContext(
+            build_id="b123",
+            date_str="2024-01-01 00:00:00",
+            namespace="ns",
+            parent_package="pkg",
+            rpm_path="/r",
+            sbom_path="/s",
+            signed_by=" signer-key ",
+            target_arch_repo=False,
+        )
+
+        with patch.object(helper, "get_distribution_urls", return_value={"rpms": "https://signed/"}) as mock_urls:
+            out = helper.get_distribution_urls_for_upload_context("b123", context)
+
+        assert out == {"rpms": "https://signed/"}
+        mock_urls.assert_called_once_with("b123", include_signed_rpm_distro=True)
 
     def test_process_uploads(self, mock_pulp_client):
         """Test process_uploads method (line 142)."""

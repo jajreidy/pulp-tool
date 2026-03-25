@@ -21,6 +21,7 @@ import httpx
 from httpx import HTTPError
 
 from pulp_tool.api import PulpClient, OAuth2ClientCredentialsAuth
+from pulp_tool.models.artifacts import ExtraArtifactRef, PulpContentRow
 from pulp_tool.models.pulp_api import RpmDistributionRequest, RpmRepositoryRequest
 
 
@@ -1260,7 +1261,7 @@ class TestPulpClient:
 
         assert len(content_data.content_results) == 1
         assert len(content_data.artifacts) == 1
-        assert content_data.content_results[0]["pulp_href"] == "/pulp/api/v3/content/rpm/packages/12345/"
+        assert content_data.content_results[0].pulp_href == "/pulp/api/v3/content/rpm/packages/12345/"
 
     def test_gather_content_data_no_results(self, mock_pulp_client, httpx_mock):
         """Test gather_content_data method with no results."""
@@ -1281,7 +1282,10 @@ class TestPulpClient:
             "https://pulp.example.com/pulp/api/v3/test-domain/api/v3/content/?pulp_label_select=build_id~test-build-123"
         ).mock(return_value=httpx.Response(200, json=mock_content_data, headers={"content-type": "application/json"}))
 
-        extra_artifacts = [{"file": "/pulp/api/v3/artifacts/67890/"}, {"extra": "/pulp/api/v3/artifacts/99999/"}]
+        extra_artifacts = [
+            ExtraArtifactRef.model_validate({"file": "/pulp/api/v3/artifacts/67890/"}),
+            ExtraArtifactRef.model_validate({"extra": "/pulp/api/v3/artifacts/99999/"}),
+        ]
 
         content_data = mock_pulp_client.gather_content_data("test-build-123", extra_artifacts)
 
@@ -1299,7 +1303,7 @@ class TestPulpClient:
             "?pulp_href__in=/pulp/api/v3/artifacts/67890/"
         ).mock(return_value=httpx.Response(200, json=mock_file_locations))
 
-        content_results = mock_content_data["results"]
+        content_results = [PulpContentRow.model_validate(r) for r in mock_content_data["results"]]
 
         # Create PulpResultsModel
         repositories = RepositoryRefs(
@@ -1324,6 +1328,75 @@ class TestPulpClient:
         # Verify the result uses relative_path as the key
         assert "test-build-123/x86_64/test-package.rpm" in result.artifacts
 
+    def test_build_results_structure_merge_preserves_incremental_and_adds_new(
+        self, mock_pulp_client, mock_content_data
+    ):
+        """merge=True keeps existing artifact entries; still adds keys from gather."""
+        from pulp_tool.models import PulpResultsModel, RepositoryRefs, FileInfoModel
+
+        base = mock_content_data["results"][0]
+        labels = dict(base["pulp_labels"])
+        content_results = [
+            PulpContentRow.model_validate(
+                {
+                    **base,
+                    "artifacts": {
+                        "test-build-123/x86_64/test-package.rpm": "/pulp/api/v3/artifacts/67890/",
+                        "test-build-123/x86_64/extra.rpm": "/pulp/api/v3/artifacts/11111/",
+                    },
+                }
+            )
+        ]
+
+        repositories = RepositoryRefs(
+            rpms_href="/rpms/",
+            rpms_prn="rpms-prn",
+            logs_href="/logs/",
+            logs_prn="logs-prn",
+            sbom_href="/sbom/",
+            sbom_prn="sbom-prn",
+            artifacts_href="/artifacts/",
+            artifacts_prn="artifacts-prn",
+        )
+        results_model = PulpResultsModel(build_id="test-build-123", repositories=repositories)
+        inc_url = "https://incremental.example/test-package.rpm"
+        results_model.add_artifact(
+            "test-build-123/x86_64/test-package.rpm",
+            inc_url,
+            "incremental-sha",
+            labels,
+        )
+
+        file_info_map = {
+            "/pulp/api/v3/artifacts/67890/": FileInfoModel(
+                pulp_href="/pulp/api/v3/artifacts/67890/",
+                file="test-package.rpm@sha256:gather67890",
+                sha256="gather67890",
+            ),
+            "/pulp/api/v3/artifacts/11111/": FileInfoModel(
+                pulp_href="/pulp/api/v3/artifacts/11111/",
+                file="extra.rpm@sha256:gather11111",
+                sha256="gather11111",
+            ),
+        }
+        distribution_urls = {"rpms": "https://pulp.example.com/pulp/content/test-build/rpms/"}
+
+        with patch("pulp_tool.api.pulp_client.logging") as mock_logging:
+            result = mock_pulp_client.build_results_structure(
+                results_model,
+                content_results,
+                file_info_map,
+                distribution_urls,
+                merge=True,
+            )
+
+        assert result.artifact_count == 2
+        assert result.artifacts["test-build-123/x86_64/test-package.rpm"].url == inc_url
+        assert result.artifacts["test-build-123/x86_64/test-package.rpm"].sha256 == "incremental-sha"
+        assert "test-build-123/x86_64/extra.rpm" in result.artifacts
+        warn_msgs = [str(c) for c in mock_logging.warning.call_args_list]
+        assert any("differs from incremental" in m for m in warn_msgs)
+
     def test_build_results_structure_invalid_artifact_href(self, mock_pulp_client, mock_content_data, httpx_mock):
         """Test build_results_structure with invalid artifact hrefs (line 1249)."""
         from pulp_tool.models import PulpResultsModel, RepositoryRefs, FileInfoModel
@@ -1342,17 +1415,19 @@ class TestPulpClient:
 
         # Content with invalid artifact hrefs (no "/artifacts/" in href)
         content_results = [
-            {
-                "pulp_href": "/content/123/",
-                "pulp_labels": {"build_id": "test-build-123"},
-                "artifacts": {
-                    "valid.rpm": "/pulp/api/v3/artifacts/67890/",  # Valid
-                    "invalid1.txt": "/content/invalid/",  # Invalid - no "/artifacts/"
-                    "invalid2.txt": "",  # Invalid - empty
-                    "invalid3.txt": None,  # Invalid - None
-                },
-                "relative_path": "test-package.rpm",
-            }
+            PulpContentRow.model_validate(
+                {
+                    "pulp_href": "/content/123/",
+                    "pulp_labels": {"build_id": "test-build-123"},
+                    "artifacts": {
+                        "valid.rpm": "/pulp/api/v3/artifacts/67890/",  # Valid
+                        "invalid1.txt": "/content/invalid/",  # Invalid - no "/artifacts/"
+                        "invalid2.txt": "",  # Invalid - empty
+                        "invalid3.txt": None,  # Invalid - None
+                    },
+                    "relative_path": "test-package.rpm",
+                }
+            )
         ]
 
         file_info = FileInfoModel(
@@ -1386,12 +1461,14 @@ class TestPulpClient:
 
         # Content with multiple artifacts, but file_info_map only has one entry
         content_results = [
-            {
-                "pulp_href": "/content/123/",
-                "pulp_labels": {"build_id": "test-build-123"},
-                "artifacts": {f"file{i}.txt": f"/pulp/api/v3/artifacts/{i}/" for i in range(10)},  # 10 artifacts
-                "relative_path": "test.txt",
-            }
+            PulpContentRow.model_validate(
+                {
+                    "pulp_href": "/content/123/",
+                    "pulp_labels": {"build_id": "test-build-123"},
+                    "artifacts": {f"file{i}.txt": f"/pulp/api/v3/artifacts/{i}/" for i in range(10)},  # 10 artifacts
+                    "relative_path": "test.txt",
+                }
+            )
         ]
 
         # Only provide file_info for first artifact
@@ -1675,3 +1752,48 @@ class TestPulpClientAdditional:
         """Test repository_operation method with invalid operation."""
         with pytest.raises(ValueError, match="Unknown operation"):
             mock_pulp_client.repository_operation("invalid", "rpm", name="test")
+
+    def test_add_uploaded_artifact_to_results_model_rpm_key_is_basename(self, mock_pulp_client, tmp_path):
+        """RPM incremental path uses basename as artifact key (is_rpm branch)."""
+        from pulp_tool.models import PulpResultsModel, RepositoryRefs
+
+        rpm_path = tmp_path / "my-pkg-1.0-1.x86_64.rpm"
+        rpm_path.write_bytes(b"rpm-bytes")
+
+        repositories = RepositoryRefs(
+            rpms_href="/rpms/",
+            rpms_prn="rpms-prn",
+            logs_href="/logs/",
+            logs_prn="logs-prn",
+            sbom_href="/sbom/",
+            sbom_prn="sbom-prn",
+            artifacts_href="/artifacts/",
+            artifacts_prn="artifacts-prn",
+        )
+        results_model = PulpResultsModel(build_id="test-build", repositories=repositories)
+        labels = {"build_id": "test-build", "arch": "x86_64"}
+        urls = {"rpms": "https://pulp.example.com/content/test/rpms/"}
+
+        with (
+            patch(
+                "pulp_tool.api.pulp_client.calculate_sha256_checksum",
+                return_value="a" * 64,
+            ),
+            patch.object(
+                mock_pulp_client,
+                "_build_artifact_distribution_url",
+                return_value="https://dist.example/foo.rpm",
+            ),
+        ):
+            mock_pulp_client.add_uploaded_artifact_to_results_model(
+                results_model,
+                local_path=str(rpm_path),
+                labels=labels,
+                is_rpm=True,
+                distribution_urls=urls,
+            )
+
+        assert "my-pkg-1.0-1.x86_64.rpm" in results_model.artifacts
+        meta = results_model.artifacts["my-pkg-1.0-1.x86_64.rpm"]
+        assert meta.url == "https://dist.example/foo.rpm"
+        assert meta.sha256 == "a" * 64

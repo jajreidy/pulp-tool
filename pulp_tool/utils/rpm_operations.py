@@ -32,7 +32,7 @@ def _create_batches(items: List[str], batch_size: int = BATCH_SIZE) -> Generator
         yield items[i : i + batch_size]
 
 
-def _calculate_sha256_checksum(file_path: str) -> str:
+def calculate_sha256_checksum(file_path: str) -> str:
     """
     Calculate SHA256 checksum of a file.
 
@@ -166,9 +166,9 @@ def upload_rpms_parallel(
     rpms_to_upload: Union[List[str], List[Tuple[str, Dict[str, str], str]]],
     labels: Optional[Dict[str, str]] = None,
     arch: Optional[str] = None,
-) -> List[str]:
+) -> List[Tuple[str, str]]:
     """
-    Upload RPMs in parallel and return artifact hrefs.
+    Upload RPMs in parallel and return (local_path, artifact_href) per successful upload.
 
     This function uploads multiple RPM files concurrently using a thread pool
     for improved performance.
@@ -182,11 +182,11 @@ def upload_rpms_parallel(
         arch: Architecture for all uploaded RPMs (ignored if rpms_to_upload contains tuples)
 
     Returns:
-        List of artifact hrefs for successfully uploaded RPMs
+        List of (local_path, pulp artifact href) for successfully uploaded RPMs
 
     Examples:
         # Old style - all RPMs share same labels and arch
-        >>> hrefs = upload_rpms_parallel(client, ["/path/rpm1.rpm", "/path/rpm2.rpm"],
+        >>> pairs = upload_rpms_parallel(client, ["/path/rpm1.rpm", "/path/rpm2.rpm"],
         ...                              labels={"build_id": "123"}, arch="x86_64")
 
         # New style - each RPM has its own labels and arch
@@ -194,7 +194,7 @@ def upload_rpms_parallel(
         ...     ("/path/rpm1.rpm", {"build_id": "123", "name": "pkg1"}, "x86_64"),
         ...     ("/path/rpm2.rpm", {"build_id": "123", "name": "pkg2"}, "noarch"),
         ... ]
-        >>> hrefs = upload_rpms_parallel(client, rpm_infos)
+        >>> pairs = upload_rpms_parallel(client, rpm_infos)
     """
     if not rpms_to_upload:
         return []
@@ -220,7 +220,7 @@ def upload_rpms_parallel(
         rpm_infos = rpms_to_upload  # type: ignore
         logging.warning("Uploading %d RPM file(s)", len(rpms_to_upload))
 
-    artifacts = []
+    path_href_pairs: List[Tuple[str, str]] = []
     with ThreadPoolExecutor(thread_name_prefix="upload_rpms", max_workers=DEFAULT_MAX_WORKERS) as executor:
         futures = {
             executor.submit(client.upload_content, rpm_path, rpm_labels, file_type="rpm", arch=rpm_arch): rpm_path
@@ -232,15 +232,16 @@ def upload_rpms_parallel(
             logging.warning("Uploading RPM: %s", os.path.basename(rpm_path))
             try:
                 artifact_href = future.result()
-                artifacts.append(artifact_href)
+                path_href_pairs.append((rpm_path, artifact_href))
             except Exception as e:  # pylint: disable=broad-except
                 # Log the error but continue processing other uploads
                 logging.error("Failed to upload %s: %s", rpm_path, e)
 
-    return artifacts
+    return path_href_pairs
 
 
 __all__ = [
+    "calculate_sha256_checksum",
     "parse_rpm_filename_to_nvr",
     "parse_rpm_filename_to_nvra",
     "upload_rpms_parallel",

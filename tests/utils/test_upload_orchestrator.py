@@ -13,6 +13,14 @@ from pulp_tool.models.repository import RepositoryRefs
 from pulp_tool.models.results import PulpResultsModel, RpmUploadResult
 from pulp_tool.utils.upload_orchestrator import UploadOrchestrator
 
+# Stub map for process_file_uploads tests (PulpHelper.get_distribution_urls_for_upload_context).
+_PROCESS_FILE_UPLOAD_DIST_URLS: Dict[str, str] = {
+    "rpms": "https://example.com/rpms/",
+    "logs": "https://example.com/logs/",
+    "sbom": "https://example.com/sbom/",
+    "artifacts": "https://example.com/artifacts/",
+}
+
 
 class TestUploadOrchestratorFindExistingArchitectures:
     """Tests for UploadOrchestrator._find_existing_architectures() method."""
@@ -100,7 +108,16 @@ class TestUploadOrchestratorSubmitArchitectureTasks:
 
         with patch("pulp_tool.utils.upload_orchestrator.upload_rpms_logs"):
             future_to_arch = orchestrator._submit_architecture_tasks(
-                mock_executor, existing_archs, rpm_path, args, mock_client, rpm_href, logs_prn, date_str, results_model
+                mock_executor,
+                existing_archs,
+                rpm_path,
+                args,
+                mock_client,
+                rpm_href,
+                logs_prn,
+                date_str,
+                results_model,
+                {},
             )
 
             assert len(future_to_arch) == 2
@@ -118,12 +135,11 @@ class TestUploadOrchestratorCollectArchitectureResults:
 
         mock_future1: Future[Any] = Future()
         mock_future2: Future[Any] = Future()
-        mock_result1 = Mock()
-        mock_result1.uploaded_rpms = 5
-        mock_result1.created_resources = ["/resource/1", "/resource/2"]
-        mock_result2 = Mock()
-        mock_result2.uploaded_rpms = 3
-        mock_result2.created_resources = ["/resource/3"]
+        mock_result1 = RpmUploadResult(
+            uploaded_rpms=["a", "b", "c", "d", "e"],
+            created_resources=["/resource/1", "/resource/2"],
+        )
+        mock_result2 = RpmUploadResult(uploaded_rpms=["x", "y", "z"], created_resources=["/resource/3"])
 
         # Set results for futures
         mock_future1.set_result(mock_result1)
@@ -136,10 +152,10 @@ class TestUploadOrchestratorCollectArchitectureResults:
 
             assert "x86_64" in result
             assert "aarch64" in result
-            assert result["x86_64"]["uploaded_rpms"] == 5
-            assert result["aarch64"]["uploaded_rpms"] == 3
-            assert len(result["x86_64"]["created_resources"]) == 2
-            assert len(result["aarch64"]["created_resources"]) == 1
+            assert len(result["x86_64"].uploaded_rpms) == 5
+            assert len(result["aarch64"].uploaded_rpms) == 3
+            assert len(result["x86_64"].created_resources) == 2
+            assert len(result["aarch64"].created_resources) == 1
             # Verify debug logging
             mock_logging.debug.assert_called()
 
@@ -164,9 +180,7 @@ class TestUploadOrchestratorCollectArchitectureResults:
         orchestrator = UploadOrchestrator()
 
         mock_future: Future[Any] = Future()
-        mock_result = Mock()
-        mock_result.uploaded_rpms = 5
-        mock_result.created_resources = []
+        mock_result = RpmUploadResult(uploaded_rpms=["p"] * 5, created_resources=[])
         mock_future.set_result(mock_result)
 
         future_to_arch = {mock_future: "x86_64"}
@@ -219,7 +233,8 @@ class TestUploadOrchestratorProcessArchitectureUploads:
                 mock_future1 = Mock()
                 mock_future2 = Mock()
                 mock_submit.return_value = {mock_future1: "x86_64", mock_future2: "aarch64"}
-                mock_collect.return_value = {"x86_64": {}, "aarch64": {}}
+                arch64 = RpmUploadResult()
+                mock_collect.return_value = {"x86_64": RpmUploadResult(), "aarch64": arch64}
 
                 result = orchestrator.process_architecture_uploads(
                     mock_client,
@@ -228,9 +243,12 @@ class TestUploadOrchestratorProcessArchitectureUploads:
                     date_str="2024-01-01",
                     rpm_href="/test/",
                     results_model=results_model,
+                    distribution_urls={"rpms": "https://example.com/rpms/"},
                 )
 
-                assert result == {"x86_64": {}, "aarch64": {}}
+                assert set(result.keys()) == {"x86_64", "aarch64"}
+                assert all(isinstance(v, RpmUploadResult) for v in result.values())
+                assert result["aarch64"] is arch64
                 mock_submit.assert_called_once()
                 mock_collect.assert_called_once()
 
@@ -276,7 +294,9 @@ class TestUploadOrchestratorProcessArchitectureUploads:
                         repositories.logs_prn,
                         "2024-01-01",
                         results_model,
+                        {"logs": "https://example.com/logs/"},
                         pulp_helper=mock_helper,
+                        target_arch_repo=True,
                     )
                     for fut in future_to_arch:
                         fut.result()
@@ -319,6 +339,7 @@ class TestUploadOrchestratorProcessArchitectureUploads:
                     date_str="2024-01-01",
                     rpm_href="/test/",
                     results_model=results_model,
+                    distribution_urls={},
                 )
 
                 assert result == {}
@@ -357,6 +378,7 @@ class TestUploadOrchestratorProcessArchitectureUploads:
                 date_str="2024-01-01",
                 rpm_href="/test/",
                 results_model=results_model,
+                distribution_urls={},
             )
 
             assert result == {}
@@ -391,16 +413,23 @@ class TestUploadOrchestratorProcessUploads:
         )
 
         mock_processed_uploads = {
-            "x86_64": {"created_resources": ["/resource/1", "/resource/2"]},
-            "aarch64": {"created_resources": ["/resource/3"]},
+            "x86_64": RpmUploadResult(created_resources=["/resource/1", "/resource/2"]),
+            "aarch64": RpmUploadResult(created_resources=["/resource/3"]),
         }
 
         with (
+            patch("pulp_tool.utils.pulp_helper.PulpHelper") as mock_ph_cls,
             patch.object(orchestrator, "process_architecture_uploads", return_value=mock_processed_uploads),
             patch("pulp_tool.services.upload_service.upload_sbom", return_value=["/sbom/resource/1"]),
             patch("pulp_tool.services.upload_service.collect_results", return_value="https://example.com/results.json"),
             patch("pulp_tool.utils.upload_orchestrator.logging") as mock_logging,
         ):
+            mock_ph_cls.return_value.get_distribution_urls_for_upload_context.return_value = {
+                "rpms": "https://example.com/rpms/",
+                "logs": "https://example.com/logs/",
+                "sbom": "https://example.com/sbom/",
+                "artifacts": "https://example.com/artifacts/",
+            }
             result = orchestrator.process_uploads(mock_client, args, repositories)
 
             assert result == "https://example.com/results.json"
@@ -459,16 +488,21 @@ class TestUploadOrchestratorProcessUploads:
             artifacts_prn="",
         )
 
-        mock_processed_uploads: Dict[str, Dict[str, list[str]]] = {
-            "x86_64": {"created_resources": []},
-        }
+        mock_processed_uploads: Dict[str, RpmUploadResult] = {"x86_64": RpmUploadResult()}
 
         with (
+            patch("pulp_tool.utils.pulp_helper.PulpHelper") as mock_ph_cls,
             patch.object(orchestrator, "process_architecture_uploads", return_value=mock_processed_uploads),
             patch("pulp_tool.services.upload_service.upload_sbom", return_value=[]),
             patch("pulp_tool.services.upload_service.collect_results", return_value="https://example.com/results.json"),
             patch("pulp_tool.utils.upload_orchestrator.logging") as mock_logging,
         ):
+            mock_ph_cls.return_value.get_distribution_urls_for_upload_context.return_value = {
+                "rpms": "https://example.com/rpms/",
+                "logs": "https://example.com/logs/",
+                "sbom": "https://example.com/sbom/",
+                "artifacts": "https://example.com/artifacts/",
+            }
             result = orchestrator.process_uploads(mock_client, args, repositories)
 
             assert result == "https://example.com/results.json"
@@ -499,15 +533,22 @@ class TestUploadOrchestratorProcessUploads:
             artifacts_prn="",
         )
 
-        mock_processed_uploads: Dict[str, Dict[str, list[str]]] = {
-            "x86_64": {"created_resources": ["/resource/1"]},
+        mock_processed_uploads: Dict[str, RpmUploadResult] = {
+            "x86_64": RpmUploadResult(created_resources=["/resource/1"]),
         }
 
         with (
+            patch("pulp_tool.utils.pulp_helper.PulpHelper") as mock_ph_cls,
             patch.object(orchestrator, "process_architecture_uploads", return_value=mock_processed_uploads),
             patch("pulp_tool.services.upload_service.collect_results", return_value="https://example.com/results.json"),
             patch("pulp_tool.utils.upload_orchestrator.logging") as mock_logging,
         ):
+            mock_ph_cls.return_value.get_distribution_urls_for_upload_context.return_value = {
+                "rpms": "https://example.com/rpms/",
+                "logs": "https://example.com/logs/",
+                "sbom": "https://example.com/sbom/",
+                "artifacts": "https://example.com/artifacts/",
+            }
             result = orchestrator.process_uploads(mock_client, args, repositories)
 
             assert result == "https://example.com/results.json"
@@ -540,10 +581,11 @@ class TestUploadOrchestratorProcessUploads:
             artifacts_prn="",
         )
 
-        mock_processed_uploads: Dict[str, Dict[str, list[str]]] = {"x86_64": {"created_resources": []}}
+        mock_processed_uploads: Dict[str, RpmUploadResult] = {"x86_64": RpmUploadResult()}
         root_rpm_files = ["/test/rpms/pkg.noarch.rpm"]
 
         with (
+            patch("pulp_tool.utils.pulp_helper.PulpHelper") as mock_ph_cls,
             patch.object(orchestrator, "process_architecture_uploads", return_value=mock_processed_uploads),
             patch("pulp_tool.utils.upload_orchestrator.glob.glob", return_value=root_rpm_files),
             patch("pulp_tool.utils.upload_orchestrator.os.path.isfile", return_value=True),
@@ -558,6 +600,12 @@ class TestUploadOrchestratorProcessUploads:
             patch("pulp_tool.services.upload_service.upload_sbom", return_value=[]),
             patch("pulp_tool.services.upload_service.collect_results", return_value="https://example.com/results.json"),
         ):
+            mock_ph_cls.return_value.get_distribution_urls_for_upload_context.return_value = {
+                "rpms": "https://example.com/rpms/",
+                "logs": "https://example.com/logs/",
+                "sbom": "https://example.com/sbom/",
+                "artifacts": "https://example.com/artifacts/",
+            }
             result = orchestrator.process_uploads(mock_client, args, repositories)
 
             assert result == "https://example.com/results.json"
@@ -592,8 +640,14 @@ class TestUploadOrchestratorProcessUploads:
         )
         mock_helper = Mock()
         mock_helper.ensure_rpm_repository_for_arch.return_value = "/per-arch/href"
+        mock_helper.get_distribution_urls_for_upload_context.return_value = {
+            "rpms": "https://example.com/rpms/",
+            "logs": "https://example.com/logs/",
+            "sbom": "https://example.com/sbom/",
+            "artifacts": "https://example.com/artifacts/",
+        }
 
-        mock_processed_uploads: Dict[str, Dict[str, list[str]]] = {"x86_64": {"created_resources": []}}
+        mock_processed_uploads: Dict[str, RpmUploadResult] = {"x86_64": RpmUploadResult()}
         root_rpm_files = ["/test/rpms/pkg.noarch.rpm"]
 
         with (
@@ -654,6 +708,7 @@ class TestUploadOrchestratorProcessUploads:
                     date_str="2024-01-01",
                     rpm_href="",
                     results_model=results_model,
+                    distribution_urls={},
                     pulp_helper=None,
                 )
 
@@ -722,6 +777,7 @@ class TestUploadOrchestratorProcessFileUploads:
         )
 
         with (
+            patch("pulp_tool.utils.pulp_helper.PulpHelper") as mock_ph_cls,
             patch("pulp_tool.utils.upload_orchestrator.upload_rpms", return_value=["/rpm/resource/1"]),
             patch("pulp_tool.utils.upload_orchestrator.upload_log", return_value=["/log/resource/1"]),
             patch("pulp_tool.services.upload_service.upload_sbom", return_value=["/sbom/resource/1"]),
@@ -732,6 +788,9 @@ class TestUploadOrchestratorProcessFileUploads:
             patch.object(mock_client, "check_response"),
             patch.object(mock_client, "wait_for_finished_task") as mock_wait,
         ):
+            mock_ph_cls.return_value.get_distribution_urls_for_upload_context.return_value = (
+                _PROCESS_FILE_UPLOAD_DIST_URLS
+            )
             mock_response = Mock()
             mock_response.json.return_value = {"task": "/api/v3/tasks/123/"}
             mock_create.return_value = mock_response
@@ -770,6 +829,7 @@ class TestUploadOrchestratorProcessFileUploads:
         )
 
         with (
+            patch("pulp_tool.utils.pulp_helper.PulpHelper") as mock_ph_cls,
             patch("pulp_tool.utils.artifact_detection.detect_arch_from_filepath", side_effect=["x86_64", None]),
             patch(
                 "pulp_tool.utils.artifact_detection.detect_arch_from_rpm_filename",
@@ -784,6 +844,9 @@ class TestUploadOrchestratorProcessFileUploads:
                 return_value="https://example.com/results.json",
             ),
         ):
+            mock_ph_cls.return_value.get_distribution_urls_for_upload_context.return_value = (
+                _PROCESS_FILE_UPLOAD_DIST_URLS
+            )
             result = orchestrator.process_file_uploads(mock_client, context, repositories)
 
             assert result == "https://example.com/results.json"
@@ -814,12 +877,16 @@ class TestUploadOrchestratorProcessFileUploads:
         )
 
         with (
+            patch("pulp_tool.utils.pulp_helper.PulpHelper") as mock_ph_cls,
             patch("pulp_tool.utils.artifact_detection.detect_arch_from_filepath", return_value=None),
             patch("pulp_tool.utils.artifact_detection.detect_arch_from_rpm_filename", return_value=None),
             patch("pulp_tool.utils.upload_orchestrator.upload_rpms") as mock_upload_rpms,
             patch("pulp_tool.services.upload_service.collect_results", return_value="https://example.com/results.json"),
             patch("pulp_tool.utils.artifact_detection.logging") as mock_logging,
         ):
+            mock_ph_cls.return_value.get_distribution_urls_for_upload_context.return_value = (
+                _PROCESS_FILE_UPLOAD_DIST_URLS
+            )
             result = orchestrator.process_file_uploads(mock_client, context, repositories)
 
             assert result == "https://example.com/results.json"
@@ -853,6 +920,7 @@ class TestUploadOrchestratorProcessFileUploads:
         )
 
         with (
+            patch("pulp_tool.utils.pulp_helper.PulpHelper") as mock_ph_cls,
             patch(
                 "pulp_tool.utils.upload_orchestrator.upload_rpms",
                 return_value=["/rpm/resource/1"],
@@ -862,6 +930,9 @@ class TestUploadOrchestratorProcessFileUploads:
                 return_value="https://example.com/results.json",
             ),
         ):
+            mock_ph_cls.return_value.get_distribution_urls_for_upload_context.return_value = (
+                _PROCESS_FILE_UPLOAD_DIST_URLS
+            )
             result = orchestrator.process_file_uploads(mock_client, context, repositories)
 
             assert result == "https://example.com/results.json"
@@ -894,6 +965,7 @@ class TestUploadOrchestratorProcessFileUploads:
         )
 
         with (
+            patch("pulp_tool.utils.pulp_helper.PulpHelper") as mock_ph_cls,
             patch("pulp_tool.utils.artifact_detection.detect_arch_from_filepath", return_value="x86_64"),
             patch(
                 "pulp_tool.utils.upload_orchestrator.upload_log",
@@ -905,6 +977,9 @@ class TestUploadOrchestratorProcessFileUploads:
             ),
             patch("pulp_tool.utils.upload_orchestrator.create_labels"),
         ):
+            mock_ph_cls.return_value.get_distribution_urls_for_upload_context.return_value = (
+                _PROCESS_FILE_UPLOAD_DIST_URLS
+            )
             result = orchestrator.process_file_uploads(mock_client, context, repositories)
 
             assert result == "https://example.com/results.json"
@@ -937,6 +1012,7 @@ class TestUploadOrchestratorProcessFileUploads:
         )
 
         with (
+            patch("pulp_tool.utils.pulp_helper.PulpHelper") as mock_ph_cls,
             patch("pulp_tool.utils.artifact_detection.detect_arch_from_filepath", return_value=None),
             patch("pulp_tool.utils.upload_orchestrator.upload_log") as mock_upload_log,
             patch(
@@ -945,6 +1021,9 @@ class TestUploadOrchestratorProcessFileUploads:
             ),
             patch("pulp_tool.utils.upload_orchestrator.logging") as mock_logging,
         ):
+            mock_ph_cls.return_value.get_distribution_urls_for_upload_context.return_value = (
+                _PROCESS_FILE_UPLOAD_DIST_URLS
+            )
             result = orchestrator.process_file_uploads(mock_client, context, repositories)
 
             assert result == "https://example.com/results.json"
@@ -981,6 +1060,7 @@ class TestUploadOrchestratorProcessFileUploads:
         )
 
         with (
+            patch("pulp_tool.utils.pulp_helper.PulpHelper") as mock_ph_cls,
             patch(
                 "pulp_tool.utils.upload_orchestrator.upload_log",
                 return_value=["/log/resource/1"],
@@ -991,6 +1071,9 @@ class TestUploadOrchestratorProcessFileUploads:
             ),
             patch("pulp_tool.utils.upload_orchestrator.create_labels"),
         ):
+            mock_ph_cls.return_value.get_distribution_urls_for_upload_context.return_value = (
+                _PROCESS_FILE_UPLOAD_DIST_URLS
+            )
             result = orchestrator.process_file_uploads(mock_client, context, repositories)
 
             assert result == "https://example.com/results.json"
@@ -1026,6 +1109,7 @@ class TestUploadOrchestratorProcessFileUploads:
         )
 
         with (
+            patch("pulp_tool.utils.pulp_helper.PulpHelper") as mock_ph_cls,
             patch("pulp_tool.utils.artifact_detection.detect_arch_from_filepath", return_value=None),
             patch(
                 "pulp_tool.utils.artifact_detection.detect_arch_from_rpm_filename",
@@ -1040,6 +1124,9 @@ class TestUploadOrchestratorProcessFileUploads:
                 return_value="https://example.com/results.json",
             ),
         ):
+            mock_ph_cls.return_value.get_distribution_urls_for_upload_context.return_value = (
+                _PROCESS_FILE_UPLOAD_DIST_URLS
+            )
             result = orchestrator.process_file_uploads(mock_client, context, repositories)
 
             assert result == "https://example.com/results.json"

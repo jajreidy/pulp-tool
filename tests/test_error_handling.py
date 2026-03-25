@@ -480,6 +480,7 @@ class TestEdgeCases:
     def test_build_results_structure_edge_cases(self, mock_config):
         """Test build_results_structure method with edge cases."""
         from pulp_tool.models import PulpResultsModel, RepositoryRefs
+        from pulp_tool.models.artifacts import PulpContentRow
 
         client = PulpClient(mock_config)
 
@@ -502,13 +503,13 @@ class TestEdgeCases:
 
         # Test with content_results but empty file_info_map
         results_model = PulpResultsModel(build_id="test-build", repositories=repositories)
-        content_results = [{"artifacts": {"file": "/pulp/api/v3/artifacts/12345/"}}]
+        content_results = [PulpContentRow.model_validate({"artifacts": {"file": "/pulp/api/v3/artifacts/12345/"}})]
         result = client.build_results_structure(results_model, content_results, {})
         assert result.artifact_count == 0
 
         # Test with content_results missing artifacts
         results_model = PulpResultsModel(build_id="test-build", repositories=repositories)
-        content_results = [{"pulp_labels": {"build_id": "test"}}]
+        content_results = [PulpContentRow.model_validate({"pulp_labels": {"build_id": "test"}})]
         result = client.build_results_structure(results_model, content_results, {})
         assert result.artifact_count == 0
 

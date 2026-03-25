@@ -1,11 +1,11 @@
 ---
-description: LLM-assisted development guidelines for pulp-tool (lint, format, pre-commit, test, 100% coverage)
+description: LLM-assisted development guidelines for pulp-tool (lint, pre-commit until clean, tests until green, 100% diff coverage, CHANGELOG only when drafting PR, ask before PR text)
 alwaysApply: true
 ---
 
 # LLM-Assisted Development Guidelines
 
-This document provides essential guidelines for LLM-assisted development in the pulp-tool repository. It emphasizes code quality, linting, and pre-commit hooks to ensure changes pass CI/CD pipelines on the first attempt.
+This document provides essential guidelines for LLM-assisted development in the pulp-tool repository. It emphasizes **iterating** pre-commit and tests until everything is green (including **100% diff coverage**), **asking** before drafting GitHub PR text, and updating **`CHANGELOG.md` only when drafting that PR**—so iterative debugging stays lightweight.
 
 ## Purpose
 
@@ -16,6 +16,34 @@ This file is specifically designed for LLM assistants (like Claude, ChatGPT, etc
 - Pre-commit hooks usage
 - Quick reference commands
 - Best practices to avoid pipeline failures
+- Ask before drafting GitHub PR text so iterative work is not noisy; **`CHANGELOG.md` is updated in that same PR-drafting step**, not on every intermediate fix
+
+## GitHub PR description (ask first; generate on confirmation)
+
+To avoid dumping long PR boilerplate on every turn—especially while debugging—**do not** automatically paste a full PR body at the end of every response.
+
+When the turn involved **substantive code or repository changes** that could become a PR, **end with a short question**, for example: *“Are you ready for a paste-ready GitHub PR description?”* or *“Want me to draft the PR title/body next?”*
+
+- **Only after the user confirms** (in the same thread or a follow-up message), provide a paste-ready PR description **and**, if applicable, apply the `CHANGELOG.md` edits for that PR in the same turn.
+
+When you do generate it, use a clear heading such as `### PR description (GitHub)` and write in **complete sentences** with good grammar. Include whatever applies:
+
+- **What**: Concise summary of the change.
+- **Why**: Motivation or problem solved.
+- **How to test**: Commands or scenarios (for example `make lint`, `make test`, manual steps).
+- **Notes for reviewers**: Risks, follow-ups, or design choices (optional).
+
+**`CHANGELOG.md`**: Do **not** add or edit `CHANGELOG.md` while iterating on a fix or feature mid-conversation unless the user explicitly asks. When the user confirms they want PR materials, **then** add `[Unreleased]` entries (if the change is user-facing or notable per CONTRIBUTING) **as part of drafting the PR**—either by editing the file in that turn or listing exact changelog lines in the PR draft for the author to paste.
+
+**Skip** the question when there are no repo edits (pure Q&A, planning only) or the user has clearly said they only want a small fix with no PR.
+
+## Pull requests (GitHub): 100% diff coverage merge gate
+
+**CRITICAL**: In GitHub, a pull request **cannot be merged** unless **diff coverage is 100%** on the lines introduced or modified by that PR (branch vs base). CI reports this as diff / pull-request coverage (for example via `diff-cover` against the merge base).
+
+- Treat **every changed line** in the PR as needing an executing test (unit or integration) on CI’s view of the diff.
+- Project-wide coverage thresholds (for example 85% total) are separate; **the merge blocker is 100% on the PR diff**, not “good enough” overall coverage.
+- If CI fails with incomplete diff coverage, add or extend tests until the PR diff is fully covered—do not rely on “nearby” or incidental coverage from unrelated code.
 
 ## Required Workflow After Making Changes
 
@@ -31,34 +59,23 @@ This file is specifically designed for LLM assistants (like Claude, ChatGPT, etc
    ```bash
    make format
    ```
-5. **Run pre-commit hooks (FIRST TIME)** - Verify hooks pass:
+5. **Run pre-commit until everything passes** - Loop until hooks are fully green:
    ```bash
    pre-commit run --all-files
    ```
-6. **Fix any pre-commit issues** - Address all failures from step 5
-7. **Run pre-commit hooks (SECOND TIME)** - **CRITICAL**: Run again to ensure all issues are resolved:
-   ```bash
-   pre-commit run --all-files
-   ```
-   **This second run is essential** - it catches any issues that may have been missed or introduced during fixes.
-8. **Run ALL tests with coverage** - Ensure functionality works and coverage requirements are met:
+   If any hook fails, fix **all** reported issues, then run `pre-commit run --all-files` again. **Repeat** until one full run completes with **no failures** (not a fixed number of runs—keep going until clean). A second run after fixes is the minimum; often more iterations are needed while fixing.
+6. **Run tests until everything passes** - Full suite with coverage:
    ```bash
    make test
    ```
-   **IMPORTANT**: Run the full test suite, not just specific tests. This ensures no regressions were introduced.
-9. **Fix any test failures** - Address all failing tests before proceeding
-10. **Verify 100% coverage for new changes** - New code must have 100% test coverage:
-    ```bash
-    # Check coverage for changed files
-    python3 -m pytest --cov=pulp_tool --cov-report=term-missing
-    # Review coverage report to ensure new code is fully covered
-    ```
-11. **Re-run tests if fixes were made** - If you fixed any test failures, run the full test suite again:
-    ```bash
-    make test
-    ```
+   **IMPORTANT**: Use the full test suite, not only a single test file, so regressions surface. If anything fails, fix it and **run `make test` again**. **Repeat** until all tests pass.
+7. **Verify 100% diff coverage for GitHub merge** - Every new or changed line in the PR must be executed by tests (CI blocks merge below 100% on the diff). Use coverage output from `make test` and/or:
+   ```bash
+   python3 -m pytest --cov=pulp_tool --cov-report=term-missing
+   ```
+   If the diff is not fully covered, add or extend tests and **return to step 6** until tests pass and the PR diff would satisfy diff coverage.
 
-**Never skip linting, pre-commit checks (both runs), or test execution** - They will fail in CI/CD and waste pipeline resources.
+**Never skip linting, pre-commit (must finish with a fully passing run), or tests (must finish with a fully passing `make test` and diff-ready coverage)** - They will fail in CI/CD and waste pipeline resources.
 
 ## Linting Tools
 
@@ -116,7 +133,7 @@ The repository includes the following pre-commit hooks:
 pre-commit run --all-files
 ```
 
-This runs all hooks on all files and ensures your changes will pass CI/CD checks.
+Run after substantive edits; if anything fails, fix and re-run **until the entire run passes**. Stopping early wastes CI time.
 
 **To run hooks automatically on commit:**
 
@@ -182,7 +199,7 @@ python3 -m pytest tests/path/to/test_file.py -v
 python3 -m pytest --cov=pulp_tool/path/to/module --cov-report=term-missing tests/
 ```
 
-**IMPORTANT**: New changes require **100% test coverage**. Always run `make test` to verify coverage before considering changes complete.
+**IMPORTANT**: New changes require **100% coverage on the PR diff** for GitHub merge. Always run `make test` and confirm your branch would pass diff coverage before opening or updating a PR.
 
 ### Comprehensive Checks
 
@@ -214,12 +231,9 @@ make setup
 # After making changes:
 make lint                    # Check all linters
 make format                  # Fix formatting if needed
-pre-commit run --all-files   # First run - verify hooks pass
-# Fix any issues...
-pre-commit run --all-files   # Second run - CRITICAL: ensure all issues resolved
-make test                    # Run ALL tests - verify tests pass and 100% coverage for new changes
-# Fix any test failures...
-make test                    # Re-run if fixes were made
+# Loop until pre-commit passes completely:
+pre-commit run --all-files   # fix failures → run again → repeat until green
+make test                    # fix failures / coverage → run again → repeat until green
 ```
 
 ### 2. Fix Linting Errors Immediately
@@ -239,26 +253,15 @@ The `Makefile` provides convenient targets for common tasks. Use them instead of
 - `make format` - Consistent formatting across the codebase
 - `make check` - Comprehensive check before committing
 
-### 4. Verify Pre-commit Hooks Pass (Run Twice)
+### 4. Verify Pre-commit Hooks Pass (loop until clean)
 
-Pre-commit hooks catch issues before they reach CI/CD. **Always run hooks twice**:
+Pre-commit hooks catch issues before they reach CI/CD. Run:
 
 ```bash
-# First run - catch initial issues
-pre-commit run --all-files
-
-# Fix any issues found...
-
-# Second run - CRITICAL: verify all issues are resolved
 pre-commit run --all-files
 ```
 
-**Why run twice?** The second run ensures:
-- All fixes were applied correctly
-- No new issues were introduced during fixes
-- The codebase is truly clean and ready for CI/CD
-
-If hooks fail on either run, fix the issues and run again until both runs pass completely.
+**If anything fails**, fix every reported problem, then run `pre-commit run --all-files` again. **Repeat until a full run reports no failures.** Two passes is the usual minimum (find issues, then verify fixes); keep iterating if new failures appear. Do not declare the branch ready for PR until pre-commit completes clean.
 
 ### 5. Check Configuration Files
 
@@ -271,24 +274,24 @@ When in doubt, check the configuration files:
 
 ### 6. Ensure 100% Coverage for New Changes
 
-**CRITICAL**: All new code changes must have 100% test coverage. The CI/CD pipeline enforces this using diff coverage checks.
+**CRITICAL**: All new code changes must have 100% test coverage **on the PR diff**. GitHub merge requires **100% diff coverage** (see **Pull requests (GitHub): 100% diff coverage merge gate** at the start of this document).
 
-- **New code**: Must have 100% test coverage
-- **Modified code**: Must maintain or improve coverage
-- **Overall project**: Must maintain 85%+ coverage
+- **New code**: Must have 100% test coverage on changed lines
+- **Modified code**: Every modified line in the PR must be covered
+- **Overall project**: Must maintain 85%+ coverage (this is not a substitute for 100% diff coverage)
 
-Always run tests with coverage before completing changes:
+Run tests with coverage until the branch is PR-ready:
 
 ```bash
 make test    # Full test suite with coverage (REQUIRED)
 ```
 
-Review the coverage report to ensure all new/modified lines are covered. If coverage is insufficient:
+Review the coverage report for **lines that belong to your PR diff**. If anything is uncovered or tests fail:
 
-1. Write tests for uncovered code paths
-2. Include edge cases and error conditions
-3. Verify all branches and conditions are tested
-4. Re-run `make test` until coverage is 100% for new changes
+1. Fix tests or implementation, add tests for uncovered paths (edge cases, branches, errors)
+2. Re-run `make test` until **all tests pass** and **100% of the diff** is covered (GitHub merge gate).
+
+Treat “green once” as insufficient if a later fix breaks coverage—re-run the full suite after each substantive change.
 
 ### 7. Use Scripts for Comprehensive Checks
 
@@ -300,9 +303,11 @@ The `scripts/check-all.sh` script runs all checks including tests:
 
 This is useful before creating pull requests.
 
-### 8. Update CHANGELOG.md for Merge Requests
+### 8. Update CHANGELOG.md when drafting the PR
 
-**Required**: Every merge request (MR) that introduces user-facing or notable changes must update `CHANGELOG.md`. This is part of the PR checklist in CONTRIBUTING.md.
+**Timing**: Update `CHANGELOG.md` **only when preparing the pull request** (the same user-confirmed step as the GitHub PR description), not during every intermediate code/test iteration. That keeps churn down while debugging.
+
+**Required** for the eventual MR: Every merge request that introduces user-facing or notable changes must update `CHANGELOG.md` (per CONTRIBUTING.md). Do that change **together with** the PR draft once the user says they are ready to open a PR.
 
 - **When to update**: Add entries for new features, behavior changes, fixes, removals, or anything users or maintainers should see in release notes. Trivial typo-only or internal refactors may omit CHANGELOG if there is no user-visible effect.
 - **Where to add entries**: Under the `## [Unreleased]` section at the top of `CHANGELOG.md`.
@@ -345,23 +350,23 @@ Example addition under `[Unreleased]`:
 **Issue**: Pre-commit hooks fail on commit
 
 **Solution**:
-1. Run `pre-commit run --all-files` manually first to catch and fix issues
-2. **CRITICAL**: Run `pre-commit run --all-files` a second time after fixes to ensure all issues are resolved
-3. Only commit when both runs pass completely
+1. Run `pre-commit run --all-files` locally and fix **every** failure the hooks report
+2. Run `pre-commit run --all-files` again; if anything still fails, fix and repeat
+3. Only commit (or treat work as complete) when a full run finishes with **all hooks passed**—not after a single failed-then-partially-fixed attempt
 
 ### Coverage Failures
 
-**Issue**: CI/CD fails with "diff coverage below 100%" error
+**Issue**: CI/CD or GitHub fails with “diff coverage below 100%” (or the PR cannot merge until diff coverage is complete).
 
-**Solution**: New code changes require 100% test coverage. Ensure all new/modified code paths are tested:
+**Solution**: The **merge gate is 100% coverage on the PR diff**. Ensure every new or changed line in the branch is executed by tests:
 
 1. Run `make test` to see coverage report
-2. Identify uncovered lines in your changes
+2. Identify uncovered lines in your changes (match them to the diff GitHub/CI reports)
 3. Write tests for all uncovered code paths
 4. Include edge cases, error conditions, and all branches
-5. Re-run `make test` until coverage is 100% for new changes
+5. Re-run `make test` until all tests pass **and** diff coverage is 100% on your changes
 
-The CI/CD pipeline uses `diff-cover` to check only new/changed lines, so you must ensure complete coverage for your changes.
+The CI/CD pipeline uses `diff-cover` (or equivalent) to check only new/changed lines against the merge base; **anything short of 100% on that diff blocks merging the PR in GitHub.** Keep extending tests and re-running `make test` until that bar is met.
 
 ## References
 
@@ -371,7 +376,7 @@ The CI/CD pipeline uses `diff-cover` to check only new/changed lines, so you mus
 - **Flake8 config**: `.flake8`
 - **Comprehensive check script**: `scripts/check-all.sh`
 - **Contributing guidelines**: `CONTRIBUTING.md`
-- **Changelog**: `CHANGELOG.md` (Keep a Changelog format; update under `[Unreleased]` for every MR with notable changes)
+- **Changelog**: `CHANGELOG.md` (Keep a Changelog; update under `[Unreleased]` when drafting a PR with notable changes, not each debug iteration)
 
 ## Summary
 
@@ -379,18 +384,15 @@ The CI/CD pipeline uses `diff-cover` to check only new/changed lines, so you mus
 
 1. ✅ Run `make lint` to check for linting errors
 2. ✅ Run `make format` to ensure proper formatting
-3. ✅ Run `pre-commit run --all-files` (FIRST TIME) to verify hooks pass
-4. ✅ Fix any pre-commit issues found
-5. ✅ Run `pre-commit run --all-files` (SECOND TIME) - **CRITICAL**: ensure all issues resolved
-6. ✅ Run `make test` to run **ALL tests** and verify **100% coverage for new changes**
-7. ✅ Fix any test failures
-8. ✅ Re-run `make test` if fixes were made
-9. ✅ **Update CHANGELOG.md** for merge requests: add entries under `[Unreleased]` (Added/Changed/Fixed/Removed) for user-facing or notable changes
-10. ✅ Fix any issues before considering changes complete
+3. ✅ Run `pre-commit run --all-files` and **repeat** (fix → re-run) until **all hooks pass**
+4. ✅ Run `make test` (full suite) and **repeat** (fix → re-run) until **all tests pass** and **100% diff coverage** is satisfied for GitHub merge
+5. ✅ If there are substantive edits that could ship as a PR, **ask whether the user wants PR materials**; **only after they confirm**, draft the paste-ready GitHub PR description **and** update `CHANGELOG.md` when required (same turn)—see **GitHub PR description (ask first; generate on confirmation)** and **Update CHANGELOG.md when drafting the PR**
 
 **Critical Requirements**:
-- **Pre-commit hooks must be run twice** - second run ensures all issues are truly resolved
-- **Run ALL tests** - not just specific tests, to catch regressions
-- **100% test coverage** - New code must have 100% test coverage. The CI/CD pipeline uses diff coverage to enforce this requirement.
+- **Pre-commit must end clean** - Run `pre-commit run --all-files` in a loop until zero failures; do not stop after one failed run without a subsequent fully passing run
+- **Tests must end green with diff coverage** - Run `make test` in a loop until the suite passes and new/changed lines are covered for the PR diff
+- **100% diff coverage for GitHub merge** - CI enforces this; extend tests and re-run until the diff is fully covered
+- **Ask before PR text** - End with a short question about drafting the GitHub PR; provide the full paste-ready body only after the user says they are ready
+- **`CHANGELOG.md` at PR draft time only** - Do not touch the changelog on every iteration; add `[Unreleased]` entries when the user confirms PR drafting (unless they explicitly ask earlier)
 
 Following this workflow ensures your changes will pass CI/CD checks and avoids unnecessary pipeline runs.
