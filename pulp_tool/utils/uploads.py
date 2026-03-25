@@ -60,6 +60,9 @@ def upload_log(
     build_id: str,
     labels: Dict[str, str],
     arch: str,
+    results_model: Optional[PulpResultsModel] = None,
+    distribution_urls: Optional[Dict[str, str]] = None,
+    target_arch_repo: bool = False,
 ) -> List[str]:
     """
     Upload a log file to the specified file repository.
@@ -85,6 +88,23 @@ def upload_log(
     task_href = content_upload_response.json()["task"]
     task_response = client.wait_for_finished_task(task_href)
 
+    if results_model is not None and distribution_urls is not None:
+        rel_path: Optional[str] = None
+        if task_response.result and isinstance(task_response.result, dict):
+            rel_path = task_response.result.get("relative_path")
+        if not rel_path:
+            fn = os.path.basename(log_path)
+            rel_path = f"{arch}/{fn}" if arch else fn
+        client.add_uploaded_artifact_to_results_model(
+            results_model,
+            local_path=log_path,
+            labels=labels,
+            is_rpm=False,
+            distribution_urls=distribution_urls,
+            target_arch_repo=target_arch_repo,
+            file_relative_path=rel_path,
+        )
+
     # Return the created resources from the task
     return task_response.created_resources if task_response.created_resources else []
 
@@ -97,6 +117,9 @@ def _upload_logs_sequential(
     build_id: str,
     labels: Dict[str, str],
     arch: str,
+    results_model: Optional[PulpResultsModel] = None,
+    distribution_urls: Optional[Dict[str, str]] = None,
+    target_arch_repo: bool = False,
 ) -> None:
     """
     Upload logs sequentially.
@@ -115,7 +138,17 @@ def _upload_logs_sequential(
     logging.warning("Uploading %d log file(s) for %s", len(logs), arch)
     for log in logs:
         logging.warning("Uploading log: %s", os.path.basename(log))
-        upload_log(client, file_repository_prn, log, build_id=build_id, labels=labels, arch=arch)
+        upload_log(
+            client,
+            file_repository_prn,
+            log,
+            build_id=build_id,
+            labels=labels,
+            arch=arch,
+            results_model=results_model,
+            distribution_urls=distribution_urls,
+            target_arch_repo=target_arch_repo,
+        )
 
 
 def upload_artifacts_to_repository(
@@ -186,6 +219,8 @@ def upload_rpms(
     rpm_repository_href: str,
     date: str,
     results_model: PulpResultsModel,
+    distribution_urls: Optional[Dict[str, str]] = None,
+    target_arch_repo: bool = False,
 ) -> List[str]:
     """
     Upload RPMs for a specific architecture.
@@ -227,7 +262,19 @@ def upload_rpms(
         remove_rpms_matching_local_files_from_repository(client, rpms, rpm_repository_href, sb_for_search)
 
     # Upload RPMs in parallel
-    rpm_results_artifacts = upload_rpms_parallel(client, rpms, labels, arch)
+    rpm_path_href_pairs = upload_rpms_parallel(client, rpms, labels, arch)
+    rpm_results_artifacts = [href for _path, href in rpm_path_href_pairs]
+
+    if distribution_urls is not None:
+        for rpm_path, _href in rpm_path_href_pairs:
+            client.add_uploaded_artifact_to_results_model(
+                results_model,
+                local_path=rpm_path,
+                labels=labels,
+                is_rpm=True,
+                distribution_urls=distribution_urls,
+                target_arch_repo=target_arch_repo,
+            )
 
     # Update upload counts
     results_model.uploaded_counts.rpms += len(rpms)
@@ -258,6 +305,8 @@ def upload_rpms_logs(
     file_repository_prn: str,
     date: str,
     results_model: PulpResultsModel,
+    distribution_urls: Optional[Dict[str, str]] = None,
+    target_arch_repo: bool = False,
 ) -> RpmUploadResult:
     """
     Upload RPMs and logs for a specific architecture.
@@ -295,14 +344,30 @@ def upload_rpms_logs(
     # Upload RPMs in parallel
     if rpms:
         created_resources = upload_rpms(
-            rpms, context, client, arch, rpm_repository_href=rpm_repository_href, date=date, results_model=results_model
+            rpms,
+            context,
+            client,
+            arch,
+            rpm_repository_href=rpm_repository_href,
+            date=date,
+            results_model=results_model,
+            distribution_urls=distribution_urls,
+            target_arch_repo=target_arch_repo,
         )
 
     # Upload logs sequentially
     if logs:
         logging.warning("Uploading %d logs for %s", len(logs), arch)
         _upload_logs_sequential(
-            client, logs, file_repository_prn=file_repository_prn, build_id=context.build_id, labels=labels, arch=arch
+            client,
+            logs,
+            file_repository_prn=file_repository_prn,
+            build_id=context.build_id,
+            labels=labels,
+            arch=arch,
+            results_model=results_model,
+            distribution_urls=distribution_urls,
+            target_arch_repo=target_arch_repo,
         )
         # Update upload counts
         results_model.uploaded_counts.logs += len(logs)

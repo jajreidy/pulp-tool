@@ -21,6 +21,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Username/password (Basic Auth) support for packages.redhat.com
 
 ### Changed
+- Upload orchestration uses `RpmUploadResult` per architecture instead of ad-hoc dicts; gather/collect uses `PulpContentRow`, `ExtraArtifactRef`, and `FileInfoMap` for clearer typed data flow
+- Upload flow populates `pulp_results.json` artifact entries incrementally as RPMs, logs, SBOMs, and generic files finish; final gather still reconciles via merge (keeps incremental entries when keys already exist)
 - Repository setup logs use the concrete repo slug (e.g. ``rpms-signed``) instead of a generic ``Rpms`` label; distribution creation logs state that ``name`` and ``base_path`` match the repository name on one line
 - `upload --target-arch-repo` with `--signed-by`: RPM paths remain `{arch}/` only (no `{arch}/rpms-signed`); signing is via `signed_by` label on content
 - `pull`: use each artifact's ``url`` from pulp_results.json when present instead of synthesizing download URLs from distribution entries

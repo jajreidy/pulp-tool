@@ -13,7 +13,7 @@ from pulp_tool.utils import (
     upload_rpms_logs,
 )
 from pulp_tool.utils.rpm_operations import (
-    _calculate_sha256_checksum,
+    calculate_sha256_checksum,
     _create_batches,
     _get_nvra,
     parse_rpm_filename_to_nvr,
@@ -27,7 +27,7 @@ class TestChecksumUtilities:
 
     def test_calculate_sha256_checksum(self, temp_file):
         """Test _calculate_sha256_checksum function."""
-        checksum = _calculate_sha256_checksum(temp_file)
+        checksum = calculate_sha256_checksum(temp_file)
 
         assert len(checksum) == 64  # SHA256 hex length
         assert all(c in "0123456789abcdef" for c in checksum)
@@ -35,7 +35,7 @@ class TestChecksumUtilities:
     def test_calculate_sha256_checksum_file_not_found(self):
         """Test _calculate_sha256_checksum function with non-existent file."""
         with pytest.raises(FileNotFoundError):
-            _calculate_sha256_checksum("/non/existent/file")
+            calculate_sha256_checksum("/non/existent/file")
 
     def test_calculate_sha256_checksum_io_error(self):
         """Test _calculate_sha256_checksum with IO error."""
@@ -50,7 +50,7 @@ class TestChecksumUtilities:
             os.chmod(temp_path, 0o000)
 
             with pytest.raises(IOError, match="Error reading file"):
-                _calculate_sha256_checksum(temp_path)
+                calculate_sha256_checksum(temp_path)
         finally:
             os.chmod(temp_path, 0o644)
             os.unlink(temp_path)
@@ -296,3 +296,5 @@ class TestRPMUtilities:
         result = upload_rpms_parallel(mock_pulp_client, [temp_rpm_file], {"arch": "x86_64"}, "x86_64")
 
         assert len(result) == 1
+        assert result[0][0] == temp_rpm_file
+        assert result[0][1] == "/pulp/api/v3/content/rpm/packages/12345/"

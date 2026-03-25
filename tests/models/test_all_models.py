@@ -14,6 +14,8 @@ This test file covers the following model modules:
 Note: Validation models are tested separately in test_validation_models.py
 """
 
+from typing import Any, Callable, cast
+
 import pytest
 from pydantic import ValidationError
 
@@ -32,6 +34,8 @@ from pulp_tool.models.artifacts import (
     ArtifactJsonResponse,
     ArtifactData,
     ContentData,
+    ExtraArtifactRef,
+    PulpContentRow,
 )
 from pulp_tool.models.results import (
     DownloadResult,
@@ -547,14 +551,41 @@ class TestContentData:
     def test_create_content_data_with_results(self):
         """Test creating ContentData with results."""
         data = ContentData(
-            content_results=[{"pulp_href": "/pulp/api/v3/content/rpm/1/", "name": "test.rpm"}],
+            content_results=[
+                PulpContentRow.model_validate({"pulp_href": "/pulp/api/v3/content/rpm/1/", "name": "test.rpm"})
+            ],
             artifacts=[{"pulp_href": "/pulp/api/v3/artifacts/1/", "sha256": "abc123"}],
         )
 
         assert len(data.content_results) == 1
         assert len(data.artifacts) == 1
-        assert data.content_results[0]["name"] == "test.rpm"
+        assert data.content_results[0].model_dump().get("name") == "test.rpm"
         assert data.artifacts[0]["sha256"] == "abc123"
+
+
+class TestExtraArtifactRef:
+    """ExtraArtifactRef legacy href coercion."""
+
+    def test_explicit_pulp_href(self):
+        assert ExtraArtifactRef(pulp_href="/content/1/").pulp_href == "/content/1/"
+
+    def test_legacy_file_key_populates_href(self):
+        ref = ExtraArtifactRef.model_validate({"file": "/artifacts/99/"})
+        assert ref.pulp_href == "/artifacts/99/"
+
+    def test_legacy_extra_key_populates_href(self):
+        ref = ExtraArtifactRef.model_validate({"extra": "/content/x/"})
+        assert ref.pulp_href == "/content/x/"
+
+    def test_validator_passthrough_non_dict(self):
+        ref = ExtraArtifactRef(pulp_href="/z/")
+        same = ExtraArtifactRef.model_validate(ref)
+        assert same.pulp_href == "/z/"
+
+    def test_legacy_validator_non_dict_input_unchanged(self):
+        """Before-validator passthrough when input is not a mapping (line 42)."""
+        coerce = cast(Callable[[Any], Any], ExtraArtifactRef._legacy_dict_href_keys)
+        assert coerce("not-a-dict") == "not-a-dict"  # noqa: SLF001
 
 
 class TestArtifactMetadata:

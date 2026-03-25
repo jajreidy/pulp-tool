@@ -294,7 +294,9 @@ class TestPulpClientErrorPaths:
 
         mock_pulp_client.find_content = Mock(side_effect=mock_find_content)
 
-        extra_artifacts = [{"pulp_href": "/content/123/"}]
+        from pulp_tool.models.artifacts import ExtraArtifactRef
+
+        extra_artifacts = [ExtraArtifactRef(pulp_href="/content/123/")]
         result = mock_pulp_client.gather_content_data("test-build", extra_artifacts=extra_artifacts)
 
         assert result is not None
@@ -317,7 +319,9 @@ class TestPulpClientErrorPaths:
 
         mock_pulp_client.find_content = Mock(side_effect=mock_find_content)
 
-        extra_artifacts = [{"pulp_href": "/content/123/"}]
+        from pulp_tool.models.artifacts import ExtraArtifactRef
+
+        extra_artifacts = [ExtraArtifactRef(pulp_href="/content/123/")]
         with patch("pulp_tool.api.pulp_client.logging") as mock_logging:
             result = mock_pulp_client.gather_content_data("test-build", extra_artifacts=extra_artifacts)
 
@@ -341,12 +345,16 @@ class TestPulpClientErrorPaths:
         )
         results_model = PulpResultsModel(build_id="test-build", repositories=repositories)
 
+        from pulp_tool.models.artifacts import PulpContentRow
+
         content_results = [
-            {
-                "pulp_href": "/content/123/",
-                "artifacts": {"test.txt": "/artifacts/123/"},
-                "relative_path": "test.txt",
-            }
+            PulpContentRow.model_validate(
+                {
+                    "pulp_href": "/content/123/",
+                    "artifacts": {"test.txt": "/artifacts/123/"},
+                    "relative_path": "test.txt",
+                }
+            )
         ]
         file_info_map = {"/artifacts/123/": Mock(file="test.txt@sha256:abc", sha256="abc")}
 

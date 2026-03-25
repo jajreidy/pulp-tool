@@ -5,6 +5,8 @@ This module handles orchestrating upload workflows including
 architecture processing and result collection.
 """
 
+from __future__ import annotations
+
 import glob
 import logging
 import os
@@ -13,7 +15,8 @@ from typing import Any, Dict, List, Optional, TYPE_CHECKING
 
 from ..models.context import UploadRpmContext, UploadFilesContext
 from ..models.repository import RepositoryRefs
-from ..models.results import PulpResultsModel
+from ..models.artifacts import ExtraArtifactRef
+from ..models.results import PulpResultsModel, RpmUploadResult
 
 from .constants import ARCHITECTURE_THREAD_PREFIX, ARCH_DETECT_WARNING_MSG, SUPPORTED_ARCHITECTURES
 from .error_handling import handle_generic_error
@@ -67,8 +70,10 @@ class UploadOrchestrator:
         logs_prn: str,
         date_str: str,
         results_model: PulpResultsModel,
+        distribution_urls: Dict[str, str],
         *,
-        pulp_helper: Optional["PulpHelper"] = None,
+        pulp_helper: Optional[PulpHelper] = None,
+        target_arch_repo: bool = False,
     ) -> Dict[Any, str]:
         """
         Submit architecture upload tasks to the executor.
@@ -106,11 +111,13 @@ class UploadOrchestrator:
                 file_repository_prn=logs_prn,
                 date=date_str,
                 results_model=results_model,
+                distribution_urls=distribution_urls,
+                target_arch_repo=target_arch_repo,
             )
             future_to_arch[future] = arch
         return future_to_arch
 
-    def _collect_architecture_results(self, future_to_arch: Dict[Any, str]) -> Dict[str, Any]:
+    def _collect_architecture_results(self, future_to_arch: Dict[Any, str]) -> Dict[str, RpmUploadResult]:
         """
         Collect results from architecture upload futures.
 
@@ -123,16 +130,13 @@ class UploadOrchestrator:
         Raises:
             Exception: If any architecture upload fails
         """
-        processed_archs = {}
+        processed_archs: Dict[str, RpmUploadResult] = {}
         for future in as_completed(future_to_arch):
             arch = future_to_arch[future]
             try:
                 logging.debug("Processing architecture: %s", arch)
                 result = future.result()
-                processed_archs[arch] = {
-                    "uploaded_rpms": result.uploaded_rpms,
-                    "created_resources": result.created_resources,
-                }
+                processed_archs[arch] = result
                 logging.debug(
                     "Completed processing architecture: %s with %d created resources",
                     arch,
@@ -154,8 +158,10 @@ class UploadOrchestrator:
         date_str: str,
         rpm_href: str,
         results_model: PulpResultsModel,
-        pulp_helper: Optional["PulpHelper"] = None,
-    ) -> Dict[str, Any]:
+        distribution_urls: Dict[str, str],
+        pulp_helper: Optional[PulpHelper] = None,
+        target_arch_repo: bool = False,
+    ) -> Dict[str, RpmUploadResult]:
         """
         Process uploads for all supported architectures.
 
@@ -171,8 +177,7 @@ class UploadOrchestrator:
             results_model: PulpResultsModel to update with upload counts
 
         Returns:
-            Dictionary mapping architecture names to their upload results:
-                - {arch}: Dictionary containing uploaded_rpms and created_resources
+            Mapping of architecture name to RpmUploadResult (uploaded RPM paths and created_resources hrefs)
         """
         # Ensure rpm_path is set (should be set by CLI, but check for safety)
         if not args.rpm_path:
@@ -201,7 +206,9 @@ class UploadOrchestrator:
                 repositories.logs_prn,
                 date_str,
                 results_model,
+                distribution_urls,
                 pulp_helper=pulp_helper,
+                target_arch_repo=target_arch_repo,
             )
 
             # Collect results as they complete
@@ -215,7 +222,7 @@ class UploadOrchestrator:
         args: UploadRpmContext,
         repositories: RepositoryRefs,
         *,
-        pulp_helper: Optional["PulpHelper"] = None,
+        pulp_helper: Optional[PulpHelper] = None,
     ) -> Optional[str]:
         """
         Process all upload operations.
@@ -235,6 +242,7 @@ class UploadOrchestrator:
         """
         # Import here to avoid circular import
         from ..services.upload_service import upload_sbom, collect_results, process_uploads_from_results_json
+        from .pulp_helper import PulpHelper as PulpHelperCls
 
         if args.results_json:
             return process_uploads_from_results_json(client, args, repositories, pulp_helper=pulp_helper)
@@ -251,6 +259,9 @@ class UploadOrchestrator:
         # Create unified results model at the start
         results_model = PulpResultsModel(build_id=args.build_id, repositories=repositories)
 
+        repo_helper = pulp_helper or PulpHelperCls(client, parent_package=args.parent_package)
+        distribution_urls = repo_helper.get_distribution_urls_for_upload_context(args.build_id, args)
+
         # Process each architecture - now updates results_model internally
         processed_uploads = self.process_architecture_uploads(
             client,
@@ -259,13 +270,15 @@ class UploadOrchestrator:
             date_str=date_str,
             rpm_href=repositories.rpms_href,
             results_model=results_model,
+            distribution_urls=distribution_urls,
             pulp_helper=pulp_helper,
+            target_arch_repo=args.target_arch_repo,
         )
 
         # Collect all created resources from add_content operations
         created_resources: List[str] = []
         for upload in processed_uploads.values():
-            created_resources.extend(upload.get("created_resources", []))
+            created_resources.extend(upload.created_resources)
 
         # Always search the base rpm_path for root-level RPMs (e.g. .src.rpm, .noarch.rpm).
         # OCI/oras layouts often put these in the root while logs live in arch subdirs (e.g. aarch64/).
@@ -295,6 +308,8 @@ class UploadOrchestrator:
                             rpm_repository_href=root_rpm_href,
                             date=date_str,
                             results_model=results_model,
+                            distribution_urls=distribution_urls,
+                            target_arch_repo=args.target_arch_repo,
                         )
                     )
 
@@ -302,7 +317,14 @@ class UploadOrchestrator:
         # Only upload SBOM if sbom_path is provided
         if args.sbom_path:
             sbom_created_resources = upload_sbom(
-                client, args, repositories.sbom_prn, date_str, results_model, args.sbom_path
+                client,
+                args,
+                repositories.sbom_prn,
+                date_str,
+                results_model,
+                args.sbom_path,
+                distribution_urls=distribution_urls,
+                target_arch_repo=args.target_arch_repo,
             )
             created_resources.extend(sbom_created_resources)
         else:
@@ -311,7 +333,7 @@ class UploadOrchestrator:
         logging.info("Collected %d created resource hrefs from upload operations", len(created_resources))
 
         # Convert created_resources hrefs into artifact format for extra_artifacts
-        extra_artifacts = [{"pulp_href": href} for href in created_resources]
+        extra_artifacts = [ExtraArtifactRef(pulp_href=href) for href in created_resources]
         logging.info("Total artifacts to include in results: %d", len(extra_artifacts))
 
         # Collect and save results, passing the results_model and all artifacts
@@ -345,9 +367,13 @@ class UploadOrchestrator:
         """
         # Import here to avoid circular import
         from ..services.upload_service import upload_sbom, collect_results
+        from .pulp_helper import PulpHelper as PulpHelperCls
 
         # Create unified results model
         results_model = PulpResultsModel(build_id=context.build_id, repositories=repositories)
+        repo_helper = PulpHelperCls(client, parent_package=context.parent_package)
+        distribution_urls = repo_helper.get_distribution_urls_for_upload_context(context.build_id, context)
+        target_arch_repo = bool(getattr(context, "target_arch_repo", False))
 
         # Store created resources from add_content operations
         created_resources = []
@@ -367,6 +393,8 @@ class UploadOrchestrator:
                     rpm_repository_href=repositories.rpms_href,
                     date=context.date_str,
                     results_model=results_model,
+                    distribution_urls=distribution_urls,
+                    target_arch_repo=target_arch_repo,
                 )
                 created_resources.extend(arch_created_resources)
 
@@ -390,6 +418,16 @@ class UploadOrchestrator:
                 if task_response.created_resources:
                     created_resources.extend(task_response.created_resources)
                 results_model.uploaded_counts.files += 1
+                rel_path = os.path.basename(file_path)
+                client.add_uploaded_artifact_to_results_model(
+                    results_model,
+                    local_path=file_path,
+                    labels=labels,
+                    is_rpm=False,
+                    distribution_urls=distribution_urls,
+                    target_arch_repo=target_arch_repo,
+                    file_relative_path=rel_path,
+                )
 
         # Upload logs
         if context.log_files:
@@ -406,7 +444,15 @@ class UploadOrchestrator:
                 )
 
                 log_created_resources = upload_log(
-                    client, repositories.logs_prn, log_path, build_id=context.build_id, labels=labels, arch=log_arch
+                    client,
+                    repositories.logs_prn,
+                    log_path,
+                    build_id=context.build_id,
+                    labels=labels,
+                    arch=log_arch,
+                    results_model=results_model,
+                    distribution_urls=distribution_urls,
+                    target_arch_repo=target_arch_repo,
                 )
                 created_resources.extend(log_created_resources)
                 results_model.uploaded_counts.logs += 1
@@ -417,14 +463,21 @@ class UploadOrchestrator:
             for sbom_path in context.sbom_files:
                 logging.warning("Uploading SBOM: %s", os.path.basename(sbom_path))
                 sbom_created_resources = upload_sbom(
-                    client, context, repositories.sbom_prn, context.date_str, results_model, sbom_path
+                    client,
+                    context,
+                    repositories.sbom_prn,
+                    context.date_str,
+                    results_model,
+                    sbom_path,
+                    distribution_urls=distribution_urls,
+                    target_arch_repo=target_arch_repo,
                 )
                 created_resources.extend(sbom_created_resources)
 
         logging.info("Collected %d created resource hrefs from upload operations", len(created_resources))
 
         # Convert created_resources hrefs into artifact format for extra_artifacts
-        extra_artifacts = [{"pulp_href": href} for href in created_resources]
+        extra_artifacts = [ExtraArtifactRef(pulp_href=href) for href in created_resources]
         logging.info("Total artifacts to include in results: %d", len(extra_artifacts))
 
         # Collect and save results, passing the results_model and all artifacts

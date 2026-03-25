@@ -6,13 +6,13 @@ delegating to specialized manager classes for repository, distribution,
 and upload operations.
 """
 
-from typing import Any, Optional, TYPE_CHECKING
+from typing import Optional, TYPE_CHECKING
 
 from pulp_tool.models.pulp_api import DistributionRequest, RepositoryRequest
 
-from ..models.context import UploadRpmContext, UploadFilesContext
+from ..models.context import UploadContext, UploadRpmContext, UploadFilesContext
 from ..models.repository import RepositoryRefs
-from ..models.results import PulpResultsModel
+from ..models.results import PulpResultsModel, RpmUploadResult
 
 if TYPE_CHECKING:
     from ..api.pulp_client import PulpClient
@@ -107,6 +107,16 @@ class PulpHelper:
             include_signed_rpm_distro=include_signed_rpm_distro,
         )
 
+    def get_distribution_urls_for_upload_context(self, build_id: str, context: UploadContext) -> dict[str, str]:
+        """Distribution URL map for results JSON (per-arch vs signed aggregate RPM base)."""
+        target_arch = bool(getattr(context, "target_arch_repo", False))
+        signed_by = getattr(context, "signed_by", None)
+        if target_arch:
+            return self.get_distribution_urls(build_id, target_arch_repo=True)
+        if signed_by and str(signed_by).strip():
+            return self.get_distribution_urls(build_id, include_signed_rpm_distro=True)
+        return self.get_distribution_urls(build_id)
+
     def ensure_rpm_repository_for_arch(self, build_id: str, arch: str) -> str:
         """Create or get RPM repository for ``target_arch_repo`` mode (base_path = arch)."""
         return self._repository_manager.ensure_rpm_repository_for_arch(build_id, arch)
@@ -147,7 +157,7 @@ class PulpHelper:
         date_str: str,
         rpm_href: str,
         results_model: PulpResultsModel,
-    ) -> dict[str, Any]:
+    ) -> dict[str, RpmUploadResult]:
         """
         Process uploads for all supported architectures.
 
@@ -162,8 +172,9 @@ class PulpHelper:
             results_model: PulpResultsModel to update with upload counts
 
         Returns:
-            Dictionary mapping architecture names to their upload results
+            Dictionary mapping architecture names to RpmUploadResult
         """
+        distribution_urls = self.get_distribution_urls_for_upload_context(args.build_id, args)
         return self._upload_orchestrator.process_architecture_uploads(
             client,
             args,
@@ -171,7 +182,9 @@ class PulpHelper:
             date_str=date_str,
             rpm_href=rpm_href,
             results_model=results_model,
+            distribution_urls=distribution_urls,
             pulp_helper=self,
+            target_arch_repo=args.target_arch_repo,
         )
 
     def process_uploads(
