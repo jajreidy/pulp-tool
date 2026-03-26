@@ -1293,6 +1293,28 @@ class TestPulpClient:
         assert len(content_data.content_results) == 1  # From API response
         assert len(content_data.artifacts) == 1  # Extracted from content_results
 
+    def test_gather_content_data_href_fallback_bare_list_json(self, mock_pulp_client, mock_content_data, httpx_mock):
+        """When build_id finds nothing, href query may return a bare JSON array instead of {\"results\": ...}."""
+        httpx_mock.get(
+            re.compile(
+                r"https://pulp\.example\.com/pulp/api/v3/test-domain/api/v3/content/"
+                r"\?pulp_label_select=build_id~test-bare-list"
+            )
+        ).mock(return_value=httpx.Response(200, json={"results": []}))
+
+        row = mock_content_data["results"][0]
+        httpx_mock.get(re.compile(r".*api/v3/content/\?pulp_href__in=.*")).mock(
+            return_value=httpx.Response(200, json=[row])
+        )
+
+        href = row["pulp_href"]
+        extra = [ExtraArtifactRef.model_validate({"pulp_href": href})]
+        content_data = mock_pulp_client.gather_content_data("test-bare-list", extra)
+
+        assert len(content_data.content_results) == 1
+        assert content_data.content_results[0].pulp_href == href
+        assert len(content_data.artifacts) >= 1
+
     def test_build_results_structure(self, mock_pulp_client, mock_content_data, mock_file_locations, httpx_mock):
         """Test build_results_structure method."""
         from pulp_tool.models import PulpResultsModel, RepositoryRefs, FileInfoModel

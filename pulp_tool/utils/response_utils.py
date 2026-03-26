@@ -7,7 +7,7 @@ from the Pulp API, eliminating code duplication.
 
 import logging
 import traceback
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 import httpx
 
@@ -130,6 +130,23 @@ def extract_results_list(response: httpx.Response, operation: str, *, allow_empt
     return results
 
 
+def content_find_results_from_json(data: Any) -> List[Dict[str, Any]]:
+    """
+    Normalize JSON from Pulp's generic ``/api/v3/content/`` list endpoint.
+
+    Most deployments return a paginated object ``{"results": [...], "count": ...}``,
+    but some responses are a bare JSON array of content objects. Both shapes are
+    accepted so callers do not assume a dict.
+    """
+    if isinstance(data, list):
+        return [item for item in data if isinstance(item, dict)]
+    if isinstance(data, dict):
+        raw = data.get("results")
+        if isinstance(raw, list):
+            return [item for item in raw if isinstance(item, dict)]
+    return []
+
+
 def extract_single_result(response: httpx.Response, operation: str) -> Dict[str, Any]:
     """
     Extract single result from response results list.
@@ -178,6 +195,7 @@ __all__ = [
     "extract_created_resources",
     "check_task_success",
     "extract_results_list",
+    "content_find_results_from_json",
     "extract_single_result",
     "get_response_field",
 ]
