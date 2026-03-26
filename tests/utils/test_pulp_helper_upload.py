@@ -88,6 +88,7 @@ class TestPulpHelperUploadMethods:
             target_arch_repo=True,
             skip_logs_repo=False,
             skip_sbom_repo=False,
+            skip_artifacts_repo=False,
         )
 
     def test_get_distribution_urls_for_upload_context_signed_by_branch(self, mock_pulp_client):
@@ -113,6 +114,7 @@ class TestPulpHelperUploadMethods:
             include_signed_rpm_distro=True,
             skip_logs_repo=False,
             skip_sbom_repo=False,
+            skip_artifacts_repo=False,
         )
 
     def test_get_distribution_urls_for_upload_context_passes_skip_repo_flags(self, mock_pulp_client):
@@ -136,6 +138,30 @@ class TestPulpHelperUploadMethods:
             "b123",
             skip_logs_repo=True,
             skip_sbom_repo=True,
+            skip_artifacts_repo=False,
+        )
+
+    def test_get_distribution_urls_for_upload_context_local_artifact_results_skips_artifacts(self, mock_pulp_client):
+        """Folder --artifact-results (no comma) forwards skip_artifacts_repo=True."""
+        helper = PulpHelper(mock_pulp_client)
+        context = UploadRpmContext(
+            build_id="b123",
+            date_str="2024-01-01 00:00:00",
+            namespace="ns",
+            parent_package="pkg",
+            rpm_path="/r",
+            artifact_results="/out/dir",
+        )
+
+        with patch.object(helper, "get_distribution_urls", return_value={"rpms": "https://r/"}) as mock_urls:
+            out = helper.get_distribution_urls_for_upload_context("b123", context)
+
+        assert out == {"rpms": "https://r/"}
+        mock_urls.assert_called_once_with(
+            "b123",
+            skip_logs_repo=False,
+            skip_sbom_repo=False,
+            skip_artifacts_repo=True,
         )
 
     def test_process_uploads(self, mock_pulp_client):

@@ -137,6 +137,17 @@ class TestDistributionManager:
         assert "rpms" in urls
         assert "artifacts" in urls
 
+    def test_get_distribution_urls_skip_artifacts_repo(self):
+        """skip_artifacts_repo omits artifacts (local results JSON folder mode)."""
+        mock_client = Mock()
+        mock_client.config = {"base_url": "https://pulp.example.com"}
+        manager = DistributionManager(mock_client, "test-namespace")
+        urls = manager.get_distribution_urls("b1", skip_artifacts_repo=True)
+        assert "artifacts" not in urls
+        assert "rpms" in urls
+        assert "logs" in urls
+        assert "sbom" in urls
+
 
 class TestDistributionManagerTargetArchRepo:
     """Distribution URLs when using per-architecture RPM repositories."""

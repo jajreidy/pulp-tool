@@ -21,7 +21,8 @@ class UploadContext(KonfluxBaseModel):
         parent_package: Optional parent package name (will not be added to labels if not provided)
         config: Optional path to config file
         debug: Verbosity level (0=WARNING, 1=INFO, 2=DEBUG, 3+=DEBUG with HTTP logs)
-        artifact_results: Optional artifact results configuration
+        artifact_results: Konflux ``url_path,digest_path``, or a single folder path to write ``pulp_results.json``
+            locally (no comma); local folder also skips artifacts repo and ``artifacts`` distribution URLs in JSON
         sbom_results: Optional path to write SBOM results
         skip_logs_repo: When True, logs repo was not created; omit logs distribution URLs
         skip_sbom_repo: When True, SBOM repo was not created; omit sbom distribution URLs
