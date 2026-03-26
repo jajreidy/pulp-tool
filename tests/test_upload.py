@@ -1124,6 +1124,32 @@ class TestBuildResultsStructure:
                 "https://pulp.example.com/api/pulp-content/test-namespace/x86_64/"
             )
 
+    def test_add_distributions_to_results_omits_artifacts_for_local_artifact_results(self, mock_pulp_client):
+        """Folder --artifact-results must not add a synthetic artifacts distribution entry."""
+        repositories = RepositoryRefs(
+            rpms_href="/rpms/",
+            rpms_prn="rpms-prn",
+            logs_href="/logs/",
+            logs_prn="logs-prn",
+            sbom_href="/sbom/",
+            sbom_prn="sbom-prn",
+            artifacts_href="",
+            artifacts_prn="",
+        )
+        results_model = PulpResultsModel(build_id="my-build", repositories=repositories)
+        context = UploadRpmContext(
+            build_id="my-build",
+            date_str="2024-01-01",
+            namespace="test-ns",
+            parent_package="test-pkg",
+            rpm_path="/rpms",
+            artifact_results="/data/results-out",
+        )
+        _add_distributions_to_results(mock_pulp_client, context, results_model)
+        assert "artifacts" not in results_model.distributions
+        assert "rpms" in results_model.distributions
+        assert "logs" in results_model.distributions
+
     def test_add_distributions_to_results_warns_when_no_distribution_urls(self, mock_pulp_client, caplog):
         """When no build-scoped distribution URLs are returned, log a warning."""
         repositories = RepositoryRefs(

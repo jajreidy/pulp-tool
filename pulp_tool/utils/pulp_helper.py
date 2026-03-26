@@ -98,6 +98,7 @@ class PulpHelper:
         include_signed_rpm_distro: bool = False,
         skip_logs_repo: bool = False,
         skip_sbom_repo: bool = False,
+        skip_artifacts_repo: bool = False,
     ) -> dict[str, str]:
         """
         Get distribution URLs for all repository types.
@@ -111,6 +112,7 @@ class PulpHelper:
             include_signed_rpm_distro: If True, include ``rpms_signed`` URL
             skip_logs_repo: If True, omit ``logs`` URL
             skip_sbom_repo: If True, omit ``sbom`` URL
+            skip_artifacts_repo: If True, omit ``artifacts`` URL
 
         Returns:
             Dictionary mapping repo_type to distribution URL
@@ -121,6 +123,7 @@ class PulpHelper:
             include_signed_rpm_distro=include_signed_rpm_distro,
             skip_logs_repo=skip_logs_repo,
             skip_sbom_repo=skip_sbom_repo,
+            skip_artifacts_repo=skip_artifacts_repo,
         )
 
     def get_distribution_urls_for_upload_context(self, build_id: str, context: UploadContext) -> dict[str, str]:
@@ -129,12 +132,16 @@ class PulpHelper:
         signed_by = getattr(context, "signed_by", None)
         skip_logs = bool(getattr(context, "skip_logs_repo", False))
         skip_sbom = bool(getattr(context, "skip_sbom_repo", False))
+        ar = (getattr(context, "artifact_results", None) or "").strip()
+        # Local folder mode: --artifact-results /path/to/dir (no comma); no artifacts repo or distribution
+        skip_artifacts = bool(ar and "," not in ar)
         if target_arch:
             return self.get_distribution_urls(
                 build_id,
                 target_arch_repo=True,
                 skip_logs_repo=skip_logs,
                 skip_sbom_repo=skip_sbom,
+                skip_artifacts_repo=skip_artifacts,
             )
         if signed_by and str(signed_by).strip():
             return self.get_distribution_urls(
@@ -142,11 +149,13 @@ class PulpHelper:
                 include_signed_rpm_distro=True,
                 skip_logs_repo=skip_logs,
                 skip_sbom_repo=skip_sbom,
+                skip_artifacts_repo=skip_artifacts,
             )
         return self.get_distribution_urls(
             build_id,
             skip_logs_repo=skip_logs,
             skip_sbom_repo=skip_sbom,
+            skip_artifacts_repo=skip_artifacts,
         )
 
     def ensure_rpm_repository_for_arch(self, build_id: str, arch: str) -> str:

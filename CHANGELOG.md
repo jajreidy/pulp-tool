@@ -24,6 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Username/password (Basic Auth) support for packages.redhat.com
 
 ### Changed
+- Local `--artifact-results` folder path: `distributions` in `pulp_results.json` no longer includes a synthetic `artifacts` pulp-content URL (artifacts repo was already skipped; URL map now aligns)
 - `upload --target-arch-repo`: `pulp_results.json` `distributions` keys for per-arch RPM bases are `rpm_<arch>` instead of bare architecture names (e.g. `rpm_x86_64` not `x86_64`)
 - `upload` / `upload-files`: infer whether log and SBOM repos are needed before repository setup (directory `*.log` scan or `--results-json` artifact keys; SBOM via `--sbom-path` or SBOM-classified keys); omitted types are excluded from results `distributions`; clear errors if uploads are attempted without the matching repository
 - Upload orchestration uses `RpmUploadResult` per architecture instead of ad-hoc dicts; gather/collect uses `PulpContentRow`, `ExtraArtifactRef`, and `FileInfoMap` for clearer typed data flow

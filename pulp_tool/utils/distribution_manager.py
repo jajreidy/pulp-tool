@@ -60,6 +60,7 @@ class DistributionManager:
         include_signed_rpm_distro: bool = False,
         skip_logs_repo: bool = False,
         skip_sbom_repo: bool = False,
+        skip_artifacts_repo: bool = False,
     ) -> Dict[str, str]:
         """
         Get distribution URLs for all repository types.
@@ -73,6 +74,7 @@ class DistributionManager:
             include_signed_rpm_distro: If True, add ``rpms_signed`` URL for ``{build}/rpms-signed/``
             skip_logs_repo: If True, omit ``logs`` distribution URL
             skip_sbom_repo: If True, omit ``sbom`` distribution URL
+            skip_artifacts_repo: If True, omit ``artifacts`` (e.g. results JSON saved locally)
 
         Returns:
             Dictionary mapping repo_type to distribution URL
@@ -99,6 +101,7 @@ class DistributionManager:
             include_signed_rpm_distro=include_signed_rpm_distro,
             skip_logs_repo=skip_logs_repo,
             skip_sbom_repo=skip_sbom_repo,
+            skip_artifacts_repo=skip_artifacts_repo,
         )
 
         logging.debug("Retrieved %d distribution URLs", len(distribution_urls))
@@ -146,6 +149,7 @@ class DistributionManager:
         include_signed_rpm_distro: bool = False,
         skip_logs_repo: bool = False,
         skip_sbom_repo: bool = False,
+        skip_artifacts_repo: bool = False,
     ) -> Dict[str, str]:
         """
         Get distribution URLs for all repository types.
@@ -156,6 +160,7 @@ class DistributionManager:
             include_signed_rpm_distro: If True, add ``rpms_signed`` for signed RPM distribution
             skip_logs_repo: If True, omit ``logs``
             skip_sbom_repo: If True, omit ``sbom``
+            skip_artifacts_repo: If True, omit ``artifacts``
 
         Returns:
             Dictionary mapping repo_type to distribution URL
@@ -173,6 +178,8 @@ class DistributionManager:
             if skip_logs_repo and repo_type == "logs":
                 continue
             if skip_sbom_repo and repo_type == "sbom":
+                continue
+            if skip_artifacts_repo and repo_type == "artifacts":
                 continue
             url = self._get_single_distribution_url(build_id, repo_type, base_url)
             if url:
