@@ -41,6 +41,7 @@ import httpx
 
 # Local imports
 from ..utils import create_session_with_retry
+from ..utils.response_utils import content_find_results_from_json
 from ..utils.artifact_detection import rpm_packages_letter_and_basename
 from ..utils.constants import DEFAULT_CHUNK_SIZE, SUPPORTED_ARCHITECTURES
 from ..utils.validation import sanitize_build_id_for_repository, validate_build_id
@@ -1689,8 +1690,7 @@ class PulpClient(
 
         try:
             resp = self.find_content("build_id", build_id)
-            resp_json = resp.json()
-            raw_results = resp_json["results"]
+            raw_results = content_find_results_from_json(resp.json())
         except Exception:
             logging.error("Failed to get content by build ID", exc_info=True)
             raise
@@ -1708,8 +1708,7 @@ class PulpClient(
                 if href_list:
                     href_query = ",".join(href_list)
                     resp = self.find_content("href", href_query)
-                    resp_json = resp.json()
-                    raw_results = resp_json["results"]
+                    raw_results = content_find_results_from_json(resp.json())
                     logging.info("Found %d content items by href query", len(raw_results))
             except Exception:
                 logging.error("Failed to get content by href", exc_info=True)

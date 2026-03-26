@@ -9,6 +9,7 @@ from pulp_tool.utils.response_utils import (
     extract_created_resources,
     check_task_success,
     extract_results_list,
+    content_find_results_from_json,
     extract_single_result,
     get_response_field,
 )
@@ -164,6 +165,33 @@ class TestExtractResultsList:
         response = httpx.Response(200, json={"count": 0})
         result = extract_results_list(response, "search operation", allow_empty=True)
         assert result == []
+
+
+class TestContentFindResultsFromJson:
+    """Test content_find_results_from_json utility."""
+
+    def test_paginated_dict(self):
+        """Standard Pulp paginated list body."""
+        data = {"results": [{"pulp_href": "/c/1/"}], "count": 1}
+        assert content_find_results_from_json(data) == [{"pulp_href": "/c/1/"}]
+
+    def test_bare_list(self):
+        """Bare JSON array as returned by some content list responses."""
+        data = [{"pulp_href": "/c/1/"}]
+        assert content_find_results_from_json(data) == [{"pulp_href": "/c/1/"}]
+
+    def test_filters_non_dict_entries_in_list(self):
+        """Non-dict list entries are skipped."""
+        assert content_find_results_from_json([{"a": 1}, "skip", None]) == [{"a": 1}]
+
+    def test_dict_missing_results(self):
+        assert content_find_results_from_json({"count": 0}) == []
+
+    def test_dict_results_not_list(self):
+        assert content_find_results_from_json({"results": None}) == []
+
+    def test_non_collection_returns_empty(self):
+        assert content_find_results_from_json(123) == []
 
 
 class TestExtractSingleResult:

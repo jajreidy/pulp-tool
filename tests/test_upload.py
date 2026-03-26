@@ -918,6 +918,29 @@ class TestFindArtifactContent:
         assert result[0] == "test.txt@sha256:abc123"
         assert result[1] == "abc123"
 
+    def test_find_artifact_content_bare_list_json(self, mock_pulp_client, httpx_mock):
+        """find_content JSON may be a list of content objects instead of paginated dict."""
+        from pulp_tool.services.upload_service import _find_artifact_content
+        from pulp_tool.models.pulp_api import TaskResponse
+
+        task_response = TaskResponse(
+            pulp_href="/api/v3/tasks/123/",
+            state="completed",
+            created_resources=["/api/v3/content/file/files/12345/"],
+        )
+
+        mock_content_response = Mock(spec=httpx.Response)
+        mock_content_response.json.return_value = [{"artifacts": {"test.txt": "/api/v3/artifacts/12345/"}}]
+        mock_pulp_client.find_content = Mock(return_value=mock_content_response)
+
+        mock_artifact_response = Mock(spec=httpx.Response)
+        mock_artifact_response.json.return_value = {"results": [{"file": "test.txt@sha256:abc123", "sha256": "abc123"}]}
+        mock_pulp_client.get_file_locations = Mock(return_value=mock_artifact_response)
+
+        result = _find_artifact_content(mock_pulp_client, task_response)
+
+        assert result == ("test.txt@sha256:abc123", "abc123")
+
 
 class TestParseOciReference:
     """Test _parse_oci_reference function."""
