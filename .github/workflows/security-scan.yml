@@ -31,6 +31,14 @@ jobs:
           pip install -e ".[dev]"
           pip install safety bandit
 
+      # pip-audit: fail on new OSV/PyPI advisories. Pygments CVE-2026-4539 (dev-only via pytest/diff-cover):
+      # no release >2.19.2 on PyPI yet — remove these --ignore-vuln flags when pyproject pins pygments>=2.19.3.
+      - name: Run pip-audit
+        run: |
+          pip-audit -l --desc on \
+            --ignore-vuln CVE-2026-4539 \
+            --ignore-vuln GHSA-5239-wwwm-4pmq
+
       - name: Run Safety check
         run: |
           safety check --json || safety check

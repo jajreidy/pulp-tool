@@ -1,8 +1,9 @@
 # Makefile for pulp-tool development tasks
 
 COMPARE_BRANCH ?= origin/main
+AUDIT_VENV ?= .audit-venv
 
-.PHONY: help install install-dev test test-diff-coverage lint format check clean
+.PHONY: help install install-dev test test-diff-coverage lint format check clean audit
 
 # Default target
 help:
@@ -14,6 +15,7 @@ help:
 	@echo "  make lint         - Run all linters"
 	@echo "  make format       - Format code with Black"
 	@echo "  make check        - Run all checks (lint + test)"
+	@echo "  make audit        - Run pip-audit in a throwaway venv (only this project's dev deps)"
 	@echo "  make clean        - Clean build artifacts"
 	@echo ""
 	@echo "  Diff coverage base: COMPARE_BRANCH=origin/main (override for e.g. origin/release-1.0)"
@@ -67,6 +69,18 @@ format:
 
 # Run all checks
 check: lint test
+
+# Pygments CVE-2026-4539: no wheel >2.19.2 on PyPI yet (transitive via pytest/diff-cover). Drop when pinning pygments>=2.19.3.
+AUDIT_IGNORES := --ignore-vuln CVE-2026-4539 --ignore-vuln GHSA-5239-wwwm-4pmq
+
+audit:
+	@echo "pip-audit: creating $(AUDIT_VENV), installing .[dev]..."
+	@rm -rf "$(AUDIT_VENV)" && python3 -m venv "$(AUDIT_VENV)" && \
+	 "$(AUDIT_VENV)/bin/python" -m pip install -q -U pip && \
+	 "$(AUDIT_VENV)/bin/python" -m pip install -q -e ".[dev]" && \
+	 "$(AUDIT_VENV)/bin/pip-audit" -l --desc on $(AUDIT_IGNORES)
+	@rm -rf "$(AUDIT_VENV)"
+	@echo "pip-audit: OK"
 
 # Cleanup
 clean:

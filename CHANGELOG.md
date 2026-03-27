@@ -24,6 +24,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Username/password (Basic Auth) support for packages.redhat.com
 
 ### Changed
+- Raised minimum versions for runtime (`httpx`, `pydantic`, `click`) and dev tooling in `pyproject.toml` / `setup.py`; build-system uses newer `setuptools`/`setuptools-scm`
+- Removed Sphinx and sphinx-rtd-theme from optional `dev` extras (in-tree docs build was removed earlier); Pygments may still be installed transitively (e.g. `pytest`, `diff-cover`)
 - Local `--artifact-results` folder path: `distributions` in `pulp_results.json` no longer includes a synthetic `artifacts` pulp-content URL (artifacts repo was already skipped; URL map now aligns)
 - `upload --target-arch-repo`: `pulp_results.json` `distributions` keys for per-arch RPM bases are `rpm_<arch>` instead of bare architecture names (e.g. `rpm_x86_64` not `x86_64`)
 - `upload` / `upload-files`: infer whether log and SBOM repos are needed before repository setup (directory `*.log` scan or `--results-json` artifact keys; SBOM via `--sbom-path` or SBOM-classified keys); omitted types are excluded from results `distributions`; clear errors if uploads are attempted without the matching repository
@@ -32,6 +34,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Repository setup logs use the concrete repo slug (e.g. ``rpms-signed``) instead of a generic ``Rpms`` label; distribution creation logs state that ``name`` and ``base_path`` match the repository name on one line
 - `upload --target-arch-repo` with `--signed-by`: RPM paths remain `{arch}/` only (no `{arch}/rpms-signed`); signing is via `signed_by` label on content
 - `pull`: use each artifact's ``url`` from pulp_results.json when present instead of synthesizing download URLs from distribution entries
+
+### Security
+- Added **`pip-audit`** to optional `dev` dependencies, **`make audit`** (isolated **`.audit-venv`** with **`pip-audit -l`**, same **CVE-2026-4539** / **GHSA-5239-wwwm-4pmq** ignores as CI until Pygments **>2.19.2** is on PyPI), and **`pip-audit -l`** in **`security-scan.yml`**; when a fixed Pygments is released, pin **`pygments>=…`** under `dev` in `pyproject.toml` / `setup.py` and drop the workflow/Makefile ignores
+- Optional docs stack (Sphinx) remains removed from `dev` extras; **CVE-2026-4539** still applies to transitive Pygments from **`pytest`** and **`diff-cover`** until a patched wheel is published
 
 ### Fixed
 - Generic `/api/v3/content/` responses that are a bare JSON array (not `{"results": [...]}`) no longer crash gather-by-href or `_find_artifact_content` with `TypeError: list indices must be integers or slices, not str`
