@@ -595,6 +595,82 @@ class TestUploadCommand:
 
             assert result.exit_code == 1
 
+    @patch("pulp_tool.cli.upload.PulpClient")
+    def test_upload_auth_http_error_exits_zero(self, mock_client_class):
+        """Temporary workaround: auth-style HTTP errors exit 0 with a warning."""
+        runner = CliRunner()
+
+        mock_client_class.create_from_config_file.side_effect = httpx.HTTPError("401 Unauthorized")
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            rpm_dir = Path(tmpdir) / "rpms"
+            rpm_dir.mkdir()
+            sbom_path = Path(tmpdir) / "sbom.json"
+            sbom_path.write_text("{}")
+            config_path = Path(tmpdir) / "config.toml"
+            config_path.write_text(
+                '[cli]\nbase_url = "https://pulp.example.com"\napi_root = "/pulp/api/v3"\ndomain = "test-domain"'
+            )
+
+            result = runner.invoke(
+                cli,
+                [
+                    "--build-id",
+                    "test-build",
+                    "--namespace",
+                    "test-ns",
+                    "--config",
+                    str(config_path),
+                    "upload",
+                    "--parent-package",
+                    "test-pkg",
+                    "--rpm-path",
+                    str(rpm_dir),
+                    "--sbom-path",
+                    str(sbom_path),
+                ],
+            )
+
+            assert result.exit_code == 0
+
+    @patch("pulp_tool.cli.upload.PulpClient")
+    def test_upload_runtime_error_no_access_token_exits_zero(self, mock_client_class):
+        """OAuth token failure (RuntimeError) triggers the same graceful upload exit."""
+        runner = CliRunner()
+
+        mock_client_class.create_from_config_file.side_effect = RuntimeError("Failed to obtain access token")
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            rpm_dir = Path(tmpdir) / "rpms"
+            rpm_dir.mkdir()
+            sbom_path = Path(tmpdir) / "sbom.json"
+            sbom_path.write_text("{}")
+            config_path = Path(tmpdir) / "config.toml"
+            config_path.write_text(
+                '[cli]\nbase_url = "https://pulp.example.com"\napi_root = "/pulp/api/v3"\ndomain = "test-domain"'
+            )
+
+            result = runner.invoke(
+                cli,
+                [
+                    "--build-id",
+                    "test-build",
+                    "--namespace",
+                    "test-ns",
+                    "--config",
+                    str(config_path),
+                    "upload",
+                    "--parent-package",
+                    "test-pkg",
+                    "--rpm-path",
+                    str(rpm_dir),
+                    "--sbom-path",
+                    str(sbom_path),
+                ],
+            )
+
+            assert result.exit_code == 0
+
     def test_upload_missing_build_id(self):
         """Test upload command with missing build-id."""
         runner = CliRunner()
@@ -1828,6 +1904,74 @@ class TestUploadFilesCommand:
             )
 
             assert result.exit_code == 1
+
+    @patch("pulp_tool.cli.upload_files.PulpClient")
+    def test_upload_files_auth_http_error_exits_zero(self, mock_client_class):
+        """Temporary workaround: auth-style HTTP errors exit 0 with a warning."""
+        runner = CliRunner()
+
+        mock_client_class.create_from_config_file.side_effect = httpx.HTTPError("403 Forbidden")
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            rpm_file = Path(tmpdir) / "package.rpm"
+            rpm_file.write_text("dummy rpm")
+            config_path = Path(tmpdir) / "config.toml"
+            config_path.write_text(
+                '[cli]\nbase_url = "https://pulp.example.com"\napi_root = "/pulp/api/v3"\ndomain = "test-domain"'
+            )
+
+            result = runner.invoke(
+                cli,
+                [
+                    "--build-id",
+                    "test-build",
+                    "--namespace",
+                    "test-ns",
+                    "--config",
+                    str(config_path),
+                    "upload-files",
+                    "--parent-package",
+                    "test-pkg",
+                    "--rpm",
+                    str(rpm_file),
+                ],
+            )
+
+            assert result.exit_code == 0
+
+    @patch("pulp_tool.cli.upload_files.PulpClient")
+    def test_upload_files_runtime_error_no_access_token_exits_zero(self, mock_client_class):
+        """RuntimeError from OAuth flows uses the Exception handler and graceful auth exit."""
+        runner = CliRunner()
+
+        mock_client_class.create_from_config_file.side_effect = RuntimeError("Failed to obtain access token")
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            rpm_file = Path(tmpdir) / "package.rpm"
+            rpm_file.write_text("dummy rpm")
+            config_path = Path(tmpdir) / "config.toml"
+            config_path.write_text(
+                '[cli]\nbase_url = "https://pulp.example.com"\napi_root = "/pulp/api/v3"\ndomain = "test-domain"'
+            )
+
+            result = runner.invoke(
+                cli,
+                [
+                    "--build-id",
+                    "test-build",
+                    "--namespace",
+                    "test-ns",
+                    "--config",
+                    str(config_path),
+                    "upload-files",
+                    "--parent-package",
+                    "test-pkg",
+                    "--rpm",
+                    str(rpm_file),
+                ],
+            )
+
+            assert result.exit_code == 0
 
     @patch("pulp_tool.cli.upload_files.PulpClient")
     def test_upload_files_generic_exception(self, mock_client_class):

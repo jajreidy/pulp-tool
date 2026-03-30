@@ -184,11 +184,10 @@ class TestPulpClient:
         auth = client.auth
         assert isinstance(auth, httpx.BasicAuth)
 
-    def test_cert_property(self, mock_pulp_client):
-        """Test cert property."""
-        cert_tuple = mock_pulp_client.cert
-
-        assert cert_tuple == ("/path/to/cert.pem", "/path/to/key.pem")
+    def test_cert_property(self, mock_config):
+        """Test cert property returns PEM paths from config (files created in mock_config fixture)."""
+        client = PulpClient(mock_config)
+        assert client.cert == (mock_config["cert"], mock_config["key"])
 
     def test_cert_property_with_relative_paths(self, mock_config, tmp_path):
         """Test cert property with relative paths resolved from config_path."""
@@ -342,71 +341,68 @@ class TestPulpClient:
         finally:
             os.chdir(original_cwd)
 
-    def test_cert_property_without_config_path(self, mock_config):
-        """Test cert property when config_path is None (should not resolve relative paths)."""
-        # Update config with relative paths
-        config_with_relative = mock_config.copy()
-        config_with_relative["cert"] = "cert.pem"
-        config_with_relative["key"] = "key.pem"
+    def test_cert_property_without_config_path(self, mock_config, tmp_path):
+        """Test cert property when config_path is None (relative paths use cwd)."""
+        import os
 
-        # Create client without config_path, mocking session creation to avoid SSL errors
+        original_cwd = os.getcwd()
+        try:
+            os.chdir(str(tmp_path))
+            cert_file = tmp_path / "cert.pem"
+            key_file = tmp_path / "key.pem"
+            cert_file.write_text("cert content")
+            key_file.write_text("key content")
+            config_with_relative = mock_config.copy()
+            config_with_relative["cert"] = "cert.pem"
+            config_with_relative["key"] = "key.pem"
+
+            with patch("pulp_tool.api.pulp_client.create_session_with_retry") as mock_create_session:
+                mock_create_session.return_value = Mock()
+                client = PulpClient(config_with_relative, config_path=None)
+                cert_tuple = client.cert
+                assert cert_tuple == ("cert.pem", "key.pem")
+        finally:
+            os.chdir(original_cwd)
+
+    def test_cert_property_with_config_path_no_parent(self, mock_config, tmp_path):
+        """Test cert property when config_path has no parent (use absolute PEM paths)."""
+        cert_file = tmp_path / "cert.pem"
+        key_file = tmp_path / "key.pem"
+        cert_file.write_text("c")
+        key_file.write_text("k")
+        config_with_absolute = mock_config.copy()
+        config_with_absolute["cert"] = str(cert_file)
+        config_with_absolute["key"] = str(key_file)
+
         with patch("pulp_tool.api.pulp_client.create_session_with_retry") as mock_create_session:
-            mock_session = Mock()
-            mock_create_session.return_value = mock_session
-
-            client = PulpClient(config_with_relative, config_path=None)
-
-            # Cert property should return paths as-is
-            cert_tuple = client.cert
-
-            assert cert_tuple == ("cert.pem", "key.pem")
-
-    def test_cert_property_with_config_path_no_parent(self, mock_config):
-        """Test cert property when config_path has no parent (root path)."""
-        # Update config with relative paths
-        config_with_relative = mock_config.copy()
-        config_with_relative["cert"] = "cert.pem"
-        config_with_relative["key"] = "key.pem"
-
-        # Create client with config_path that has no parent, mocking session creation
-        with patch("pulp_tool.api.pulp_client.create_session_with_retry") as mock_create_session:
-            mock_session = Mock()
-            mock_create_session.return_value = mock_session
-
-            # Mock config_path to have no parent (like root path "/")
+            mock_create_session.return_value = Mock()
             from pathlib import Path
 
             mock_config_path = Mock(spec=Path)
             mock_config_path.parent = None
 
-            client = PulpClient(config_with_relative, config_path=mock_config_path)
-
-            # Cert property should return paths as-is when parent is None
+            client = PulpClient(config_with_absolute, config_path=mock_config_path)
             cert_tuple = client.cert
-
-            assert cert_tuple == ("cert.pem", "key.pem")
+            assert cert_tuple == (str(cert_file), str(key_file))
 
     def test_cert_property_relative_path_not_found(self, mock_config, tmp_path):
-        """Test cert property when relative paths don't exist in config dir or current dir."""
-        # Create a config file but don't create cert/key files
+        """Misconfigured mTLS (missing PEM files) fails fast on client init."""
         config_file = tmp_path / "config.toml"
-
-        # Update config with relative paths that don't exist anywhere
         config_with_relative = mock_config.copy()
         config_with_relative["cert"] = "nonexistent_cert.pem"
         config_with_relative["key"] = "nonexistent_key.pem"
 
-        # Create client with config_path, mocking session creation to avoid SSL errors
-        with patch("pulp_tool.api.pulp_client.create_session_with_retry") as mock_create_session:
-            mock_session = Mock()
-            mock_create_session.return_value = mock_session
+        with pytest.raises(ValueError, match="Certificate or key file not found"):
+            PulpClient(config_with_relative, config_path=config_file)
 
-            client = PulpClient(config_with_relative, config_path=config_file)
-
-            # Cert property should return original paths when files don't exist
-            cert_tuple = client.cert
-
-            assert cert_tuple == ("nonexistent_cert.pem", "nonexistent_key.pem")
+    def test_pulp_client_raises_when_only_cert_or_only_key_set(self, mock_config):
+        """cert without key (or vice versa) is invalid for mTLS."""
+        cfg_only_cert = {k: v for k, v in mock_config.items() if k != "key"}
+        with pytest.raises(ValueError, match="both `cert` and `key`"):
+            PulpClient(cfg_only_cert)
+        cfg_only_key = {k: v for k, v in mock_config.items() if k != "cert"}
+        with pytest.raises(ValueError, match="both `cert` and `key`"):
+            PulpClient(cfg_only_key)
 
     def test_cert_property_mixed_absolute_and_relative(self, mock_config, tmp_path):
         """Test cert property with one absolute path and one relative path."""
@@ -454,10 +450,7 @@ class TestPulpClient:
 
     def test_request_params_without_cert(self, mock_config):
         """Test request_params property without certificate."""
-        config_no_cert = mock_config.copy()
-        del config_no_cert["cert"]
-        del config_no_cert["key"]
-
+        config_no_cert = {k: v for k, v in mock_config.items() if k not in ("cert", "key")}
         client = PulpClient(config_no_cert)
         params = client.request_params
 
@@ -1642,8 +1635,8 @@ class TestPulpClient:
 
     def test_request_params_without_headers(self, mock_config):
         """Test request_params property without headers."""
-        # Create config without cert to test auth path
-        config_without_cert = {k: v for k, v in mock_config.items() if k != "cert"}
+        # OAuth path: mTLS must be fully absent (not only cert removed).
+        config_without_cert = {k: v for k, v in mock_config.items() if k not in ("cert", "key")}
         client = PulpClient(config_without_cert)
 
         params = client.request_params

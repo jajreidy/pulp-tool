@@ -11,6 +11,7 @@ Best Practices for Temporary Files in Tests:
 4. The temp_file_tracker fixture automatically ensures cleanup of all temp files
 """
 
+import subprocess
 import tempfile
 from pathlib import Path
 from unittest.mock import Mock
@@ -72,17 +73,46 @@ def unregister_temp_file(path: str) -> None:
     _temp_file_registry.discard(path)
 
 
+def _write_self_signed_pem_pair(cert_path: Path, key_path: Path) -> None:
+    """Create a minimal valid cert/key pair so ssl.load_cert_chain succeeds in tests."""
+    subprocess.run(
+        [
+            "openssl",
+            "req",
+            "-x509",
+            "-newkey",
+            "rsa:2048",
+            "-keyout",
+            str(key_path),
+            "-out",
+            str(cert_path),
+            "-days",
+            "1",
+            "-nodes",
+            "-subj",
+            "/CN=pulp-tool-test",
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+
 @pytest.fixture
-def mock_config():
-    """Mock Pulp configuration."""
+def mock_config(tmp_path_factory):
+    """Mock Pulp config with real PEM files so PulpClient builds a session (HTTP is mocked via respx)."""
+    tls_dir = tmp_path_factory.mktemp("pulp_mock_tls")
+    cert = tls_dir / "cert.pem"
+    key = tls_dir / "key.pem"
+    _write_self_signed_pem_pair(cert, key)
     return {
         "base_url": "https://pulp.example.com",
         "api_root": "/pulp/api/v3",
         "client_id": "test-client-id",
         "client_secret": "test-client-secret",
         "domain": "test-domain",
-        "cert": "/path/to/cert.pem",
-        "key": "/path/to/key.pem",
+        "cert": str(cert),
+        "key": str(key),
     }
 
 
