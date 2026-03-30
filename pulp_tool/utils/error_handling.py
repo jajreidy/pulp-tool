@@ -17,6 +17,62 @@ import httpx
 F = TypeVar("F", bound=Callable[..., Any])
 
 
+def is_upload_auth_related_failure(error: BaseException) -> bool:
+    """
+    Return True if an exception likely indicates an authentication/authorization failure.
+
+    Used by upload CLI commands for a temporary workaround: log a warning and exit 0 so
+    pipelines do not fail hard on expected auth issues.
+
+    Args:
+        error: Exception raised during upload.
+
+    Returns:
+        True if the failure should be treated as auth-related for the workaround.
+    """
+    if isinstance(error, httpx.HTTPStatusError):
+        return error.response.status_code in (401, 403)
+
+    if isinstance(error, httpx.HTTPError):
+        message = str(error).lower()
+        if "401" in message or "403" in message:
+            return True
+        if "unauthorized" in message or "forbidden" in message:
+            return True
+
+    if isinstance(error, RuntimeError):
+        message = str(error).lower()
+        if "failed to obtain access token" in message:
+            return True
+
+    return False
+
+
+def try_upload_auth_graceful_exit(operation: str, error: BaseException) -> bool:
+    """
+    Temporary workaround for upload commands: treat auth failures as non-fatal.
+
+    If ``error`` looks like an auth problem, log a warning and return True so the
+    caller can ``sys.exit(0)``. Otherwise return False and the caller should handle
+    the error normally.
+
+    Args:
+        operation: Description for logs (e.g. ``upload operation``).
+        error: The caught exception.
+
+    Returns:
+        True if the caller should exit successfully without re-raising.
+    """
+    if not is_upload_auth_related_failure(error):
+        return False
+    logging.warning(
+        "Temporary upload workaround: authentication failure during %s; exiting with success (code 0). Error: %s",
+        operation,
+        error,
+    )
+    return True
+
+
 def handle_http_error(error: httpx.HTTPError, operation: str, *, log_traceback: bool = True) -> None:
     """
     Handle HTTP errors with standardized logging.
@@ -157,6 +213,8 @@ def try_parse_json(content: str, operation: str, *, default: Optional[Any] = Non
 __all__ = [
     "handle_http_error",
     "handle_generic_error",
+    "is_upload_auth_related_failure",
+    "try_upload_auth_graceful_exit",
     "with_error_handling",
     "log_and_exit",
     "try_parse_json",
