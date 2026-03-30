@@ -299,8 +299,48 @@ class PulpClient(
         self._metrics = PerformanceMetrics()
         logging.debug("PulpClient initialized with request caching enabled (TTL: %ds)", CACHE_TTL)
 
+    def _require_client_cert_files_if_configured(self) -> None:
+        """
+        If cert+key are set for mTLS, both PEM paths must exist after resolution.
+
+        Otherwise create_session_with_retry would silently skip loading the client cert,
+        and requests would use default TLS verification only—often resulting in HTTP 403
+        from gateways that require mTLS.
+        """
+        cert_cfg = self.config.get("cert")
+        key_cfg = self.config.get("key")
+        if not cert_cfg and not key_cfg:
+            return
+        if not cert_cfg or not key_cfg:
+            logging.error(
+                "Pulp config sets only one of cert/key; provide both for mTLS or omit both and use OAuth2/Basic auth."
+            )
+            raise ValueError(
+                "Invalid Pulp TLS config: both `cert` and `key` must be set for client certificate auth, or "
+                "remove both and use client_id/client_secret or username/password."
+            )
+        cert_path_str, key_path_str = self.cert
+        cert_ok = Path(cert_path_str).is_file()
+        key_ok = Path(key_path_str).is_file()
+        if not cert_ok or not key_ok:
+            logging.error(
+                "Client TLS is configured (cert/key in config) but certificate file(s) are missing or not readable. "
+                "cert=%s (ok=%s), key=%s (ok=%s). "
+                "Without these files the HTTP client will not send a client certificate; the API may return HTTP 403.",
+                cert_path_str,
+                cert_ok,
+                key_path_str,
+                key_ok,
+            )
+            raise ValueError(
+                f"Certificate or key file not found or not a file: cert={cert_path_str!s}, key={key_path_str!s}. "
+                "Use paths that exist in this environment (Konflux/Tekton pods must mount TLS material where "
+                "the config points)."
+            )
+
     def _create_session(self) -> httpx.Client:
         """Create a requests session with retry strategy and connection pool configuration."""
+        self._require_client_cert_files_if_configured()
         # Pass cert to Client constructor if available, otherwise auth will be added per-request
         cert = self.cert if self.config.get("cert") else None
         return create_session_with_retry(cert=cert)
@@ -308,6 +348,7 @@ class PulpClient(
     def _get_async_session(self) -> httpx.AsyncClient:
         """Get or create async session with optimized configuration."""
         if self._async_session is None or self._async_session.is_closed:
+            self._require_client_cert_files_if_configured()
             cert = self.cert if self.config.get("cert") else None
 
             # Create async client with same configuration as sync client

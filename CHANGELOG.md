@@ -40,6 +40,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Optional docs stack (Sphinx) remains removed from `dev` extras; **CVE-2026-4539** still applies to transitive Pygments from **`pytest`** and **`diff-cover`** until a patched wheel is published
 
 ### Fixed
+- When `cert`/`key` are set for mTLS but PEM files are missing (wrong path in containers, etc.), `PulpClient` now fails fast with a clear error instead of opening a TLS connection without a client certificate (which often surfaced only as HTTP 403)
+- `create_session_with_retry` logs an error when a `cert` tuple is given but the PEM paths do not exist (defensive; `PulpClient` normally validates paths first)
 - Generic `/api/v3/content/` responses that are a bare JSON array (not `{"results": [...]}`) no longer crash gather-by-href or `_find_artifact_content` with `TypeError: list indices must be integers or slices, not str`
 - Results JSON RPM URLs with `--signed-by`: use the `rpms-signed` distribution base (`distributions.rpms_signed` / correct artifact `url`) instead of the unsigned `rpms` path
 - RPM distribution URLs: ``Packages/<letter>/`` uses the lowercase first character of the RPM **basename** only (correct for paths like ``Packages/W/foo.rpm``, ``arch/pkg.rpm``, or plain ``foo.rpm``)

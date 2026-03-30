@@ -68,14 +68,17 @@ def create_session_with_retry(
     # Configure SSL context for client certificates if provided
     verify: Union[bool, ssl.SSLContext] = True
     if cert:
-        # Only create SSL context if certificate files actually exist
-        # This allows tests to pass fake paths without FileNotFoundError
+        # PEM paths are validated in PulpClient before session creation when mTLS is configured.
         if os.path.exists(cert[0]) and os.path.exists(cert[1]):
             ssl_context = ssl.create_default_context()
             ssl_context.load_cert_chain(certfile=cert[0], keyfile=cert[1])
             verify = ssl_context
-        # If cert paths provided but files don't exist, just use default verification
-        # (useful for testing where we mock the actual HTTP calls)
+        else:
+            logging.error(
+                "create_session_with_retry called with cert tuple but files missing: %s, %s",
+                cert[0],
+                cert[1],
+            )
 
     # Create transport with retry logic
     # Note: httpx doesn't have built-in retry like requests.adapters.Retry
