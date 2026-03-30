@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=45", "wheel", "setuptools_scm[toml]>=6.2"]
+requires = ["setuptools>=69.0", "wheel", "setuptools_scm[toml]>=8.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -27,34 +27,34 @@ classifiers = [
 ]
 requires-python = ">=3.12"
 dependencies = [
-    "httpx>=0.24.0",
-    "pydantic>=2.0.0",
-    "click>=8.0.0",
+    "httpx>=0.27.0",
+    "pydantic>=2.10.0",
+    "click>=8.1.0",
 ]
 
 [project.optional-dependencies]
 dev = [
     # Testing
-    "pytest>=6.0",
-    "pytest-asyncio>=0.21.0",
-    "pytest-cov>=2.0",
-    "pytest-mock>=3.6",
-    "respx>=0.20.0",
+    "pytest>=8.0",
+    "pytest-asyncio>=0.24.0",
+    "pytest-cov>=6.0",
+    "pytest-mock>=3.14.0",
+    "respx>=0.22.0",
     "diff-cover>=7.0",
     # Code formatting and linting
-    "black>=25.0",
-    "flake8>=3.8",
-    "mypy>=0.800",
-    "pylint>=2.8",
+    "black>=25.1.0",
+    "flake8>=7.0",
+    "mypy>=1.11.0",
+    "pylint>=3.3.0",
     # Pre-commit hooks
-    "pre-commit>=3.0.0",
+    "pre-commit>=4.0.0",
     # Build tools
-    "setuptools>=45",
+    "setuptools>=69.0",
     "wheel",
-    "setuptools-scm[toml]>=6.2",
-    # Documentation
-    "sphinx>=4.0",
-    "sphinx-rtd-theme>=1.0",
+    "setuptools-scm[toml]>=8.0",
+    # Dependency CVE audit (local: make audit). When Pygments >2.19.2 is on PyPI, add
+    # "pygments>=2.19.3" here and remove CVE-2026-4539 ignores from .github/workflows/security-scan.yml.
+    "pip-audit>=2.7.0",
 ]
 
 [project.scripts]
