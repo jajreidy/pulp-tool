@@ -24,7 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Username/password (Basic Auth) support for packages.redhat.com
 
 ### Changed
-- **Temporary:** `upload` and `upload-files` treat authentication-related failures (HTTP 401/403, OAuth “failed to obtain access token”, and similar) as non-fatal: log a warning and exit with code 0 so CI does not fail hard; other errors still exit 1
+- `upload` and `upload-files` again exit with code 1 on authentication-related failures (HTTP 401/403, OAuth “failed to obtain access token”, and similar); the previous temporary non-fatal workaround (warning and exit 0) has been removed
 - Raised minimum versions for runtime (`httpx`, `pydantic`, `click`) and dev tooling in `pyproject.toml` / `setup.py`; build-system uses newer `setuptools`/`setuptools-scm`
 - Removed Sphinx and sphinx-rtd-theme from optional `dev` extras (in-tree docs build was removed earlier); Pygments may still be installed transitively (e.g. `pytest`, `diff-cover`)
 - Local `--artifact-results` folder path: `distributions` in `pulp_results.json` no longer includes a synthetic `artifacts` pulp-content URL (artifacts repo was already skipped; URL map now aligns)
