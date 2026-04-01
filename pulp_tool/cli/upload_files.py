@@ -16,11 +16,7 @@ import httpx
 from ..api import PulpClient
 from ..models.context import UploadFilesContext
 from ..utils import PulpHelper, setup_logging
-from ..utils.error_handling import (
-    handle_generic_error,
-    handle_http_error,
-    try_upload_auth_graceful_exit,
-)
+from ..utils.error_handling import handle_generic_error, handle_http_error
 
 
 @click.command(name="upload-files")
@@ -176,13 +172,9 @@ def upload_files(  # pylint: disable=too-many-arguments,too-many-positional-argu
         sys.exit(0)
 
     except httpx.HTTPError as e:
-        if try_upload_auth_graceful_exit("upload-files operation", e):
-            sys.exit(0)
         handle_http_error(e, "upload-files operation")
         sys.exit(1)
     except Exception as e:
-        if try_upload_auth_graceful_exit("upload-files operation", e):
-            sys.exit(0)
         handle_generic_error(e, "upload-files operation")
         sys.exit(1)
     finally:

@@ -6,10 +6,8 @@ import httpx
 from pulp_tool.utils.error_handling import (
     handle_generic_error,
     handle_http_error,
-    is_upload_auth_related_failure,
     log_and_exit,
     try_parse_json,
-    try_upload_auth_graceful_exit,
     with_error_handling,
 )
 
@@ -122,71 +120,6 @@ class TestWithErrorHandling:
             failing_func()
 
         assert exc_info.value.code == 1
-
-
-class TestUploadAuthGracefulWorkaround:
-    """Tests for temporary upload auth graceful-exit helpers."""
-
-    def test_http_status_error_401_is_auth_failure(self):
-        """HTTPStatusError with 401 counts as auth-related."""
-        request = httpx.Request("GET", "https://pulp.example.com/")
-        response = httpx.Response(401, request=request)
-        err = httpx.HTTPStatusError("Unauthorized", request=request, response=response)
-        assert is_upload_auth_related_failure(err) is True
-
-    def test_http_status_error_403_is_auth_failure(self):
-        """HTTPStatusError with 403 counts as auth-related."""
-        request = httpx.Request("GET", "https://pulp.example.com/")
-        response = httpx.Response(403, request=request)
-        err = httpx.HTTPStatusError("Forbidden", request=request, response=response)
-        assert is_upload_auth_related_failure(err) is True
-
-    def test_http_status_error_500_not_auth_failure(self):
-        """HTTPStatusError with 500 is not treated as auth-only workaround."""
-        request = httpx.Request("GET", "https://pulp.example.com/")
-        response = httpx.Response(500, request=request)
-        err = httpx.HTTPStatusError("Server error", request=request, response=response)
-        assert is_upload_auth_related_failure(err) is False
-
-    def test_http_error_message_with_status_code(self):
-        """Plain HTTPError with 401/403 in message is auth-related."""
-        assert is_upload_auth_related_failure(httpx.HTTPError("401 Unauthorized")) is True
-        assert is_upload_auth_related_failure(httpx.HTTPError("403 Forbidden")) is True
-
-    def test_http_error_unauthorized_word_without_code(self):
-        """HTTPError message may only say Unauthorized."""
-        assert is_upload_auth_related_failure(httpx.HTTPError("Unauthorized")) is True
-
-    def test_http_error_connection_not_auth(self):
-        """Connection-style HTTPError is not auth-related."""
-        assert is_upload_auth_related_failure(httpx.HTTPError("Connection failed")) is False
-
-    def test_runtime_error_no_token_is_auth_related(self):
-        """RuntimeError from OAuth when token is missing matches."""
-        assert is_upload_auth_related_failure(RuntimeError("Failed to obtain access token")) is True
-
-    def test_runtime_error_other_not_auth(self):
-        """Other RuntimeError is not auth-related."""
-        assert is_upload_auth_related_failure(RuntimeError("something else")) is False
-
-    def test_try_upload_auth_graceful_exit_logs_and_returns_true(self, caplog):
-        """try_upload_auth_graceful_exit warns and returns True for auth errors."""
-        import logging
-
-        caplog.set_level(logging.WARNING)
-        err = httpx.HTTPError("403 Forbidden")
-        assert try_upload_auth_graceful_exit("upload operation", err) is True
-        assert "Temporary upload workaround" in caplog.text
-        assert "upload operation" in caplog.text
-
-    def test_try_upload_auth_graceful_exit_returns_false_when_not_auth(self, caplog):
-        """Non-auth errors return False without workaround log."""
-        import logging
-
-        caplog.set_level(logging.WARNING)
-        err = httpx.HTTPError("500 boom")
-        assert try_upload_auth_graceful_exit("upload operation", err) is False
-        assert "Temporary upload workaround" not in caplog.text
 
 
 class TestLogAndExit:

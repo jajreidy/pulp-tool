@@ -20,11 +20,7 @@ from ..models.context import UploadRpmContext
 from ..services.upload_service import scan_results_json_for_log_and_sbom_keys
 from ..utils import PulpHelper, setup_logging
 from ..utils.uploads import rpm_directory_has_log_files
-from ..utils.error_handling import (
-    handle_generic_error,
-    handle_http_error,
-    try_upload_auth_graceful_exit,
-)
+from ..utils.error_handling import handle_generic_error, handle_http_error
 
 
 def _extract_build_id_namespace_from_results_json(results_json_path: Path) -> Tuple[str, str]:
@@ -239,13 +235,9 @@ def upload(  # pylint: disable=too-many-arguments,too-many-positional-arguments
         sys.exit(0)
 
     except httpx.HTTPError as e:
-        if try_upload_auth_graceful_exit("upload operation", e):
-            sys.exit(0)
         handle_http_error(e, "upload operation")
         sys.exit(1)
     except Exception as e:
-        if try_upload_auth_graceful_exit("upload operation", e):
-            sys.exit(0)
         handle_generic_error(e, "upload operation")
         sys.exit(1)
     finally:

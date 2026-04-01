@@ -596,8 +596,8 @@ class TestUploadCommand:
             assert result.exit_code == 1
 
     @patch("pulp_tool.cli.upload.PulpClient")
-    def test_upload_auth_http_error_exits_zero(self, mock_client_class):
-        """Temporary workaround: auth-style HTTP errors exit 0 with a warning."""
+    def test_upload_auth_http_error_exits_one(self, mock_client_class):
+        """Auth-style HTTP errors exit 1 like other HTTP failures."""
         runner = CliRunner()
 
         mock_client_class.create_from_config_file.side_effect = httpx.HTTPError("401 Unauthorized")
@@ -631,11 +631,11 @@ class TestUploadCommand:
                 ],
             )
 
-            assert result.exit_code == 0
+            assert result.exit_code == 1
 
     @patch("pulp_tool.cli.upload.PulpClient")
-    def test_upload_runtime_error_no_access_token_exits_zero(self, mock_client_class):
-        """OAuth token failure (RuntimeError) triggers the same graceful upload exit."""
+    def test_upload_runtime_error_no_access_token_exits_one(self, mock_client_class):
+        """OAuth token failure (RuntimeError) is a failed upload."""
         runner = CliRunner()
 
         mock_client_class.create_from_config_file.side_effect = RuntimeError("Failed to obtain access token")
@@ -669,7 +669,7 @@ class TestUploadCommand:
                 ],
             )
 
-            assert result.exit_code == 0
+            assert result.exit_code == 1
 
     def test_upload_missing_build_id(self):
         """Test upload command with missing build-id."""
@@ -1906,8 +1906,8 @@ class TestUploadFilesCommand:
             assert result.exit_code == 1
 
     @patch("pulp_tool.cli.upload_files.PulpClient")
-    def test_upload_files_auth_http_error_exits_zero(self, mock_client_class):
-        """Temporary workaround: auth-style HTTP errors exit 0 with a warning."""
+    def test_upload_files_auth_http_error_exits_one(self, mock_client_class):
+        """Auth-style HTTP errors exit 1 like other HTTP failures."""
         runner = CliRunner()
 
         mock_client_class.create_from_config_file.side_effect = httpx.HTTPError("403 Forbidden")
@@ -1937,11 +1937,11 @@ class TestUploadFilesCommand:
                 ],
             )
 
-            assert result.exit_code == 0
+            assert result.exit_code == 1
 
     @patch("pulp_tool.cli.upload_files.PulpClient")
-    def test_upload_files_runtime_error_no_access_token_exits_zero(self, mock_client_class):
-        """RuntimeError from OAuth flows uses the Exception handler and graceful auth exit."""
+    def test_upload_files_runtime_error_no_access_token_exits_one(self, mock_client_class):
+        """OAuth token failure (RuntimeError) is a failed upload-files run."""
         runner = CliRunner()
 
         mock_client_class.create_from_config_file.side_effect = RuntimeError("Failed to obtain access token")
@@ -1971,7 +1971,7 @@ class TestUploadFilesCommand:
                 ],
             )
 
-            assert result.exit_code == 0
+            assert result.exit_code == 1
 
     @patch("pulp_tool.cli.upload_files.PulpClient")
     def test_upload_files_generic_exception(self, mock_client_class):
