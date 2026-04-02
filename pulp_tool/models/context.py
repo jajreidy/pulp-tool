@@ -77,7 +77,9 @@ class PullContext(KonfluxBaseModel):
         artifact_location: Path or URL to artifact metadata (can be generated from namespace+build_id)
         namespace: Optional namespace for auto-generating artifact URL (requires build_id and config)
         key_path: Optional path to SSL private key (required for remote URLs, can come from config)
-        config: Path to Pulp config file (from --transfer-dest or --config, used for upload dest and cert/key)
+        config: Path to Pulp config file (from --transfer-dest or --config, used for auth, base_url, and upload)
+        transfer_dest: If set, path from ``--transfer-dest``; repository/distribution setup and upload use this
+                            (``--config`` alone supplies auth/URL without creating destination repos)
         build_id: Optional build identifier (can be used for override or with namespace for URL generation)
         debug: Verbosity level (0=WARNING, 1=INFO, 2=DEBUG, 3+=DEBUG with HTTP logs)
         max_workers: Maximum number of concurrent workers
@@ -89,6 +91,7 @@ class PullContext(KonfluxBaseModel):
     namespace: Optional[str] = None
     key_path: Optional[str] = None
     config: Optional[str] = None
+    transfer_dest: Optional[str] = None
     build_id: Optional[str] = None
     debug: int = 0
     max_workers: int = Field(default=10, ge=1, le=100)

@@ -170,7 +170,7 @@ class TestArtifactManagement:
             "logs": "https://example.com/logs/",
         }
 
-        result = _categorize_artifacts(artifacts, distros)
+        result = _categorize_artifacts(artifacts, distros, embedded_urls_only=False)
 
         assert len(result) == 3
         # Check that all artifact types are included (using DownloadTask attributes)
@@ -203,6 +203,7 @@ class TestRepositoryManagement:
         """Test setup_repositories_if_needed with successful setup."""
         args = Mock()
         args.config = temp_config_file
+        args.transfer_dest = temp_config_file
         args.build_id = "test-build"
 
         with (
@@ -239,12 +240,25 @@ class TestRepositoryManagement:
         """Test setup_repositories_if_needed with exception."""
         args = Mock()
         args.config = temp_config_file
+        args.transfer_dest = temp_config_file
 
         with patch("pulp_tool.api.PulpClient.create_from_config_file", side_effect=ValueError("Config error")):
 
             result = setup_repositories_if_needed(args)
 
             assert result is None
+
+    def test_setup_repositories_no_transfer_dest(self, temp_config_file):
+        """Test setup_repositories_if_needed skips when --transfer-dest was not specified."""
+        args = Mock()
+        args.config = temp_config_file
+        args.transfer_dest = None
+
+        with patch("pulp_tool.pull.download.PulpClient.create_from_config_file") as mock_create:
+            result = setup_repositories_if_needed(args)
+
+        assert result is None
+        mock_create.assert_not_called()
 
 
 class TestBuildIdManagement:
@@ -1222,6 +1236,7 @@ class TestSetupRepositories:
 
         args = PullContext(
             config=str(config_file),
+            transfer_dest=str(config_file),
             build_id="test-build",
             namespace="test-namespace",
         )
@@ -1259,6 +1274,7 @@ class TestSetupRepositories:
 
         args = PullContext(
             config=str(config_file),
+            transfer_dest=str(config_file),
             build_id="test-build",
             namespace="test-namespace",
         )
@@ -1288,6 +1304,7 @@ class TestSetupRepositories:
         """Test setup_repositories_if_needed extracts parent_package from artifact_json (lines 113-114)."""
         args = Mock()
         args.config = temp_config_file
+        args.transfer_dest = temp_config_file
         args.build_id = "test-build"
 
         artifact_json = {"parent_package": "test-package"}
@@ -1364,6 +1381,53 @@ class TestLoadAndValidateArtifacts:
                 load_and_validate_artifacts(args, mock_client)
             mock_exit.assert_called_once_with(1)
 
+    def test_load_and_validate_artifacts_validation_fails_bad_url(self, temp_file):
+        """Invalid artifact url exits with validation error."""
+        import sys
+
+        args = Mock()
+        args.artifact_location = temp_file
+
+        with open(temp_file, "w") as f:
+            json.dump(
+                {
+                    "artifacts": {
+                        "a.rpm": {"labels": {}, "url": "ftp://example.com/a.rpm"},
+                    },
+                },
+                f,
+            )
+
+        mock_client = Mock()
+        with patch.object(sys, "exit", side_effect=SystemExit(1)) as mock_exit:
+            with pytest.raises(SystemExit):
+                load_and_validate_artifacts(args, mock_client)
+        mock_exit.assert_called_once_with(1)
+
+    def test_load_and_validate_artifacts_validation_fails_extra_top_level_key(self, temp_file):
+        """Unknown top-level keys are rejected (strict document shape)."""
+        import sys
+
+        args = Mock()
+        args.artifact_location = temp_file
+
+        with open(temp_file, "w") as f:
+            json.dump(
+                {
+                    "artifacts": {
+                        "a.rpm": {"labels": {}, "url": "https://example.com/a.rpm"},
+                    },
+                    "build_id": "should-not-be-here",
+                },
+                f,
+            )
+
+        mock_client = Mock()
+        with patch.object(sys, "exit", side_effect=SystemExit(1)) as mock_exit:
+            with pytest.raises(SystemExit):
+                load_and_validate_artifacts(args, mock_client)
+        mock_exit.assert_called_once_with(1)
+
     def test_load_and_validate_artifacts_converts_to_typed_models(self, temp_file):
         """Test load_and_validate_artifacts converts artifacts to typed models (lines 164, 166, 170)."""
         args = Mock()
@@ -1372,8 +1436,15 @@ class TestLoadAndValidateArtifacts:
         # Write JSON with artifacts
         artifact_data = {
             "artifacts": {
-                "test.rpm": {"labels": {"build_id": "test-build", "arch": "x86_64"}},
-                "test.sbom": {"labels": {"build_id": "test-build", "arch": "noarch"}},
+                "test.rpm": {
+                    "labels": {"build_id": "test-build", "arch": "x86_64"},
+                    "url": "https://example.com/api/pulp-content/ns/build/rpms/Packages/t/test.rpm",
+                    "sha256": "a" * 64,
+                },
+                "test.sbom": {
+                    "labels": {"build_id": "test-build", "arch": "noarch"},
+                    "url": "https://example.com/api/pulp-content/ns/build/sbom/test.sbom",
+                },
             },
             "distributions": {
                 "rpms": "https://example.com/rpms/",
@@ -1412,9 +1483,18 @@ class TestDownloadArtifactsConcurrently:
         from concurrent.futures import Future
 
         artifacts = {
-            "test.rpm": {"labels": {"build_id": "test-build", "arch": "x86_64"}},
-            "test.sbom": {"labels": {"build_id": "test-build", "arch": "noarch"}},
-            "test.log": {"labels": {"build_id": "test-build", "arch": "noarch"}},
+            "test.rpm": {
+                "labels": {"build_id": "test-build", "arch": "x86_64"},
+                "url": "https://example.com/rpms/Packages/t/test.rpm",
+            },
+            "test.sbom": {
+                "labels": {"build_id": "test-build", "arch": "noarch"},
+                "url": "https://example.com/sbom/test.sbom",
+            },
+            "test.log": {
+                "labels": {"build_id": "test-build", "arch": "noarch"},
+                "url": "https://example.com/logs/test.log",
+            },
         }
         distros = {
             "rpms": "https://example.com/rpms/",
@@ -1467,7 +1547,10 @@ class TestDownloadArtifactsConcurrently:
         from concurrent.futures import Future
 
         artifacts = {
-            "test.rpm": {"labels": {"build_id": "test-build"}},  # dict format
+            "test.rpm": {
+                "labels": {"build_id": "test-build"},
+                "url": "https://example.com/rpms/Packages/t/test.rpm",
+            },  # dict format
         }
         distros = {
             "rpms": "https://example.com/rpms/",
@@ -1501,7 +1584,10 @@ class TestDownloadArtifactsConcurrently:
         from pulp_tool.models.artifacts import ArtifactMetadata
 
         artifacts = {
-            "test.rpm": ArtifactMetadata(labels={"build_id": "test-build", "arch": "x86_64"}),
+            "test.rpm": ArtifactMetadata(
+                labels={"build_id": "test-build", "arch": "x86_64"},
+                url="https://example.com/rpms/Packages/t/test.rpm",
+            ),
         }
         distros = {
             "rpms": "https://example.com/rpms/",
@@ -1533,8 +1619,14 @@ class TestDownloadArtifactsConcurrently:
         from concurrent.futures import Future
 
         artifacts = {
-            "test.rpm": {"labels": {"build_id": "test-build"}},
-            "test2.rpm": {"labels": {"build_id": "test-build"}},
+            "test.rpm": {
+                "labels": {"build_id": "test-build"},
+                "url": "https://example.com/rpms/Packages/t/test.rpm",
+            },
+            "test2.rpm": {
+                "labels": {"build_id": "test-build"},
+                "url": "https://example.com/rpms/Packages/t/test2.rpm",
+            },
         }
         distros = {
             "rpms": "https://example.com/rpms/",

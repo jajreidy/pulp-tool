@@ -288,6 +288,37 @@ class TestCategorizeArtifactsByType:
         assert ("package.rpm", "https://example.com/rpms/Packages/p/package.rpm", "x86_64", "rpm") in result
         assert ("build.log", "https://example.com/logs/build.log", "noarch", "log") in result
 
+    def test_categorize_embedded_urls_only_skips_without_url(self):
+        """Pull mode: no synthesized URL from distributions when url is missing."""
+        artifacts = {
+            "package.rpm": ArtifactMetadata(labels={"arch": "x86_64"}),
+        }
+        distros = {"rpms": "https://example.com/rpms/"}
+
+        with patch("pulp_tool.utils.artifact_detection.build_artifact_url") as mock_build:
+            with patch("pulp_tool.utils.artifact_detection.logging") as mock_logging:
+                result = categorize_artifacts_by_type(artifacts, distros, embedded_urls_only=True)
+
+        assert len(result) == 0
+        mock_build.assert_not_called()
+        mock_logging.debug.assert_called_once_with(
+            "Skipping %s: artifact metadata has no url (pull uses only URLs from artifact results)",
+            "package.rpm",
+        )
+
+    def test_categorize_embedded_urls_only_keeps_embedded_url(self):
+        """Pull mode: artifact url is used even when distros would differ."""
+        embedded = "https://cdn.example/artifacts/pkg.rpm"
+        artifacts = {"package.rpm": ArtifactMetadata(labels={"arch": "x86_64"}, url=embedded)}
+        distros = {"rpms": "https://wrong.example/rpms/"}
+
+        with patch("pulp_tool.utils.artifact_detection.build_artifact_url") as mock_build:
+            result = categorize_artifacts_by_type(artifacts, distros, embedded_urls_only=True)
+
+        assert len(result) == 1
+        assert result[0][1] == embedded
+        mock_build.assert_not_called()
+
 
 class TestDetectArchFromFilepath:
     """Tests for detect_arch_from_filepath function."""

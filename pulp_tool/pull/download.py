@@ -11,9 +11,10 @@ import traceback
 from typing import Any, Dict, List, Optional
 
 import httpx
+from pydantic import AnyHttpUrl, TypeAdapter, ValidationError
 
 from ..api import DistributionClient, PulpClient
-from ..models.artifacts import ArtifactData, ArtifactJsonResponse, ArtifactMetadata, DownloadTask
+from ..models.artifacts import ArtifactData, ArtifactJsonResponse, DownloadTask
 from ..models.results import DownloadResult
 from ..models.context import PullContext
 from ..utils import PulpHelper, determine_build_id, extract_metadata_from_artifact_json
@@ -26,24 +27,39 @@ def _categorize_artifacts(
     distros: Dict[str, str],
     content_types: Optional[List[str]] = None,
     archs: Optional[List[str]] = None,
+    *,
+    embedded_urls_only: bool = True,
 ) -> List[DownloadTask]:
     """Categorize artifacts and prepare download information.
 
     Args:
         artifacts: Dictionary of artifacts (can be ArtifactMetadata or dict)
-        distros: Distribution base URLs (used only when an artifact has no non-empty ``url``)
+        distros: Distribution base URLs from artifact JSON (ignored for URL building when
+            ``embedded_urls_only`` is True)
         content_types: Optional list of content types to filter (rpm, log, sbom)
         archs: Optional list of architectures to filter
+        embedded_urls_only: When True (default), only each artifact's ``url`` field is used for download.
 
     Returns:
         List of DownloadTask objects with download information
     """
     # Use centralized artifact detection utility
-    categorized = categorize_artifacts_by_type(artifacts, distros, content_types, archs)
+    categorized = categorize_artifacts_by_type(
+        artifacts,
+        distros,
+        content_types,
+        archs,
+        embedded_urls_only=embedded_urls_only,
+    )
 
     # Convert to DownloadTask objects
     download_tasks = [
-        DownloadTask(artifact_name=name, file_url=url, arch=arch, artifact_type=artifact_type)
+        DownloadTask(
+            artifact_name=name,
+            file_url=TypeAdapter(AnyHttpUrl).validate_python(url),
+            arch=arch,
+            artifact_type=artifact_type,
+        )
         for name, url, arch, artifact_type in categorized
     ]
 
@@ -103,6 +119,13 @@ def setup_repositories_if_needed(args: PullContext, artifact_json=None) -> Optio
         logging.debug("No Pulp configuration provided, skipping repository setup")
         return None
 
+    transfer_dest = getattr(args, "transfer_dest", None)
+    if transfer_dest is None or not isinstance(transfer_dest, str) or not transfer_dest.strip():
+        logging.debug(
+            "No transfer destination (--transfer-dest) specified, skipping repository and distribution setup",
+        )
+        return None
+
     try:
         # Initialize Pulp client - domain will be read from config file
         # Note: Pull uses the DESTINATION domain from config, not the SOURCE domain from artifact_json
@@ -141,7 +164,11 @@ def setup_repositories_if_needed(args: PullContext, artifact_json=None) -> Optio
 
 
 def load_and_validate_artifacts(args: PullContext, distribution_client: Optional[DistributionClient]) -> ArtifactData:
-    """Load artifact metadata and validate it contains artifacts.
+    """Load artifact metadata and validate it matches the pull artifact results model.
+
+    The payload is validated as :class:`~pulp_tool.models.artifacts.ArtifactJsonResponse`; pull
+    requires non-empty ``artifacts``, each with an ``http`` or ``https`` ``url``. Top-level
+    ``distributions`` is optional.
 
     Args:
         args: Pull context with command arguments
@@ -151,7 +178,8 @@ def load_and_validate_artifacts(args: PullContext, distribution_client: Optional
         ArtifactData containing artifact JSON and artifacts dictionary
 
     Raises:
-        SystemExit: If no artifacts are found
+        SystemExit: If the location is missing, or validation fails
+        FileNotFoundError: If the artifact path does not exist (propagated from load)
     """
     import sys
 
@@ -162,19 +190,15 @@ def load_and_validate_artifacts(args: PullContext, distribution_client: Optional
     logging.debug("Loading artifact metadata from %s", args.artifact_location)
     artifact_json_raw = load_artifact_metadata(args.artifact_location, distribution_client)
 
-    artifacts_raw = artifact_json_raw.get("artifacts", {})
-    if not artifacts_raw:
-        logging.error("No artifacts found in the artifact metadata")
-        logging.error("The artifact metadata file must contain an 'artifacts' section with at least one artifact")
+    try:
+        artifact_json_typed = ArtifactJsonResponse.model_validate(artifact_json_raw)
+        artifact_json_typed.validate_for_pull()
+    except (ValidationError, ValueError) as exc:
+        logging.error("Artifact results JSON does not match the expected model for pull:")
+        logging.error("%s", exc)
         sys.exit(1)
 
-    # Convert raw dictionaries to typed models
-    artifacts_typed = {name: ArtifactMetadata(**metadata) for name, metadata in artifacts_raw.items()}
-
-    artifact_json_typed = ArtifactJsonResponse(
-        artifacts=artifacts_typed, distributions=artifact_json_raw.get("distributions", {})
-    )
-
+    artifacts_typed = dict(artifact_json_typed.artifacts)
     return ArtifactData(artifact_json=artifact_json_typed, artifacts=artifacts_typed)
 
 
@@ -185,16 +209,21 @@ def download_artifacts_concurrently(
     max_workers: int,
     content_types: Optional[List[str]] = None,
     archs: Optional[List[str]] = None,
+    *,
+    embedded_urls_only: bool = True,
 ) -> DownloadResult:
     """Download all artifacts concurrently using thread pool.
 
     Args:
         artifacts: Dictionary of artifacts to download
-        distros: Dictionary of distribution URLs
+        distros: Dictionary of distribution URLs from artifact results (not used to build download
+            URLs when ``embedded_urls_only`` is True)
         distribution_client: Optional DistributionClient for downloading (required for downloads)
         max_workers: Maximum number of concurrent workers
         content_types: Optional list of content types to filter (rpm, log, sbom)
         archs: Optional list of architectures to filter
+        embedded_urls_only: When True (default for ``pulp pull``), use only per-artifact ``url``
+            fields from the artifact results JSON.
 
     Returns:
         DownloadResult containing pulled artifacts, completed count, and failed count
@@ -207,7 +236,13 @@ def download_artifacts_concurrently(
     from ..models.artifacts import ArtifactMetadata, PulledArtifacts
 
     # Prepare download tasks
-    download_tasks = _categorize_artifacts(artifacts, distros, content_types, archs)
+    download_tasks = _categorize_artifacts(
+        artifacts,
+        distros,
+        content_types,
+        archs,
+        embedded_urls_only=embedded_urls_only,
+    )
     total_artifacts = len(download_tasks)
 
     logging.debug("Starting download of %d artifacts with %d workers", total_artifacts, max_workers)

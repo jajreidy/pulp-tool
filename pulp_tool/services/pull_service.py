@@ -76,7 +76,7 @@ class PullService:
         logging.info("Starting artifact download with %d workers", max_workers)
         download_result = download_artifacts_concurrently(
             artifact_data.artifacts,
-            artifact_data.artifact_json.distributions,  # type: ignore[attr-defined]
+            artifact_data.get_distributions(),
             distribution_client,
             max_workers,
             context.content_types,
@@ -126,6 +126,11 @@ class PullService:
         """
         if not context.config:
             logging.debug("No Pulp configuration provided, skipping repository setup")
+            return None
+
+        td = context.transfer_dest
+        if td is None or not isinstance(td, str) or not td.strip():
+            logging.debug("No transfer destination (--transfer-dest) specified, skipping repository setup")
             return None
 
         logging.info("Setting up destination repositories")

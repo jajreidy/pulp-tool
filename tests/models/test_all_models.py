@@ -14,10 +14,10 @@ This test file covers the following model modules:
 Note: Validation models are tested separately in test_validation_models.py
 """
 
-from typing import Any, Callable, cast
+from typing import Any, Callable, Dict, cast
 
 import pytest
-from pydantic import ValidationError
+from pydantic import AnyHttpUrl, ValidationError
 
 from pulp_tool.models.base import KonfluxBaseModel
 from pulp_tool.models.repository import RepositoryRefs
@@ -48,6 +48,18 @@ from pulp_tool.models.pulp_api import (
     RepositoryRequest,
     DistributionRequest,
 )
+
+
+def _http_url(url: str) -> AnyHttpUrl:
+    """String literal where models expect AnyHttpUrl (Pydantic still validates on construct)."""
+
+    return cast(AnyHttpUrl, url)
+
+
+def _dist_map(urls: Dict[str, str]) -> Dict[str, AnyHttpUrl]:
+    """Dict literal for ArtifactJsonResponse.distributions (values are coerced at runtime)."""
+
+    return cast(Dict[str, AnyHttpUrl], urls)
 
 
 class TestKonfluxBaseModel:
@@ -170,6 +182,7 @@ class TestPullContext:
         assert context.artifact_location == "https://example.com/artifacts.json"
         assert context.key_path is None
         assert context.config is None
+        assert context.transfer_dest is None
         assert context.build_id is None
         assert context.max_workers == 10
         assert context.debug == 0
@@ -180,6 +193,7 @@ class TestPullContext:
             artifact_location="https://example.com/artifacts.json",
             key_path="/path/to/key.pem",
             config="/path/to/config.toml",
+            transfer_dest="/path/to/dest.toml",
             build_id="test-build-123",
             max_workers=8,
             debug=2,
@@ -187,6 +201,7 @@ class TestPullContext:
 
         assert context.key_path == "/path/to/key.pem"
         assert context.config == "/path/to/config.toml"
+        assert context.transfer_dest == "/path/to/dest.toml"
         assert context.build_id == "test-build-123"
         assert context.max_workers == 8
         assert context.debug == 2
@@ -431,8 +446,26 @@ class TestPulpResultsModel:
         model.add_distribution("logs", "https://pulp.example.com/logs/")
 
         assert len(model.distributions) == 2
-        assert model.distributions["rpms"] == "https://pulp.example.com/rpms/"
-        assert model.distributions["logs"] == "https://pulp.example.com/logs/"
+        assert str(model.distributions["rpms"]) == "https://pulp.example.com/rpms/"
+        assert str(model.distributions["logs"]) == "https://pulp.example.com/logs/"
+
+    def test_add_distribution_rejects_invalid_url(self):
+        """Distribution base URLs must be valid http(s) URLs."""
+        from pulp_tool.models.results import PulpResultsModel
+
+        repositories = RepositoryRefs(
+            rpms_href="/rpms/",
+            rpms_prn="rpms-prn",
+            logs_href="/logs/",
+            logs_prn="logs-prn",
+            sbom_href="/sbom/",
+            sbom_prn="sbom-prn",
+            artifacts_href="/artifacts/",
+            artifacts_prn="artifacts-prn",
+        )
+        model = PulpResultsModel(build_id="test-build", repositories=repositories)
+        with pytest.raises(ValidationError):
+            model.add_distribution("rpms", "not-a-valid-url")
 
     def test_to_json_dict(self):
         """Test converting model to JSON dict."""
@@ -505,13 +538,13 @@ class TestDownloadTask:
         """Test creating a DownloadTask."""
         task = DownloadTask(
             artifact_name="test.rpm",
-            file_url="https://example.com/rpms/Packages/t/test.rpm",
+            file_url=_http_url("https://example.com/rpms/Packages/t/test.rpm"),
             arch="x86_64",
             artifact_type="rpm",
         )
 
         assert task.artifact_name == "test.rpm"
-        assert task.file_url == "https://example.com/rpms/Packages/t/test.rpm"
+        assert str(task.file_url) == "https://example.com/rpms/Packages/t/test.rpm"
         assert task.arch == "x86_64"
         assert task.artifact_type == "rpm"
 
@@ -519,7 +552,7 @@ class TestDownloadTask:
         """Test converting DownloadTask to tuple."""
         task = DownloadTask(
             artifact_name="test.sbom",
-            file_url="https://example.com/sbom/test.sbom",
+            file_url=_http_url("https://example.com/sbom/test.sbom"),
             arch="noarch",
             artifact_type="sbom",
         )
@@ -532,13 +565,40 @@ class TestDownloadTask:
 
     def test_download_task_types(self):
         """Test DownloadTask for different artifact types."""
-        rpm_task = DownloadTask(artifact_name="test.rpm", file_url="url1", arch="x86_64", artifact_type="rpm")
-        sbom_task = DownloadTask(artifact_name="test.sbom", file_url="url2", arch="noarch", artifact_type="sbom")
-        log_task = DownloadTask(artifact_name="test.log", file_url="url3", arch="noarch", artifact_type="log")
+        rpm_task = DownloadTask(
+            artifact_name="test.rpm",
+            file_url=_http_url("https://example.com/u1"),
+            arch="x86_64",
+            artifact_type="rpm",
+        )
+        sbom_task = DownloadTask(
+            artifact_name="test.sbom",
+            file_url=_http_url("https://example.com/u2"),
+            arch="noarch",
+            artifact_type="sbom",
+        )
+        log_task = DownloadTask(
+            artifact_name="test.log",
+            file_url=_http_url("https://example.com/u3"),
+            arch="noarch",
+            artifact_type="log",
+        )
 
         assert rpm_task.artifact_type == "rpm"
         assert sbom_task.artifact_type == "sbom"
         assert log_task.artifact_type == "log"
+
+    def test_download_task_rejects_non_http_file_url(self):
+        """Distribution download tasks require an absolute http(s) URL."""
+        with pytest.raises(ValidationError):
+            DownloadTask.model_validate(
+                {
+                    "artifact_name": "a.rpm",
+                    "file_url": "not-a-url",
+                    "arch": "x86_64",
+                    "artifact_type": "rpm",
+                }
+            )
 
 
 class TestContentData:
@@ -662,6 +722,111 @@ class TestArtifactMetadata:
         assert metadata.sha256 is None
         assert metadata.build_id == "test-123"
 
+    def test_artifact_metadata_explicit_null_url_from_dict(self):
+        """Explicit null url runs url normalizer early-return branch."""
+        metadata = ArtifactMetadata.model_validate({"labels": {}, "url": None})
+        assert metadata.url is None
+
+
+class TestArtifactJsonResponsePullLoad:
+    """``ArtifactJsonResponse`` as loaded for ``pulp pull`` (optional ``distributions``)."""
+
+    def test_valid_json_and_artifact_data_roundtrip(self):
+        """Valid JSON validates, passes pull checks, and builds ArtifactData."""
+        aj = ArtifactJsonResponse.model_validate(
+            {
+                "artifacts": {
+                    "x.rpm": {
+                        "labels": {"build_id": "b1", "arch": "x86_64"},
+                        "url": "https://pulp.example/content/x.rpm",
+                        "sha256": "ab" * 32,
+                    },
+                },
+                "distributions": {"rpms": "https://pulp.example/rpms/"},
+            }
+        )
+        aj.validate_for_pull()
+        data = ArtifactData(artifact_json=aj, artifacts=dict(aj.artifacts))
+        assert data.artifacts["x.rpm"].url == "https://pulp.example/content/x.rpm"
+        assert data.artifacts["x.rpm"].sha256 == "ab" * 32
+        assert data.artifact_json.distributions is not None
+        assert str(data.artifact_json.distributions["rpms"]) == "https://pulp.example/rpms/"
+
+    def test_omitted_distributions_optional(self):
+        aj = ArtifactJsonResponse.model_validate(
+            {
+                "artifacts": {
+                    "x.rpm": {"labels": {}, "url": "https://pulp.example/x.rpm"},
+                },
+            }
+        )
+        assert aj.distributions is None
+        aj.validate_for_pull()
+
+    def test_empty_artifacts_rejected_on_validate_for_pull(self):
+        aj = ArtifactJsonResponse.model_validate({"artifacts": {}})
+        with pytest.raises(ValueError, match="at least one entry"):
+            aj.validate_for_pull()
+
+    def test_missing_url_rejected_on_validate_for_pull(self):
+        aj = ArtifactJsonResponse.model_validate(
+            {"artifacts": {"a.rpm": {"labels": {}, "sha256": "c" * 64}}},
+        )
+        with pytest.raises(ValueError, match="non-empty http"):
+            aj.validate_for_pull()
+
+    def test_empty_url_rejected_on_validate_for_pull(self):
+        aj = ArtifactJsonResponse.model_validate(
+            {"artifacts": {"a.rpm": {"labels": {}, "url": "   "}}},
+        )
+        with pytest.raises(ValueError, match="non-empty http"):
+            aj.validate_for_pull()
+
+    def test_sha256_none_and_whitespace_normalized(self):
+        aj = ArtifactJsonResponse.model_validate(
+            {
+                "artifacts": {
+                    "a.rpm": {"labels": {}, "url": "https://x/a.rpm", "sha256": None},
+                    "b.rpm": {"labels": {}, "url": "https://x/b.rpm", "sha256": "   "},
+                },
+            }
+        )
+        aj.validate_for_pull()
+        assert aj.artifacts["a.rpm"].sha256 is None
+        assert aj.artifacts["b.rpm"].sha256 is None
+
+    def test_extra_top_level_field_rejected(self):
+        with pytest.raises(ValidationError):
+            ArtifactJsonResponse.model_validate(
+                {
+                    "artifacts": {"a.rpm": {"url": "https://x/a.rpm"}},
+                    "parent_package": "nope",
+                },
+            )
+
+    def test_non_http_url_rejected_on_validate_for_pull(self):
+        aj = ArtifactJsonResponse.model_validate(
+            {"artifacts": {"a.rpm": {"labels": {}, "url": "relative/path.rpm"}}},
+        )
+        with pytest.raises(ValueError, match="http or https URL"):
+            aj.validate_for_pull()
+
+    def test_invalid_distribution_base_url_rejected_at_parse(self):
+        """``distributions`` map values must be valid http(s) URLs."""
+        with pytest.raises(ValidationError):
+            ArtifactJsonResponse.model_validate(
+                {
+                    "artifacts": {"a.rpm": {"labels": {}, "url": "https://x/y.rpm"}},
+                    "distributions": {"rpms": "not-a-valid-url"},
+                }
+            )
+
+    def test_entry_ignores_unknown_artifact_keys(self):
+        entry = ArtifactMetadata.model_validate(
+            {"labels": {}, "url": "https://x/y.rpm", "future_field": "ok"},
+        )
+        assert entry.url == "https://x/y.rpm"
+
 
 class TestArtifactJsonResponse:
     """Test ArtifactJsonResponse model."""
@@ -671,7 +836,7 @@ class TestArtifactJsonResponse:
         response = ArtifactJsonResponse()
 
         assert response.artifacts == {}
-        assert response.distributions == {}
+        assert response.distributions is None
 
     def test_create_artifact_json_response_with_data(self):
         """Test creating ArtifactJsonResponse with data."""
@@ -680,17 +845,21 @@ class TestArtifactJsonResponse:
                 "test.rpm": ArtifactMetadata(labels={"build_id": "test-123", "arch": "x86_64"}),
                 "test2.rpm": ArtifactMetadata(labels={"build_id": "test-123", "arch": "aarch64"}),
             },
-            distributions={
-                "rpms": "https://pulp.example.com/rpms/",
-                "logs": "https://pulp.example.com/logs/",
-                "sbom": "https://pulp.example.com/sbom/",
-            },
+            distributions=_dist_map(
+                {
+                    "rpms": "https://pulp.example.com/rpms/",
+                    "logs": "https://pulp.example.com/logs/",
+                    "sbom": "https://pulp.example.com/sbom/",
+                }
+            ),
         )
 
         assert len(response.artifacts) == 2
-        assert len(response.distributions) == 3
+        dists = response.distributions
+        assert dists is not None
+        assert len(dists) == 3
         assert "test.rpm" in response.artifacts
-        assert response.distributions["rpms"] == "https://pulp.example.com/rpms/"
+        assert str(dists["rpms"]) == "https://pulp.example.com/rpms/"
 
     def test_artifact_json_response_artifact_count(self):
         """Test artifact_count property."""
@@ -709,17 +878,19 @@ class TestArtifactJsonResponse:
         response_empty = ArtifactJsonResponse()
         assert response_empty.has_distributions is False
 
-        response_with_dists = ArtifactJsonResponse(distributions={"rpms": "https://example.com/rpms/"})
+        response_with_dists = ArtifactJsonResponse(distributions=_dist_map({"rpms": "https://example.com/rpms/"}))
         assert response_with_dists.has_distributions is True
 
     def test_artifact_json_response_distribution_urls(self):
         """Test distribution URL properties."""
         response = ArtifactJsonResponse(
-            distributions={
-                "rpms": "https://pulp.example.com/rpms/",
-                "logs": "https://pulp.example.com/logs/",
-                "sbom": "https://pulp.example.com/sbom/",
-            }
+            distributions=_dist_map(
+                {
+                    "rpms": "https://pulp.example.com/rpms/",
+                    "logs": "https://pulp.example.com/logs/",
+                    "sbom": "https://pulp.example.com/sbom/",
+                }
+            )
         )
 
         assert response.rpms_distribution_url == "https://pulp.example.com/rpms/"
@@ -763,7 +934,7 @@ class TestArtifactData:
             artifacts={
                 "test.rpm": ArtifactMetadata(labels={"build_id": "test-123"}),
             },
-            distributions={"rpms": "https://pulp.example.com/rpms/"},
+            distributions=_dist_map({"rpms": "https://pulp.example.com/rpms/"}),
         )
 
         data = ArtifactData(
@@ -794,7 +965,7 @@ class TestArtifactData:
         assert data_without.has_distributions is False
 
         data_with = ArtifactData(
-            artifact_json=ArtifactJsonResponse(distributions={"rpms": "https://example.com/rpms/"})
+            artifact_json=ArtifactJsonResponse(distributions=_dist_map({"rpms": "https://example.com/rpms/"}))
         )
         assert data_with.has_distributions is True
 
@@ -802,10 +973,12 @@ class TestArtifactData:
         """Test get_distributions method."""
         data = ArtifactData(
             artifact_json=ArtifactJsonResponse(
-                distributions={
-                    "rpms": "https://pulp.example.com/rpms/",
-                    "logs": "https://pulp.example.com/logs/",
-                }
+                distributions=_dist_map(
+                    {
+                        "rpms": "https://pulp.example.com/rpms/",
+                        "logs": "https://pulp.example.com/logs/",
+                    }
+                )
             )
         )
 
@@ -813,6 +986,11 @@ class TestArtifactData:
         assert len(distributions) == 2
         assert distributions["rpms"] == "https://pulp.example.com/rpms/"
         assert distributions["logs"] == "https://pulp.example.com/logs/"
+
+    def test_artifact_data_get_distributions_when_none(self):
+        """get_distributions returns empty dict when JSON omitted distributions."""
+        data = ArtifactData(artifact_json=ArtifactJsonResponse(artifacts={}))
+        assert data.get_distributions() == {}
 
 
 class TestModelValidation:

@@ -2739,6 +2739,7 @@ class TestPullCommand:
 
             assert result.exit_code == 0
             mock_load.assert_called_once()
+            mock_upload.assert_not_called()
 
     @patch("pulp_tool.cli.pull.load_and_validate_artifacts")
     @patch("pulp_tool.cli.pull.setup_repositories_if_needed")
@@ -2752,6 +2753,10 @@ class TestPullCommand:
         with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as artifact_file:
             artifact_file.write('{"artifacts": [], "distributions": {}}')
             artifact_path = artifact_file.name
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".toml", delete=False) as dest_cfg:
+            dest_cfg.write('[cli]\nbase_url = "https://pulp.example.com"\n')
+            transfer_config_path = dest_cfg.name
 
         try:
             from pulp_tool.models.artifacts import ArtifactData, ArtifactJsonResponse, ArtifactMetadata
@@ -2799,11 +2804,15 @@ class TestPullCommand:
             mock_upload_info.upload_errors = []
             mock_upload.return_value = mock_upload_info
 
-            result = runner.invoke(cli, ["pull", "--artifact-location", artifact_path])
+            result = runner.invoke(
+                cli,
+                ["pull", "--artifact-location", artifact_path, "--transfer-dest", transfer_config_path],
+            )
 
             assert result.exit_code == 0
             mock_upload.assert_called_once()
         finally:
+            os.unlink(transfer_config_path)
             os.unlink(artifact_path)
 
     @patch("pulp_tool.cli.pull.load_and_validate_artifacts")
@@ -2856,6 +2865,10 @@ class TestPullCommand:
             artifact_file.write('{"artifacts": [], "distributions": {}}')
             artifact_path = artifact_file.name
 
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".toml", delete=False) as dest_cfg:
+            dest_cfg.write('[cli]\nbase_url = "https://pulp.example.com"\n')
+            transfer_config_path = dest_cfg.name
+
         try:
             from pulp_tool.models.artifacts import ArtifactData, ArtifactJsonResponse, ArtifactMetadata
             from pulp_tool.models.results import PulpResultsModel
@@ -2902,10 +2915,14 @@ class TestPullCommand:
             mock_upload_info.upload_errors = ["Error 1", "Error 2"]
             mock_upload.return_value = mock_upload_info
 
-            result = runner.invoke(cli, ["pull", "--artifact-location", artifact_path])
+            result = runner.invoke(
+                cli,
+                ["pull", "--artifact-location", artifact_path, "--transfer-dest", transfer_config_path],
+            )
 
             assert result.exit_code == 1
         finally:
+            os.unlink(transfer_config_path)
             os.unlink(artifact_path)
 
     @patch("pulp_tool.cli.pull.load_and_validate_artifacts")

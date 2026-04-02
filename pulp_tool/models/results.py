@@ -2,10 +2,10 @@
 
 from typing import Any, List, Dict, Optional
 
-from pydantic import Field
+from pydantic import AnyHttpUrl, Field, TypeAdapter
 
 from .base import KonfluxBaseModel
-from .artifacts import PulledArtifacts
+from .artifacts import ArtifactMetadata, PulledArtifacts
 from .repository import RepositoryRefs
 from .statistics import UploadCounts
 
@@ -85,19 +85,8 @@ class DownloadResult(KonfluxBaseModel):
         return self.failed > 0
 
 
-class ArtifactInfo(KonfluxBaseModel):
-    """
-    Information about a single artifact in results.
-
-    Attributes:
-        labels: Labels associated with the artifact (build_id, arch, etc.)
-        url: Download URL for the artifact
-        sha256: SHA256 checksum of the artifact
-    """
-
-    labels: Dict[str, str] = Field(default_factory=dict)
-    url: str
-    sha256: str
+# Same model as ``pulp_results.json`` artifact entries (push and pull).
+ArtifactInfo = ArtifactMetadata
 
 
 class PulpResultsModel(KonfluxBaseModel):
@@ -127,8 +116,8 @@ class PulpResultsModel(KonfluxBaseModel):
     repositories: RepositoryRefs
 
     # Results structure (matches pulp_results.json)
-    artifacts: Dict[str, ArtifactInfo] = Field(default_factory=dict)
-    distributions: Dict[str, str] = Field(default_factory=dict)
+    artifacts: Dict[str, ArtifactMetadata] = Field(default_factory=dict)
+    distributions: Dict[str, AnyHttpUrl] = Field(default_factory=dict)
 
     # Progress tracking
     uploaded_counts: UploadCounts = Field(default_factory=UploadCounts)
@@ -145,7 +134,7 @@ class PulpResultsModel(KonfluxBaseModel):
             labels: Labels associated with the artifact
         """
         # pylint: disable=unsupported-assignment-operation  # Pydantic mutable field
-        self.artifacts[key] = ArtifactInfo(labels=labels, url=url, sha256=sha256)
+        self.artifacts[key] = ArtifactMetadata(labels=labels, url=url, sha256=sha256)
 
     def add_distribution(self, repo_type: str, url: str) -> None:
         """
@@ -155,8 +144,10 @@ class PulpResultsModel(KonfluxBaseModel):
             repo_type: Distribution slot name (e.g. ``logs``, ``rpms``, ``rpm_x86_64`` for per-arch RPM bases)
             url: Distribution base URL
         """
+        # Reassign the whole map so values are ``AnyHttpUrl`` (item assignment bypasses validation).
         # pylint: disable=unsupported-assignment-operation  # Pydantic mutable field
-        self.distributions[repo_type] = url
+        coerced = TypeAdapter(AnyHttpUrl).validate_python(url)
+        self.distributions = {**self.distributions, repo_type: coerced}
 
     def add_error(self, error: str) -> None:
         """
@@ -180,12 +171,12 @@ class PulpResultsModel(KonfluxBaseModel):
                 key: {
                     "labels": info.labels,
                     "url": info.url,
-                    "sha256": info.sha256,
+                    "sha256": info.sha256 or "",
                 }
                 for key, info in self.artifacts.items()  # pylint: disable=no-member  # Pydantic field
             },
             # Sorted string keys → stable { "name": "url", ... } in serialized pulp_results.json
-            "distributions": dict(sorted(self.distributions.items())),
+            "distributions": dict(sorted((k, str(v)) for k, v in self.distributions.items())),
         }
 
     @property
