@@ -56,8 +56,9 @@ from ..utils.error_handling import handle_generic_error, handle_http_error
     "--transfer-dest",
     type=str,
     help=(
-        "Path to Pulp config file for transfer destination "
-        "(required for --build-id + --namespace unless --config is used, optional for upload)"
+        "Path to Pulp config for the transfer target: destination API credentials and optional upload. "
+        "When set, pull creates destination repositories/distributions (if needed) and re-uploads downloaded "
+        "content. Omitted --transfer-dest with only --config downloads from distribution only."
     ),
 )
 @click.option(
@@ -176,6 +177,7 @@ def pull(  # pylint: disable=too-many-positional-arguments
         namespace=namespace,
         key_path=key_path,
         config=config_path,
+        transfer_dest=transfer_dest,
         build_id=build_id,
         debug=debug,
         max_workers=max_workers,
@@ -200,7 +202,7 @@ def pull(  # pylint: disable=too-many-positional-arguments
         pulp_client = setup_repositories_if_needed(args, artifact_data.artifact_json)  # type: ignore[arg-type]
 
         # Process artifacts by type
-        distros = artifact_data.artifact_json.distributions  # pylint: disable=no-member
+        distros = artifact_data.get_distributions()
 
         # Download artifacts concurrently
         download_result = download_artifacts_concurrently(

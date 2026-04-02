@@ -104,9 +104,13 @@ class TestPullService:
     @patch("pulp_tool.services.pull_service.setup_repositories_if_needed")
     @patch("pulp_tool.services.pull_service.logging")
     def test_setup_destination_repositories_with_config(self, mock_logging, mock_setup):
-        """Test setup_destination_repositories with config."""
+        """Test setup_destination_repositories with config and --transfer-dest."""
         service = PullService()
-        context = PullContext(artifact_location="/test/path.json", config="/test/config.toml")
+        context = PullContext(
+            artifact_location="/test/path.json",
+            config="/test/config.toml",
+            transfer_dest="/test/config.toml",
+        )
 
         mock_client = Mock()
         mock_setup.return_value = mock_client
@@ -117,6 +121,19 @@ class TestPullService:
         mock_setup.assert_called_once()
         # Verify logging calls were made
         assert mock_logging.info.call_count >= 1
+
+    @patch("pulp_tool.services.pull_service.setup_repositories_if_needed")
+    @patch("pulp_tool.services.pull_service.logging")
+    def test_setup_destination_repositories_config_without_transfer_dest(self, mock_logging, mock_setup):
+        """Test setup_destination_repositories skips when only group config is set."""
+        service = PullService()
+        context = PullContext(artifact_location="/test/path.json", config="/test/config.toml")
+
+        result = service.setup_destination_repositories(context)
+
+        assert result is None
+        mock_setup.assert_not_called()
+        mock_logging.debug.assert_called_once()
 
     @patch("pulp_tool.services.pull_service.logging")
     def test_setup_destination_repositories_without_config(self, mock_logging):

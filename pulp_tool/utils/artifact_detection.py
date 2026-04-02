@@ -148,15 +148,20 @@ def categorize_artifacts_by_type(
     distros: Dict[str, str],
     content_types: Optional[List[str]] = None,
     archs: Optional[List[str]] = None,
+    *,
+    embedded_urls_only: bool = False,
 ) -> List[Tuple[str, str, str, str]]:
     """
     Categorize artifacts and prepare download information.
 
     Args:
         artifacts: Dictionary of artifacts (can be ArtifactMetadata or dict)
-        distros: Dictionary of distribution URLs (used when an artifact has no ``url`` field)
+        distros: Dictionary of distribution URLs (used when an artifact has no ``url`` and
+            ``embedded_urls_only`` is False)
         content_types: Optional list of content types to filter (rpm, log, sbom)
         archs: Optional list of architectures to filter
+        embedded_urls_only: If True, only include artifacts with a non-empty ``url`` in metadata
+            (``pulp pull`` / artifact results JSON); distribution base URLs are not used.
 
     Returns:
         List of tuples: (artifact_name, file_url, arch, artifact_type)
@@ -174,11 +179,19 @@ def categorize_artifacts_by_type(
             continue
 
         embedded_url = _embedded_artifact_url(metadata)
-        file_url: Optional[str] = (
-            embedded_url if embedded_url else build_artifact_url(artifact_name, artifact_type, distros)
-        )
+        if embedded_urls_only:
+            file_url = embedded_url
+        else:
+            file_url = embedded_url or build_artifact_url(artifact_name, artifact_type, distros)
+
         if not file_url:
-            logging.debug("Skipping %s: could not build download URL", artifact_name)
+            if embedded_urls_only:
+                logging.debug(
+                    "Skipping %s: artifact metadata has no url (pull uses only URLs from artifact results)",
+                    artifact_name,
+                )
+            else:
+                logging.debug("Skipping %s: could not build download URL", artifact_name)
             continue
 
         # Apply content type filter

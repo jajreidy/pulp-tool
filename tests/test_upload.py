@@ -1120,7 +1120,7 @@ class TestBuildResultsStructure:
             _add_distributions_to_results(mock_pulp_client, context, results_model)
             mock_helper.get_distribution_urls_for_upload_context.assert_called_once_with("test-build", context)
             mock_helper.distribution_url_for_base_path.assert_called_once_with("x86_64")
-            assert results_model.distributions["rpm_x86_64"] == (
+            assert str(results_model.distributions["rpm_x86_64"]) == (
                 "https://pulp.example.com/api/pulp-content/test-namespace/x86_64/"
             )
 

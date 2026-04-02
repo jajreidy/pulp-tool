@@ -2,7 +2,7 @@
 
 from typing import Dict, List, Optional, Any
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import AnyHttpUrl, BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from .base import KonfluxBaseModel
 
@@ -54,13 +54,13 @@ class DownloadTask(KonfluxBaseModel):
     """
 
     artifact_name: str
-    file_url: str
+    file_url: AnyHttpUrl
     arch: str
     artifact_type: str
 
     def to_tuple(self) -> tuple:
         """Convert to tuple format (artifact_name, file_url, arch, artifact_type)."""
-        return (self.artifact_name, self.file_url, self.arch, self.artifact_type)
+        return (self.artifact_name, str(self.file_url), self.arch, self.artifact_type)
 
 
 class ArtifactFile(KonfluxBaseModel):
@@ -186,17 +186,37 @@ class PulledArtifacts(KonfluxBaseModel):
 
 class ArtifactMetadata(KonfluxBaseModel):
     """
-    Metadata for a single artifact.
+    Metadata for one artifact: the same shape in ``pulp_results.json`` for upload (push) and pull.
 
-    Attributes:
-        labels: Labels associated with the artifact (build_id, arch, namespace, etc.)
-        url: URL where the artifact can be downloaded
-        sha256: SHA256 checksum of the artifact
+    Rows in :class:`~pulp_tool.models.results.PulpResultsModel` use this type. For ``pulp pull``,
+    load into :class:`ArtifactJsonResponse` and call :meth:`ArtifactJsonResponse.validate_for_pull`.
+    Unknown keys on each artifact object are ignored when parsing JSON.
+
+    ``url`` / ``sha256`` may be omitted for in-memory partial records (e.g. tests); pull requires a
+    non-empty ``http``/``https`` ``url`` on every artifact.
     """
+
+    model_config = ConfigDict(extra="ignore", validate_assignment=True, frozen=False)
 
     labels: Dict[str, str] = Field(default_factory=dict)
     url: Optional[str] = None
     sha256: Optional[str] = None
+
+    @field_validator("url")
+    @classmethod
+    def _normalize_url(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return None
+        s = str(v).strip()
+        return s if s else None
+
+    @field_validator("sha256", mode="before")
+    @classmethod
+    def _normalize_sha256(cls, v: Any) -> Any:
+        if v is None or v == "":
+            return None
+        s = str(v).strip()
+        return s if s else None
 
     @property
     def build_id(self) -> Optional[str]:
@@ -225,11 +245,11 @@ class ArtifactJsonResponse(KonfluxBaseModel):
 
     Attributes:
         artifacts: Dictionary of artifact names to their metadata
-        distributions: Dictionary of distribution type to URL mappings
+        distributions: Optional map of distribution slot to base URL (may be omitted in JSON)
     """
 
     artifacts: Dict[str, ArtifactMetadata] = Field(default_factory=dict)
-    distributions: Dict[str, str] = Field(default_factory=dict)
+    distributions: Optional[Dict[str, AnyHttpUrl]] = None
 
     @property
     def artifact_count(self) -> int:
@@ -239,26 +259,44 @@ class ArtifactJsonResponse(KonfluxBaseModel):
     @property
     def has_distributions(self) -> bool:
         """Check if distributions are present."""
-        return len(self.distributions) > 0
+        return bool(self.distributions)
 
     @property
     def rpms_distribution_url(self) -> Optional[str]:
         """Get RPMs distribution URL."""
-        return self.distributions.get("rpms")  # pylint: disable=no-member
+        v = (self.distributions or {}).get("rpms")
+        return str(v) if v is not None else None
 
     @property
     def logs_distribution_url(self) -> Optional[str]:
         """Get logs distribution URL."""
-        return self.distributions.get("logs")  # pylint: disable=no-member
+        v = (self.distributions or {}).get("logs")
+        return str(v) if v is not None else None
 
     @property
     def sbom_distribution_url(self) -> Optional[str]:
         """Get SBOM distribution URL."""
-        return self.distributions.get("sbom")  # pylint: disable=no-member
+        v = (self.distributions or {}).get("sbom")
+        return str(v) if v is not None else None
 
     def get_artifact(self, name: str) -> Optional[ArtifactMetadata]:
         """Get artifact metadata by name."""
         return self.artifacts.get(name)  # pylint: disable=no-member
+
+    def validate_for_pull(self) -> None:
+        """Require non-empty ``artifacts`` and an ``http``/``https`` ``url`` on every row (``pulp pull``)."""
+        if not self.artifacts:
+            raise ValueError("artifacts must contain at least one entry")
+        for name, meta in self.artifacts.items():
+            if not meta.url:
+                raise ValueError(
+                    f"artifact {name!r} must include a non-empty http(s) url for pull",
+                )
+            lower = meta.url.lower()
+            if not (lower.startswith("http://") or lower.startswith("https://")):
+                raise ValueError(
+                    f"artifact {name!r} url must be an http or https URL for pull",
+                )
 
 
 class ArtifactData(KonfluxBaseModel):
@@ -284,8 +322,11 @@ class ArtifactData(KonfluxBaseModel):
         return self.artifact_json.has_distributions  # pylint: disable=no-member
 
     def get_distributions(self) -> Dict[str, str]:
-        """Get distribution URLs."""
-        return self.artifact_json.distributions  # pylint: disable=no-member
+        """Get distribution URLs (empty dict when omitted)."""
+        d = self.artifact_json.distributions
+        if not d:
+            return {}
+        return {k: str(v) for k, v in d.items()}
 
 
 class ContentData(KonfluxBaseModel):
