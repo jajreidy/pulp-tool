@@ -59,15 +59,21 @@ def detect_artifact_type(artifact_name: str) -> Optional[str]:
         'log'
         >>> detect_artifact_type("sbom.json")
         'sbom'
+        >>> detect_artifact_type("liblastlog2-1.0-1.x86_64.rpm")
+        'rpm'
     """
     artifact_name_lower = artifact_name.lower()
 
+    # Check file extensions first to avoid false positives from substring matching
+    # (e.g., "liblastlog2-1.0.rpm" contains "log" but is an RPM)
+    if artifact_name_lower.endswith(".rpm"):
+        return "rpm"
+    if artifact_name_lower.endswith(".log"):
+        return "log"
+
+    # Fall back to substring matching for SBOMs (e.g., "sbom.json", "cyclonedx.json")
     if "sbom" in artifact_name_lower:
         return "sbom"
-    if "log" in artifact_name_lower:
-        return "log"
-    if "rpm" in artifact_name_lower:
-        return "rpm"
 
     return None
 
