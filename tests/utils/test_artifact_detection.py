@@ -26,6 +26,17 @@ class TestDetectArtifactType:
         assert detect_artifact_type("package.RPM") == "rpm"
         assert detect_artifact_type("PACKAGE.RPM") == "rpm"
 
+    def test_detect_rpm_with_log_in_name(self):
+        """Test that RPMs with 'log' in package name are correctly detected as RPMs.
+
+        Regression test: liblastlog2 was incorrectly classified as 'log' because
+        the package name contains 'log'. Extension-based detection should take precedence.
+        """
+        assert detect_artifact_type("liblastlog2-2.42-7.hum1.x86_64.rpm") == "rpm"
+        assert detect_artifact_type("liblastlog2-devel-2.42-7.hum1.aarch64.rpm") == "rpm"
+        assert detect_artifact_type("rsyslog-8.2102.0-1.el9.x86_64.rpm") == "rpm"
+        assert detect_artifact_type("systemd-journal-remote-252-1.fc38.x86_64.rpm") == "rpm"
+
     def test_detect_log(self):
         """Test detecting log artifacts."""
         assert detect_artifact_type("build.log") == "log"
