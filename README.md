@@ -18,6 +18,7 @@ A Python client for Pulp API operations including RPM and file management.
   - [search-by](#search-by-command)
 - [Python API](#python-api)
 - [Development](#development)
+- [Downstream Konflux usage](AGENTS.md)
 - [Troubleshooting](#troubleshooting)
 - [Contributing](#contributing)
 - [License](#license)
@@ -289,6 +290,10 @@ dist.pull_data(filename="pkg.rpm", file_url="...", arch="x86_64", artifact_type=
 **Models:** `RepositoryRefs`, `UploadContext`, `PullContext`, `ArtifactMetadata`, `PulpResultsModel`, `PulledArtifacts`.
 
 ## Development
+
+**Downstream Konflux usage:** pulp-tool runs inside Tekton tasks (RPM build `import-to-quay` and release `push-artifacts-to-storage`). If you change the `upload` CLI, SBOM/artifact behavior, or the container image, read **[AGENTS.md](AGENTS.md)** for integration contracts and a short regression checklist.
+
+**Before merging those changes**, re-check the upstream YAML in **konflux-ci/rpmbuild-pipeline** (`task/import-to-quay.yaml`) and **konflux-ci/release-service-catalog** (`tasks/managed/push-artifacts-to-storage/` and the managed pipeline that references it) so your PR still matches how `pulp-tool` is invoked (flags, mounts, working directories). Pipelines evolve: for example **ORAS** or trusted-artifact layout may change or go away—paths such as `oras-staging/` and how RPMs land under `/var/workdir/results` are not fixed forever. When upstream changes how artifacts are staged, update **[AGENTS.md](AGENTS.md)** (and tests if behavior depends on layout).
 
 ```bash
 make install-dev   # Install with dev deps + pre-commit (includes diff-cover)
