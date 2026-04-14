@@ -23,8 +23,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `codecov.yml` configuration file with `unit-tests` flag and carryforward enabled
 - packages.redhat.com configuration section in README with OAuth2 setup
 - Username/password (Basic Auth) support for packages.redhat.com
+- **`create_file_content_and_wait`** in `pulp_tool.utils.pulp_tasks`: single helper for file content POST, response check, task wait, and optional URL extraction; used from upload orchestration, `upload_collect`, `uploads`, and pull re-upload paths
+- **Upload gather split:** `pulp_tool.services.upload_collect` and `pulp_tool.services.upload_common` hold results JSON / Konflux helpers; `upload_service` re-exports the same public names for stable imports
+- **`RepositoryApiOps`** (`pulp_tool.utils.repository_manager`): frozen dataclass binding `get` / `create` / `distro` / `get_distro` / `update_distro` / `wait_for_finished_task` to `PulpClient` for a given API type (replaces a dict of lambdas)
+- **Pulp client façade modules:** `pulp_client_cache` (TTL cache, metrics, `cached_get`), `pulp_client_chunked_get`, and `pulp_client_repository` (get-by-name + `repository_operation` bodies); `PulpClient` delegates without changing mixin order or Tekton-visible behavior
 
 ### Changed
+- **AGENTS.md** adds a **Canonical upload entry** subsection: primary path is **`PulpHelper`** (orchestrator + `upload_collect`); **`UploadService`** is a thin wrapper for tests and programmatic callers
+- **`RepositoryManager.get_repository_methods`** now returns **`RepositoryApiOps`** instead of a `dict` of callables (call sites use attribute access, e.g. `ops.get(name)`)
+- **Removed** `pulp_tool.api.task_manager` (documentation-only `TaskManagerMixin` Protocol); **`TaskMixin`** in `pulp_tool.api.tasks.operations` is the live implementation (module docstring notes the removal)
 - Pulp HTTP client: validate response status on more code paths before returning or parsing JSON—chunked GET (all branches, including the aggregated-results fallback), repository/distribution GET-by-name (still allows **404** for “not found” lookups), create-resource POST, distribution PATCH (`update_distro`), file content POST, task GET parsing (single `_check_response`), post-task distribution fetch in `RepositoryManager`, and `DistributionClient.pull_artifact` (`raise_for_status` on error status).
 - `pull`: create destination repositories/distributions and re-upload downloaded content only when `--transfer-dest` is set; group-level `--config` alone still supplies auth (and `base_url` for `--build-id` + `--namespace`) but does not create destination repos or upload
 - `pull`: download URLs use only per-artifact `url` fields in artifact results JSON; `distributions` in that file are not used to build download URLs (artifacts without `url` are skipped)
@@ -43,6 +50,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Optional docs stack (Sphinx) remains removed from `dev` extras; **CVE-2026-4539** still applies to transitive Pygments from **`pytest`** and **`diff-cover`** until a patched wheel is published
 
 ### Fixed
+- **`@cached_get`** cache keys now include the decorated method name plus full positional and keyword arguments, so **`_get_single_resource(endpoint, name)`** cannot return a cached response for a different **`name`** when the endpoint string matches (regression test added)
+- **Synchronous `_chunked_get`:** when an event loop is already running, the method now raises **`RuntimeError`** with a clear message instead of incorrectly treating that case like “no loop” and swallowing the error
 - Content search (`GET /api/v3/content/`, including gather-by-`build_id`): empty or non-JSON bodies no longer surface as a bare `JSONDecodeError`; errors include HTTP status, URL, and a short body preview when JSON is invalid (`content_find_results_from_response`). `find_content` rejects non-success HTTP responses before parsing the body.
 - When `cert`/`key` are set for mTLS but PEM files are missing (wrong path in containers, etc.), `PulpClient` now fails fast with a clear error instead of opening a TLS connection without a client certificate (which often surfaced only as HTTP 403)
 - `create_session_with_retry` logs an error when a `cert` tuple is given but the PEM paths do not exist (defensive; `PulpClient` normally validates paths first)

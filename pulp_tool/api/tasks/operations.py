@@ -3,6 +3,10 @@ Task API operations.
 
 This module provides task operations following Pulp's API structure.
 API Reference: https://docs.pulpproject.org/pulpcore/restapi.html#tasks
+
+The live implementation for :class:`pulp_tool.api.pulp_client.PulpClient` is :class:`TaskMixin`.
+An older ``TaskManagerMixin`` :class:`typing.Protocol` lived in ``task_manager.py`` and was removed
+as redundant documentation-only surface area.
 """
 
 import logging

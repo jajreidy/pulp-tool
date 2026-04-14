@@ -309,7 +309,7 @@ class TestExtractResultsUrl:
         )
 
         # Mock PulpHelper and its get_distribution_urls method
-        with patch("pulp_tool.services.upload_service.PulpHelper") as MockPulpHelper:
+        with patch("pulp_tool.services.upload_collect.PulpHelper") as MockPulpHelper:
             mock_helper = Mock()
             mock_helper.get_distribution_urls.return_value = {
                 "artifacts": "https://pulp-content.example.com/test-domain/test-build/artifacts/"
@@ -335,7 +335,7 @@ class TestCollectResults:
         ]
         with (
             patch.object(mock_pulp_client, "get_file_locations") as mock_get_locs,
-            patch("pulp_tool.services.upload_service.logging") as log_mock,
+            patch("pulp_tool.services.upload_collect.logging") as log_mock,
         ):
             result = _build_artifact_map(mock_pulp_client, rows)
         assert result == {}
@@ -379,7 +379,7 @@ class TestCollectResults:
         results_model = PulpResultsModel(build_id="test-build", repositories=repositories)
 
         # Mock get_distribution_urls_for_upload_context to return URLs
-        with patch("pulp_tool.services.upload_service.PulpHelper") as mock_helper_class:
+        with patch("pulp_tool.services.upload_collect.PulpHelper") as mock_helper_class:
             mock_helper = Mock()
             mock_helper.get_distribution_urls_for_upload_context.return_value = {
                 "rpms": "https://pulp.example.com/rpms/",
@@ -388,7 +388,7 @@ class TestCollectResults:
             mock_helper_class.return_value = mock_helper
 
             # Call collect_results
-            with patch("pulp_tool.services.upload_service._gather_and_validate_content") as mock_gather:
+            with patch("pulp_tool.services.upload_collect._gather_and_validate_content") as mock_gather:
                 # Mock gather to return minimal content
                 mock_gather.return_value = Mock(
                     content_results=[],
@@ -397,24 +397,27 @@ class TestCollectResults:
                     sbom_results=[],
                 )
 
-                with patch("pulp_tool.services.upload_service._build_artifact_map", return_value={}):
-                    with patch("pulp_tool.services.upload_service._populate_results_model"):
+                with patch("pulp_tool.services.upload_collect._build_artifact_map", return_value={}):
+                    with patch("pulp_tool.services.upload_collect._populate_results_model"):
                         # Mock build_results_structure to return the results_model (modifies in place)
                         with patch.object(mock_pulp_client, "build_results_structure", return_value=results_model):
                             with patch(
-                                "pulp_tool.services.upload_service._serialize_results_to_json",
+                                "pulp_tool.services.upload_collect._serialize_results_to_json",
                                 return_value='{"test": "json"}',
                             ):
                                 with patch(
-                                    "pulp_tool.services.upload_service._upload_and_get_results_url",
+                                    "pulp_tool.services.upload_collect._upload_and_get_results_url",
                                     return_value="https://example.com/results.json",
                                 ):
                                     result = collect_results(mock_pulp_client, context, "2024-01-01", results_model)
 
-            # Verify PulpHelper was called with parent_package
-            mock_helper_class.assert_called_once_with(mock_pulp_client, parent_package="test-pkg")
-            mock_helper.get_distribution_urls_for_upload_context.assert_called_once_with("test-build", context)
-            assert result == "https://example.com/results.json"
+                                    mock_helper_class.assert_called_once_with(
+                                        mock_pulp_client, parent_package="test-pkg"
+                                    )
+                                    mock_helper.get_distribution_urls_for_upload_context.assert_called_once_with(
+                                        "test-build", context
+                                    )
+                                    assert result == "https://example.com/results.json"
 
     def test_collect_results_incremental_only_when_gather_empty(self, mock_pulp_client):
         """When gather returns no content but the model already has artifacts, still upload results JSON."""
@@ -439,15 +442,15 @@ class TestCollectResults:
         results_model = PulpResultsModel(build_id="test-build", repositories=repositories)
         results_model.add_artifact("pkg.rpm", "https://example.com/pkg.rpm", "deadbeef", {"build_id": "test-build"})
 
-        with patch("pulp_tool.services.upload_service.PulpHelper") as mock_helper_class:
+        with patch("pulp_tool.services.upload_collect.PulpHelper") as mock_helper_class:
             mock_helper = Mock()
             mock_helper.get_distribution_urls_for_upload_context.return_value = {"artifacts": "https://a/artifacts/"}
             mock_helper_class.return_value = mock_helper
 
-            with patch("pulp_tool.services.upload_service._gather_and_validate_content", return_value=None):
-                with patch("pulp_tool.services.upload_service._serialize_results_to_json", return_value="{}"):
+            with patch("pulp_tool.services.upload_collect._gather_and_validate_content", return_value=None):
+                with patch("pulp_tool.services.upload_collect._serialize_results_to_json", return_value="{}"):
                     with patch(
-                        "pulp_tool.services.upload_service._upload_and_get_results_url",
+                        "pulp_tool.services.upload_collect._upload_and_get_results_url",
                         return_value="https://example.com/out.json",
                     ) as mock_upload:
                         result = collect_results(mock_pulp_client, context, "2024-01-01", results_model)
@@ -483,13 +486,13 @@ class TestCollectResults:
         )
         results_model = PulpResultsModel(build_id="test-build", repositories=repositories)
 
-        with patch("pulp_tool.services.upload_service._gather_and_validate_content") as mock_gather:
+        with patch("pulp_tool.services.upload_collect._gather_and_validate_content") as mock_gather:
             mock_gather.return_value = Mock(content_results=[], file_results=[], log_results=[], sbom_results=[])
-            with patch("pulp_tool.services.upload_service._build_artifact_map", return_value={}):
-                with patch("pulp_tool.services.upload_service._populate_results_model"):
-                    with patch("pulp_tool.services.upload_service._add_distributions_to_results"):
+            with patch("pulp_tool.services.upload_collect._build_artifact_map", return_value={}):
+                with patch("pulp_tool.services.upload_collect._populate_results_model"):
+                    with patch("pulp_tool.services.upload_collect._add_distributions_to_results"):
                         with patch(
-                            "pulp_tool.services.upload_service._serialize_results_to_json",
+                            "pulp_tool.services.upload_collect._serialize_results_to_json",
                             return_value='{"artifacts": {}, "distributions": {}}',
                         ):
                             result = collect_results(mock_pulp_client, context, "2024-01-01", results_model)
@@ -526,8 +529,8 @@ class TestCollectResults:
         )
         results_model = PulpResultsModel(build_id="test-build", repositories=repositories)
 
-        with patch("pulp_tool.services.upload_service._gather_and_validate_content", return_value=None):
-            with patch("pulp_tool.services.upload_service._add_distributions_to_results"):
+        with patch("pulp_tool.services.upload_collect._gather_and_validate_content", return_value=None):
+            with patch("pulp_tool.services.upload_collect._add_distributions_to_results"):
                 result = collect_results(mock_pulp_client, context, "2024-01-01", results_model)
 
         assert result is not None
@@ -730,7 +733,7 @@ class TestHandleArtifactResults:
         digest_path = tmp_path / "digest.txt"
 
         # Mock PulpHelper to return empty distribution_urls
-        with patch("pulp_tool.services.upload_service.PulpHelper") as mock_helper_class:
+        with patch("pulp_tool.services.upload_collect.PulpHelper") as mock_helper_class:
             mock_helper = Mock()
             mock_helper.get_distribution_urls.return_value = {}  # No artifacts key
             mock_helper_class.return_value = mock_helper
@@ -750,7 +753,7 @@ class TestHandleArtifactResults:
                 result={"relative_path": "test.txt"},
             )
 
-            with patch("pulp_tool.services.upload_service.logging") as mock_logging:
+            with patch("pulp_tool.services.upload_collect.logging") as mock_logging:
                 _handle_artifact_results(mock_pulp_client, context, task_response)
                 # Should log error about no distribution URL
                 mock_logging.error.assert_called()
@@ -762,7 +765,7 @@ class TestHandleArtifactResults:
         digest_path = tmp_path / "digest.txt"
 
         # Mock PulpHelper to return distribution_urls
-        with patch("pulp_tool.services.upload_service.PulpHelper") as mock_helper_class:
+        with patch("pulp_tool.services.upload_collect.PulpHelper") as mock_helper_class:
             mock_helper = Mock()
             mock_helper.get_distribution_urls.return_value = {"artifacts": "https://example.com/artifacts/"}
             mock_helper_class.return_value = mock_helper
@@ -783,7 +786,7 @@ class TestHandleArtifactResults:
                 result={},  # No relative_path
             )
 
-            with patch("pulp_tool.services.upload_service.logging") as mock_logging:
+            with patch("pulp_tool.services.upload_collect.logging") as mock_logging:
                 _handle_artifact_results(mock_pulp_client, context, task_response)
                 # Should log error about no relative_path
                 mock_logging.error.assert_called()
@@ -794,7 +797,7 @@ class TestFindArtifactContent:
 
     def test_find_artifact_content_no_artifacts_dict(self, mock_pulp_client):
         """Test _find_artifact_content when artifacts_dict is empty."""
-        from pulp_tool.services.upload_service import _find_artifact_content
+        from pulp_tool.services.upload_collect import _find_artifact_content
         from pulp_tool.models.pulp_api import TaskResponse
 
         # Create a task response with content href
@@ -809,14 +812,14 @@ class TestFindArtifactContent:
         mock_response.json.return_value = {"results": [{"artifacts": {}}]}
         mock_pulp_client.find_content = Mock(return_value=mock_response)
 
-        with patch("pulp_tool.services.upload_service.logging") as mock_logging:
+        with patch("pulp_tool.services.upload_collect.logging") as mock_logging:
             result = _find_artifact_content(mock_pulp_client, task_response)
             assert result is None
             mock_logging.error.assert_called()
 
     def test_find_artifact_content_non_dict_artifacts(self, mock_pulp_client):
         """Test _find_artifact_content when artifacts is not a dict."""
-        from pulp_tool.services.upload_service import _find_artifact_content
+        from pulp_tool.services.upload_collect import _find_artifact_content
         from pulp_tool.models.pulp_api import TaskResponse
 
         # Create a task response with content href
@@ -831,14 +834,14 @@ class TestFindArtifactContent:
         mock_response.json.return_value = {"results": [{"artifacts": None}]}
         mock_pulp_client.find_content = Mock(return_value=mock_response)
 
-        with patch("pulp_tool.services.upload_service.logging") as mock_logging:
+        with patch("pulp_tool.services.upload_collect.logging") as mock_logging:
             result = _find_artifact_content(mock_pulp_client, task_response)
             assert result is None
             mock_logging.error.assert_called()
 
     def test_find_artifact_content_no_file_value(self, mock_pulp_client, httpx_mock):
         """Test _find_artifact_content when artifact response has no file value."""
-        from pulp_tool.services.upload_service import _find_artifact_content
+        from pulp_tool.services.upload_collect import _find_artifact_content
         from pulp_tool.models.pulp_api import TaskResponse
 
         # Create a task response with content href
@@ -858,14 +861,14 @@ class TestFindArtifactContent:
         mock_artifact_response.json.return_value = {"results": [{"sha256": "abc123"}]}  # No file key
         mock_pulp_client.get_file_locations = Mock(return_value=mock_artifact_response)
 
-        with patch("pulp_tool.services.upload_service.logging") as mock_logging:
+        with patch("pulp_tool.services.upload_collect.logging") as mock_logging:
             result = _find_artifact_content(mock_pulp_client, task_response)
             assert result is None
             mock_logging.error.assert_called()
 
     def test_find_artifact_content_no_sha256_value(self, mock_pulp_client, httpx_mock):
         """Test _find_artifact_content when artifact response has no sha256 value."""
-        from pulp_tool.services.upload_service import _find_artifact_content
+        from pulp_tool.services.upload_collect import _find_artifact_content
         from pulp_tool.models.pulp_api import TaskResponse
 
         # Create a task response with content href
@@ -885,14 +888,14 @@ class TestFindArtifactContent:
         mock_artifact_response.json.return_value = {"results": [{"file": "test.txt@sha256:abc123"}]}  # No sha256 key
         mock_pulp_client.get_file_locations = Mock(return_value=mock_artifact_response)
 
-        with patch("pulp_tool.services.upload_service.logging") as mock_logging:
+        with patch("pulp_tool.services.upload_collect.logging") as mock_logging:
             result = _find_artifact_content(mock_pulp_client, task_response)
             assert result is None
             mock_logging.error.assert_called()
 
     def test_find_artifact_content_success(self, mock_pulp_client, httpx_mock):
         """Test _find_artifact_content successful path."""
-        from pulp_tool.services.upload_service import _find_artifact_content
+        from pulp_tool.services.upload_collect import _find_artifact_content
         from pulp_tool.models.pulp_api import TaskResponse
 
         # Create a task response with content href
@@ -920,7 +923,7 @@ class TestFindArtifactContent:
 
     def test_find_artifact_content_bare_list_json(self, mock_pulp_client, httpx_mock):
         """find_content JSON may be a list of content objects instead of paginated dict."""
-        from pulp_tool.services.upload_service import _find_artifact_content
+        from pulp_tool.services.upload_collect import _find_artifact_content
         from pulp_tool.models.pulp_api import TaskResponse
 
         task_response = TaskResponse(
@@ -947,9 +950,9 @@ class TestParseOciReference:
 
     def test_parse_oci_reference_with_digest(self):
         """Test _parse_oci_reference with digest."""
-        from pulp_tool.services.upload_service import _parse_oci_reference
+        from pulp_tool.services.upload_collect import _parse_oci_reference
 
-        with patch("pulp_tool.services.upload_service.logging") as mock_logging:
+        with patch("pulp_tool.services.upload_collect.logging") as mock_logging:
             image_url, digest = _parse_oci_reference("quay.io/org/repo@sha256:abc123")
             assert image_url == "quay.io/org/repo"
             assert digest == "sha256:abc123"
@@ -957,9 +960,9 @@ class TestParseOciReference:
 
     def test_parse_oci_reference_without_digest(self):
         """Test _parse_oci_reference without digest."""
-        from pulp_tool.services.upload_service import _parse_oci_reference
+        from pulp_tool.services.upload_collect import _parse_oci_reference
 
-        with patch("pulp_tool.services.upload_service.logging") as mock_logging:
+        with patch("pulp_tool.services.upload_collect.logging") as mock_logging:
             image_url, digest = _parse_oci_reference("quay.io/org/repo")
             assert image_url == "quay.io/org/repo"
             assert digest == ""
@@ -1028,7 +1031,7 @@ class TestBuildResultsStructure:
             parent_package="test-package",
         )
 
-        with patch("pulp_tool.services.upload_service.PulpHelper") as mock_helper_class:
+        with patch("pulp_tool.services.upload_collect.PulpHelper") as mock_helper_class:
             mock_helper = Mock()
             mock_helper.get_distribution_urls_for_upload_context.return_value = {
                 "rpms": "https://example.com/rpms/",
@@ -1074,7 +1077,7 @@ class TestBuildResultsStructure:
             parent_package="test-package",
             target_arch_repo=True,
         )
-        with patch("pulp_tool.services.upload_service.PulpHelper") as mock_helper_class:
+        with patch("pulp_tool.services.upload_collect.PulpHelper") as mock_helper_class:
             mock_helper = Mock()
             mock_helper.get_distribution_urls_for_upload_context.return_value = {"logs": "https://example.com/logs/"}
             mock_helper_class.return_value = mock_helper
@@ -1110,7 +1113,7 @@ class TestBuildResultsStructure:
             parent_package="test-package",
             target_arch_repo=True,
         )
-        with patch("pulp_tool.services.upload_service.PulpHelper") as mock_helper_class:
+        with patch("pulp_tool.services.upload_collect.PulpHelper") as mock_helper_class:
             mock_helper = Mock()
             mock_helper.get_distribution_urls_for_upload_context.return_value = {"logs": "https://example.com/logs/"}
             mock_helper.distribution_url_for_base_path.return_value = (
@@ -1170,7 +1173,7 @@ class TestBuildResultsStructure:
             parent_package="test-package",
             target_arch_repo=False,
         )
-        with patch("pulp_tool.services.upload_service.PulpHelper") as mock_helper_class:
+        with patch("pulp_tool.services.upload_collect.PulpHelper") as mock_helper_class:
             mock_helper = Mock()
             mock_helper.get_distribution_urls_for_upload_context.return_value = {}
             mock_helper_class.return_value = mock_helper

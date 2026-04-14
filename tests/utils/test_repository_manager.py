@@ -1,14 +1,54 @@
 """Tests for RepositoryManager class."""
 
 import asyncio
-from unittest.mock import Mock, patch
+from types import SimpleNamespace
+from typing import cast
+from unittest.mock import Mock, call, patch
 
 import httpx
 import pytest
 
 from pulp_tool.models.repository import RepositoryRefs
-from pulp_tool.models.pulp_api import RpmRepositoryRequest, TaskResponse
-from pulp_tool.utils.repository_manager import RepositoryManager, _resource_log_label
+from pulp_tool.models.pulp_api import DistributionRequest, RepositoryRequest, RpmRepositoryRequest, TaskResponse
+from pulp_tool.utils.repository_manager import RepositoryApiOps, RepositoryManager, _resource_log_label
+
+
+class TestRepositoryApiOps:
+    """``RepositoryApiOps`` forwards to :meth:`PulpClient.repository_operation` / task wait."""
+
+    def test_delegates_to_client(self) -> None:
+        mock_client = Mock()
+        mock_resp = httpx.Response(200, json={})
+        mock_client.repository_operation = Mock(return_value=mock_resp)
+        task_done = TaskResponse(pulp_href="/tasks/1/", state="completed")
+        mock_client.wait_for_finished_task = Mock(return_value=task_done)
+
+        ops = RepositoryApiOps(mock_client, "rpm")
+        repo = RepositoryRequest(name="r", autopublish=True)
+        dist = DistributionRequest(name="d", base_path="d")
+
+        assert ops.get("n1") is mock_resp
+        assert ops.create(repo) is mock_resp
+        assert ops.distro(dist) is mock_resp
+        assert ops.get_distro("n2") is mock_resp
+        assert ops.update_distro("/dist/href", "pub") is mock_resp
+        assert ops.wait_for_finished_task("/tasks/wait/") is task_done
+
+        mock_client.repository_operation.assert_has_calls(
+            [
+                call("get_repo", "rpm", name="n1"),
+                call("create_repo", "rpm", repository_data=repo),
+                call("create_distro", "rpm", distribution_data=dist),
+                call("get_distro", "rpm", name="n2"),
+                call(
+                    "update_distro",
+                    "rpm",
+                    distribution_href="/dist/href",
+                    publication="pub",
+                ),
+            ]
+        )
+        mock_client.wait_for_finished_task.assert_called_once_with("/tasks/wait/")
 
 
 class TestRepositoryManagerSetupRepositories:
@@ -182,7 +222,7 @@ class TestRepositoryManagerCreateOrGetRepository:
         mock_response = Mock()
         mock_response.status_code = 404
 
-        methods = {"get": Mock(return_value=mock_response)}
+        methods = cast(RepositoryApiOps, SimpleNamespace(get=Mock(return_value=mock_response)))
 
         with patch("pulp_tool.utils.repository_manager.logging") as mock_logging:
             result = manager._get_existing_repository(methods, "test-repo", "rpms")
@@ -327,7 +367,7 @@ class TestRepositoryManagerCreateOrGetRepository:
         mock_response = Mock()
         mock_response.status_code = 404
 
-        methods = {"get_distro": Mock(return_value=mock_response)}
+        methods = cast(RepositoryApiOps, SimpleNamespace(get_distro=Mock(return_value=mock_response)))
 
         with patch("pulp_tool.utils.repository_manager.logging") as mock_logging:
             result = manager._check_existing_distribution(methods, "test-distro", "rpms")
@@ -350,7 +390,7 @@ class TestRepositoryManagerCreateOrGetRepository:
         # Use object.__setattr__ to bypass Pydantic validation
         object.__setattr__(new_distro, "base_path", "")
 
-        methods = {"create_distro": Mock()}
+        methods = cast(RepositoryApiOps, SimpleNamespace(distro=Mock()))
 
         with (
             patch("pulp_tool.utils.repository_manager.logging") as mock_logging,
@@ -374,9 +414,7 @@ class TestRepositoryManagerCreateNewRepository:
         mock_response = Mock()
         mock_response.json.return_value = {"results": [{"prn": "test-prn", "pulp_href": "test-href"}]}
 
-        methods = {
-            "create": Mock(return_value=mock_response),
-        }
+        methods = cast(RepositoryApiOps, SimpleNamespace(create=Mock(return_value=mock_response)))
 
         new_repo = RpmRepositoryRequest(name="test-build/rpms")
 
@@ -396,9 +434,7 @@ class TestRepositoryManagerCreateNewRepository:
         mock_response = Mock()
         mock_response.json.return_value = {"results": [{"prn": "test-prn", "pulp_href": "test-href"}]}
 
-        methods = {
-            "create": Mock(return_value=mock_response),
-        }
+        methods = cast(RepositoryApiOps, SimpleNamespace(create=Mock(return_value=mock_response)))
 
         new_repo = RpmRepositoryRequest(name="test-build/rpms")
 
@@ -418,9 +454,7 @@ class TestRepositoryManagerCreateNewRepository:
         mock_response = Mock()
         mock_response.json.return_value = {"results": []}
 
-        methods = {
-            "create": Mock(return_value=mock_response),
-        }
+        methods = cast(RepositoryApiOps, SimpleNamespace(create=Mock(return_value=mock_response)))
 
         new_repo = RpmRepositoryRequest(name="test-build/rpms")
 
@@ -440,9 +474,7 @@ class TestRepositoryManagerCreateNewRepository:
         mock_response = Mock()
         mock_response.json.return_value = {"unexpected": "format"}
 
-        methods = {
-            "create": Mock(return_value=mock_response),
-        }
+        methods = cast(RepositoryApiOps, SimpleNamespace(create=Mock(return_value=mock_response)))
 
         new_repo = RpmRepositoryRequest(name="test-build/rpms")
 
@@ -472,9 +504,7 @@ class TestRepositoryManagerWaitForDistributionTask:
             created_resources=["/api/v3/distributions/rpm/123/"],
         )
 
-        methods = {
-            "wait_for_finished_task": Mock(return_value=mock_task_response),
-        }
+        methods = cast(RepositoryApiOps, SimpleNamespace(wait_for_finished_task=Mock(return_value=mock_task_response)))
 
         # Mock session.get to raise HTTPError
         mock_client.session.get.side_effect = httpx.HTTPError("Connection error")
@@ -644,9 +674,7 @@ class TestRepositoryManagerCheckExistingDistribution:
         # This will raise AttributeError when accessed at line 368
         mock_response = Mock()
         del mock_response.status_code  # Remove status_code attribute
-        mock_methods = {
-            "get_distro": Mock(return_value=mock_response),
-        }
+        mock_methods = cast(RepositoryApiOps, SimpleNamespace(get_distro=Mock(return_value=mock_response)))
 
         with patch("pulp_tool.utils.repository_manager.logging") as mock_logging:
             result = manager._check_existing_distribution(mock_methods, "test-build/rpms", "rpms")

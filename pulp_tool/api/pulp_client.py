@@ -14,6 +14,9 @@ Mixins:
 The PulpClient class combines all resource-based mixins to provide a complete Pulp API interface
 organized by resource type, matching Pulp's API documentation structure.
 
+HTTP helpers (cache, chunked GET, repository_operation body) live in ``pulp_client_cache``,
+``pulp_client_chunked_get``, and ``pulp_client_repository`` and are composed by this class.
+
 Key Features:
     - OAuth2 authentication with automatic token refresh
     - Exponential backoff for task polling
@@ -29,12 +32,9 @@ import logging
 import os
 import ssl
 import tempfile
-import time
-import traceback
-from functools import lru_cache, wraps
+from functools import lru_cache
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
-from urllib.parse import urlencode
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 # Third-party imports
 import httpx
@@ -58,6 +58,9 @@ from .content.rpm_packages import RpmPackageContentMixin
 from .content.file_files import FileContentMixin
 from .artifacts.operations import ArtifactMixin
 from .tasks.operations import TaskMixin
+from .pulp_client_cache import CACHE_TTL, PerformanceMetrics, TTLCache, cached_get
+from .pulp_client_chunked_get import chunked_get, chunked_get_async
+from .pulp_client_repository import get_single_resource_by_name, repository_operation as repository_operation_impl
 
 import tomllib
 
@@ -68,9 +71,6 @@ import tomllib
 # Default timeout for HTTP requests (seconds)
 # Increased to 120 seconds to handle slow operations like bulk content queries
 DEFAULT_TIMEOUT = 120
-
-# Cache TTL (time-to-live) in seconds for GET request caching
-CACHE_TTL = 300  # 5 minutes
 
 # Placeholder request for synthetic responses (httpx.raise_for_status requires it)
 _EMPTY_RESPONSE_REQUEST = httpx.Request("GET", "https://placeholder/")
@@ -84,159 +84,6 @@ def _dedupe_results_by_pulp_href(results: List[Any]) -> List[Any]:
         if href:
             seen[href] = r
     return list(seen.values())
-
-
-# ============================================================================
-# Performance Metrics
-# ============================================================================
-
-
-class PerformanceMetrics:
-    """Track API performance metrics."""
-
-    def __init__(self) -> None:
-        """Initialize metrics tracker."""
-        self.total_requests = 0
-        self.cached_requests = 0
-        self.chunked_requests = 0
-        self.task_polls = 0
-
-    def log_request(self, cached: bool = False) -> None:
-        """Log an API request."""
-        self.total_requests += 1
-        if cached:
-            self.cached_requests += 1
-
-    def log_chunked_request(self, parallel: bool = True) -> None:
-        """Log a chunked request (always parallel)."""
-        self.chunked_requests += 1
-
-    def log_task_poll(self) -> None:
-        """Log a task poll."""
-        self.task_polls += 1
-
-    def get_summary(self) -> Dict[str, Any]:
-        """
-        Get metrics summary.
-
-        Returns:
-            Dictionary with metrics summary
-        """
-        cache_hit_rate = (self.cached_requests / self.total_requests * 100) if self.total_requests > 0 else 0
-        return {
-            "total_requests": self.total_requests,
-            "cached_requests": self.cached_requests,
-            "cache_hit_rate": f"{cache_hit_rate:.1f}%",
-            "chunked_requests": self.chunked_requests,
-            "task_polls": self.task_polls,
-        }
-
-    def log_summary(self) -> None:
-        """Log metrics summary."""
-        summary = self.get_summary()
-        logging.info("=== API Performance Metrics ===")
-        logging.info("Total requests: %d", summary["total_requests"])
-        logging.info("Cached requests: %d (%s)", summary["cached_requests"], summary["cache_hit_rate"])
-        logging.info("Parallel chunked requests: %d", summary["chunked_requests"])
-        logging.info("Task polls: %d", summary["task_polls"])
-
-
-# ============================================================================
-# Cache Implementation
-# ============================================================================
-
-
-class TTLCache:
-    """Simple time-to-live cache for GET requests."""
-
-    def __init__(self, ttl: int = CACHE_TTL):
-        """
-        Initialize TTL cache.
-
-        Args:
-            ttl: Time to live in seconds for cache entries
-        """
-        self._cache: Dict[str, Tuple[Any, float]] = {}
-        self._ttl = ttl
-
-    def get(self, key: str) -> Optional[Any]:
-        """
-        Get value from cache if not expired.
-
-        Args:
-            key: Cache key
-
-        Returns:
-            Cached value or None if expired/not found
-        """
-        if key in self._cache:
-            value, timestamp = self._cache[key]
-            if time.time() - timestamp < self._ttl:
-                return value
-            # Expired, remove it
-            del self._cache[key]
-        return None
-
-    def set(self, key: str, value: Any) -> None:
-        """
-        Set value in cache with current timestamp.
-
-        Args:
-            key: Cache key
-            value: Value to cache
-        """
-        self._cache[key] = (value, time.time())
-
-    def clear(self) -> None:
-        """Clear all cache entries."""
-        self._cache.clear()
-
-    def size(self) -> int:
-        """Return number of cached entries."""
-        return len(self._cache)
-
-
-def cached_get(method: Callable) -> Callable:
-    """
-    Decorator to cache GET request results.
-
-    Caches responses based on URL to reduce redundant API calls.
-    Tracks metrics for cache hits and misses.
-    """
-
-    @wraps(method)
-    def wrapper(self: Any, *args: Any, **kwargs: Any) -> Any:
-        # Only cache if first argument is a URL string
-        if not args or not isinstance(args[0], str):
-            return method(self, *args, **kwargs)
-
-        url = args[0]
-        cache_key = f"{method.__name__}:{url}"
-
-        # Check cache
-        cached_result = self._get_cache.get(cache_key)
-        if cached_result is not None:
-            logging.debug("Cache hit for %s", url)
-            # Track cache hit
-            if hasattr(self, "_metrics"):
-                self._metrics.log_request(cached=True)
-            return cached_result
-
-        # Cache miss - make request
-        result = method(self, *args, **kwargs)
-
-        # Track request
-        if hasattr(self, "_metrics"):
-            self._metrics.log_request(cached=False)
-
-        # Only cache successful GET responses
-        if hasattr(result, "is_success") and result.is_success:
-            self._get_cache.set(cache_key, result)
-            logging.debug("Cached response for %s", url)
-
-        return result
-
-    return wrapper
 
 
 # ============================================================================
@@ -481,92 +328,7 @@ class PulpClient(
               - response object of the last chunk is returned with the aggregated results.
               - chunks are processed concurrently using asyncio for optimal performance
         """
-        import asyncio  # pylint: disable=import-outside-toplevel
-
-        async_client = self._get_async_session()
-
-        if not params or not chunk_param or chunk_param not in params:
-            # No chunking needed, make regular request
-            response = await async_client.get(url, params=params, **kwargs)
-            self._check_response(response, "chunked GET")
-            return response
-
-        # Extract the parameter value and check if it needs chunking
-        param_value = params[chunk_param]
-        if not isinstance(param_value, str) or "," not in param_value:
-            # Not a comma-separated list, make regular request
-            response = await async_client.get(url, params=params, **kwargs)
-            self._check_response(response, "chunked GET")
-            return response
-
-        values = [v.strip() for v in param_value.split(",")]
-
-        if len(values) <= chunk_size:
-            # Small list, make regular request
-            response = await async_client.get(url, params=params, **kwargs)
-            self._check_response(response, "chunked GET")
-            return response
-
-        # Need to chunk the request
-        chunks = [values[i : i + chunk_size] for i in range(0, len(values), chunk_size)]
-
-        logging.debug(
-            "Chunking parameter '%s' with %d values into %d chunks (async concurrent)",
-            chunk_param,
-            len(values),
-            len(chunks),
-        )
-
-        # Track metrics
-        if hasattr(self, "_metrics"):
-            self._metrics.log_chunked_request(parallel=True)
-
-        # Create tasks for all chunks
-        async def fetch_chunk(chunk: list, chunk_index: int) -> tuple:
-            """Fetch a single chunk and return its results."""
-            chunk_params = params.copy()
-            chunk_params[chunk_param] = ",".join(chunk)
-
-            try:
-                response = await async_client.get(url, params=chunk_params, **kwargs)
-                self._check_response(response, f"chunked request {chunk_index}")
-
-                # Parse results
-                chunk_data = response.json()
-                results = chunk_data.get("results", [])
-                logging.debug("Completed chunk %d/%d with %d results", chunk_index, len(chunks), len(results))
-                return response, results
-
-            except Exception as e:
-                logging.error("Failed to process chunk %d: %s", chunk_index, e)
-                logging.error("Traceback: %s", traceback.format_exc())
-                raise
-
-        # Execute all chunks concurrently
-        tasks = [fetch_chunk(chunk, i) for i, chunk in enumerate(chunks, 1)]
-        results = await asyncio.gather(*tasks)
-
-        # Aggregate results
-        all_results = []
-        last_response = None
-        for response, chunk_results in results:
-            last_response = response
-            all_results.extend(chunk_results)
-
-        # Create aggregated response
-        if last_response:
-            aggregated_data = {"count": len(all_results), "results": all_results}
-
-            # Modify response content to return aggregated results from all chunks
-            # intentionally modifying _content
-            # pylint: disable=W0212 (protected-access)
-            last_response._content = json.dumps(aggregated_data).encode("utf-8")
-            return last_response
-
-        # Fallback: return empty response
-        response = await async_client.get(url, params={chunk_param: ""}, **kwargs)
-        self._check_response(response, "chunked GET (fallback)")
-        return response
+        return await chunked_get_async(self, url, params, chunk_param, chunk_size, **kwargs)
 
     def _chunked_get(
         self,
@@ -582,18 +344,7 @@ class PulpClient(
         Provides a synchronous interface while using async implementation
         underneath for better performance.
         """
-        import asyncio  # pylint: disable=import-outside-toplevel
-
-        # Check if we're already in an event loop
-        try:
-            asyncio.get_running_loop()
-            # We're in an async context, but this is a sync method
-            raise RuntimeError("_chunked_get called from async context. Use _chunked_get_async instead.")
-        except RuntimeError:
-            # No event loop running, safe to create one
-            pass
-
-        return self._run_async(self._chunked_get_async(url, params, chunk_param, chunk_size, **kwargs))
+        return chunked_get(self, url, params, chunk_param, chunk_size, **kwargs)
 
     @classmethod
     def create_from_config_file(cls, path: Optional[str] = None, domain: Optional[str] = None) -> "PulpClient":
@@ -819,13 +570,7 @@ class PulpClient(
         Returns:
             Response object containing the resource data
         """
-        url = self._url(f"{endpoint}?")
-        url += urlencode({"name": name, "offset": 0, "limit": 1})
-        response = self.session.get(url, timeout=self.timeout, **self.request_params)
-        # 404 means "no such resource" for name lookup; callers handle it without treating as HTTP failure.
-        if response.status_code != 404:
-            self._check_response(response, "get single resource by name")
-        return response
+        return get_single_resource_by_name(self, endpoint, name)
 
     def _log_request_headers(self, response: httpx.Response) -> None:
         """Log request headers with sensitive data redacted."""
@@ -1072,39 +817,16 @@ class PulpClient(
         Returns:
             Response object from the operation
         """
-        # Build endpoint prefix (repositories/distributions use duplicate repo_type)
-        endpoint_base = f"api/v3/{'repositories' if 'repo' in operation else 'distributions'}/{repo_type}/{repo_type}/"
-
-        if operation == "create_repo":
-            if not repository_data:
-                raise ValueError("Repository data is required for 'create_repo' operations")
-            return self._create_repository(endpoint_base, repository_data)
-
-        if operation == "get_repo":
-            if not name:
-                raise ValueError("Name is required for 'get_repo' operations")
-            return self._get_single_resource(endpoint_base, name)
-
-        if operation == "create_distro":
-            if not distribution_data:
-                raise ValueError("Distribution data is required for 'create_distro' operations")
-            return self._create_distribution(endpoint_base, distribution_data)
-
-        if operation == "get_distro":
-            if not name:
-                raise ValueError("Name is required for 'get_distro' operations")
-            return self._get_single_resource(endpoint_base, name)
-
-        if operation == "update_distro":
-            if not distribution_href:
-                raise ValueError("Distribution href is required")
-            url = str(self.config["base_url"]) + distribution_href
-            data = {"publication": publication}
-            response = self.session.patch(url, json=data, timeout=self.timeout, **self.request_params)
-            self._check_response(response, "update distribution")
-            return response
-
-        raise ValueError(f"Unknown operation: {operation}")
+        return repository_operation_impl(
+            self,
+            operation,
+            repo_type,
+            name=name,
+            repository_data=repository_data,
+            distribution_data=distribution_data,
+            publication=publication,
+            distribution_href=distribution_href,
+        )
 
     # ============================================================================
     # Content Query Methods (migrated from ContentQueryMixin)

@@ -18,6 +18,7 @@ from .validation.build_id import (
 from .validation.file import validate_file_path
 from .validation.repository import validate_repository_setup
 from .uploads import create_labels, upload_artifacts_to_repository, upload_rpms_logs, upload_log, upload_rpms
+from .pulp_tasks import create_file_content_and_wait
 from .url import get_pulp_content_base_url
 from ..models.repository import RepositoryRefs
 
@@ -54,6 +55,7 @@ __all__ = [
     "upload_rpms",
     "upload_rpms_logs",
     "upload_log",
+    "create_file_content_and_wait",
     "get_pulp_content_base_url",
     "RepositoryRefs",
     # New utility modules

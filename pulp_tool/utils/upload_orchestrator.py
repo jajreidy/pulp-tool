@@ -23,6 +23,7 @@ from .error_handling import handle_generic_error
 from .uploads import upload_log, upload_rpms, upload_rpms_logs, create_labels, RPM_FILE_PATTERN
 from .validation import validate_file_path
 from .artifact_detection import detect_arch_from_filepath, group_rpm_paths_by_arch
+from .pulp_tasks import create_file_content_and_wait
 
 if TYPE_CHECKING:
     from ..api.pulp_client import PulpClient
@@ -408,13 +409,14 @@ class UploadOrchestrator:
                 )
                 validate_file_path(file_path, "File")
 
-                content_upload_response = client.create_file_content(
-                    repositories.artifacts_prn, file_path, build_id=context.build_id, pulp_label=labels
+                task_response = create_file_content_and_wait(
+                    client,
+                    repositories.artifacts_prn,
+                    file_path,
+                    build_id=context.build_id,
+                    pulp_label=labels,
+                    operation=f"upload file {file_path}",
                 )
-
-                client.check_response(content_upload_response, f"upload file {file_path}")
-                task_href = content_upload_response.json()["task"]
-                task_response = client.wait_for_finished_task(task_href)
                 if task_response.created_resources:
                     created_resources.extend(task_response.created_resources)
                 results_model.uploaded_counts.files += 1
