@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING, Any, Dict, Optional, Union
 from ..models.pulp_api import TaskResponse
 
 if TYPE_CHECKING:
-    from ..api.pulp_client import PulpClient
+    from ..api.pulp_client import PulpClient  # pragma: no cover
 
 
 def create_file_content_and_wait(

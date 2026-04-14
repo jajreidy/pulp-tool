@@ -580,6 +580,16 @@ class TestPulpClient:
         assert result.status_code == 200
         assert result.json()["results"][0]["id"] == 1
 
+    def test_chunked_get_module_raises_when_event_loop_running(self, mock_pulp_client):
+        """``pulp_client_chunked_get.chunked_get`` must not run sync wrapper inside async context (line 119)."""
+        from pulp_tool.api.pulp_client_chunked_get import chunked_get
+
+        async def _inner() -> None:
+            with pytest.raises(RuntimeError, match="_chunked_get called from async context"):
+                chunked_get(mock_pulp_client, "https://test.com/api")
+
+        asyncio.run(_inner())
+
     def test_chunked_get_with_chunking(self, mock_pulp_client, httpx_mock):
         """Test _chunked_get method with chunking."""
         # Create a large parameter list

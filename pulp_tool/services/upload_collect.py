@@ -18,7 +18,7 @@ from ..models.results import PulpResultsModel
 from ..models.artifacts import ContentData, ExtraArtifactRef, FileInfoMap, FileInfoModel, PulpContentRow
 
 if TYPE_CHECKING:
-    from ..api.pulp_client import PulpClient
+    from ..api.pulp_client import PulpClient  # pragma: no cover
 
 from ..utils import PulpHelper, create_labels
 from ..utils.constants import (

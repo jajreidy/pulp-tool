@@ -17,7 +17,7 @@ import httpx
 from ..utils.constants import DEFAULT_CHUNK_SIZE
 
 if TYPE_CHECKING:
-    from .pulp_client import PulpClient
+    from .pulp_client import PulpClient  # pragma: no cover
 
 
 async def chunked_get_async(

@@ -12,7 +12,7 @@ from urllib.parse import urlencode
 import httpx
 
 if TYPE_CHECKING:
-    from .pulp_client import PulpClient
+    from .pulp_client import PulpClient  # pragma: no cover
 
 
 def get_single_resource_by_name(client: "PulpClient", endpoint: str, name: str) -> httpx.Response:
