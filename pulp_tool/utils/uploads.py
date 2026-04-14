@@ -19,6 +19,7 @@ from .validation import validate_file_path
 from .constants import SUPPORTED_ARCHITECTURES
 from .rpm_operations import upload_rpms_parallel
 from .rpm_overwrite import remove_rpms_matching_local_files_from_repository
+from .pulp_tasks import create_file_content_and_wait
 
 if TYPE_CHECKING:
     from ..api.pulp_client import PulpClient
@@ -86,13 +87,15 @@ def upload_log(
             "Log upload requires a logs repository PRN. Create the logs repository or unset skip_logs_repo."
         )
 
-    content_upload_response = client.create_file_content(
-        file_repository_prn, log_path, build_id=build_id, pulp_label=labels, arch=arch
+    task_response = create_file_content_and_wait(
+        client,
+        file_repository_prn,
+        log_path,
+        build_id=build_id,
+        pulp_label=labels,
+        arch=arch,
+        operation=f"upload log {log_path}",
     )
-
-    client.check_response(content_upload_response, f"upload log {log_path}")
-    task_href = content_upload_response.json()["task"]
-    task_response = client.wait_for_finished_task(task_href)
 
     if results_model is not None and distribution_urls is not None:
         rel_path: Optional[str] = None

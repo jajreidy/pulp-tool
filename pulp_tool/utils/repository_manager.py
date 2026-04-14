@@ -4,9 +4,12 @@ Repository management for Pulp operations.
 This module handles repository creation, retrieval, and distribution management.
 """
 
+from __future__ import annotations
+
 import asyncio
 import logging
 import traceback
+from dataclasses import dataclass
 from typing import Any, Dict, Optional, Tuple, TYPE_CHECKING
 
 import httpx
@@ -15,10 +18,11 @@ from ..models.repository import RepositoryRefs
 from ..models.pulp_api import (
     DistributionRequest,
     RepositoryRequest,
+    TaskResponse,
 )
 
 if TYPE_CHECKING:
-    from ..api.pulp_client import PulpClient
+    from ..api.pulp_client import PulpClient  # pragma: no cover
 
 from .constants import (
     API_TYPES,
@@ -32,6 +36,41 @@ from .validation import (
     validate_build_id,
     validate_repository_setup,
 )
+
+
+@dataclass(frozen=True)
+class RepositoryApiOps:
+    """
+    Bound Pulp repository/distribution operations for one API type (``rpm`` or ``file``).
+
+    Replaces a dict of callables for clearer typing and easier testing.
+    """
+
+    client: PulpClient
+    repo_type: str
+
+    def get(self, name: str) -> httpx.Response:
+        return self.client.repository_operation("get_repo", self.repo_type, name=name)
+
+    def create(self, new_repository: RepositoryRequest) -> httpx.Response:
+        return self.client.repository_operation("create_repo", self.repo_type, repository_data=new_repository)
+
+    def distro(self, new_distribution: DistributionRequest) -> httpx.Response:
+        return self.client.repository_operation("create_distro", self.repo_type, distribution_data=new_distribution)
+
+    def get_distro(self, name: str) -> httpx.Response:
+        return self.client.repository_operation("get_distro", self.repo_type, name=name)
+
+    def update_distro(self, distribution_href: str, publication: Optional[str]) -> httpx.Response:
+        return self.client.repository_operation(
+            "update_distro",
+            self.repo_type,
+            distribution_href=distribution_href,
+            publication=publication,
+        )
+
+    def wait_for_finished_task(self, task_id: str) -> TaskResponse:
+        return self.client.wait_for_finished_task(task_id)
 
 
 def _resource_log_label(full_name: str) -> str:
@@ -284,30 +323,17 @@ class RepositoryManager:
 
         return repository_prn, repository_href
 
-    def get_repository_methods(self, repo_type: str) -> Dict[str, Any]:
+    def get_repository_methods(self, repo_type: str) -> RepositoryApiOps:
         """
-        Get the appropriate client methods for the repository type.
+        Get bound repository/distribution operations for the repository type.
 
         Args:
             repo_type: Type of repository ('rpm' or 'file')
 
         Returns:
-            Dictionary mapping method names to their implementations
+            :class:`RepositoryApiOps` for this client and API type
         """
-        return {
-            "get": lambda name: self.client.repository_operation("get_repo", repo_type, name=name),
-            "create": lambda new_repository: self.client.repository_operation(
-                "create_repo", repo_type, repository_data=new_repository
-            ),
-            "distro": lambda new_distribution: self.client.repository_operation(
-                "create_distro", repo_type, distribution_data=new_distribution
-            ),
-            "get_distro": lambda name: self.client.repository_operation("get_distro", repo_type, name=name),
-            "update_distro": lambda distribution_href, publication: self.client.repository_operation(
-                "update_distro", repo_type, distribution_href=distribution_href, publication=publication
-            ),
-            "wait_for_finished_task": self.client.wait_for_finished_task,
-        }
+        return RepositoryApiOps(self.client, repo_type)
 
     def _parse_repository_response(self, response: httpx.Response, repo_type: str, operation: str) -> Dict[str, Any]:
         """Parse repository response JSON with error handling."""
@@ -320,13 +346,13 @@ class RepositoryManager:
             raise ValueError(f"Invalid JSON response from Pulp API: {e}") from e
 
     def _get_existing_repository(
-        self, methods: Dict[str, Any], full_name: str, repo_type: str
+        self, methods: RepositoryApiOps, full_name: str, repo_type: str
     ) -> Optional[Tuple[str, Optional[str]]]:
         """Check if repository exists and return its details.
 
         Returns None if repository doesn't exist (404), allowing the caller to create it.
         """
-        repository_response = methods["get"](full_name)
+        repository_response = methods.get(full_name)
 
         # Handle 404 gracefully - repository doesn't exist, return None to allow creation
         if repository_response.status_code == 404:
@@ -347,7 +373,7 @@ class RepositoryManager:
         return None
 
     def _create_new_repository(
-        self, methods: Dict[str, Any], new_repository: RepositoryRequest, repo_type: str
+        self, methods: RepositoryApiOps, new_repository: RepositoryRequest, repo_type: str
     ) -> Tuple[str, Optional[str]]:
         """Create a new repository and return its details."""
         logging.warning(
@@ -355,7 +381,7 @@ class RepositoryManager:
             _resource_log_label(new_repository.name),
             new_repository.name,
         )
-        repository_response = methods["create"](new_repository)
+        repository_response = methods.create(new_repository)
         self.client.check_response(repository_response, f"create {repo_type} repository")
 
         # The create response contains the repository details directly
@@ -376,7 +402,7 @@ class RepositoryManager:
             raise ValueError(f"Unexpected response format for {repo_type} repository creation: {new_repository.name}")
 
     def _wait_for_distribution_task(
-        self, methods: Dict[str, Any], task_id: str, repo_type: str, build_id: str
+        self, methods: RepositoryApiOps, task_id: str, repo_type: str, build_id: str
     ) -> Optional[str]:
         """
         Wait for distribution creation task to complete and return the base_path.
@@ -384,7 +410,7 @@ class RepositoryManager:
         Returns:
             The base_path of the created distribution, or None if not found
         """
-        task_response = methods["wait_for_finished_task"](task_id)
+        task_response = methods.wait_for_finished_task(task_id)
 
         # task_response is now a TaskResponse model
         if not task_response.is_successful:
@@ -595,14 +621,14 @@ class RepositoryManager:
 
         return repository_prn, repository_href
 
-    def _check_existing_distribution(self, methods: Dict[str, Any], full_name: str, repo_type: str) -> bool:
+    def _check_existing_distribution(self, methods: RepositoryApiOps, full_name: str, repo_type: str) -> bool:
         """Check if distribution already exists by name.
 
         Returns False if distribution doesn't exist (404), allowing the caller to create it.
         """
         try:
             logging.debug("Checking for existing %s distribution: %s", repo_type, full_name)
-            distro_response = methods["get_distro"](full_name)
+            distro_response = methods.get_distro(full_name)
             logging.debug("Distribution check response status: %s", distro_response.status_code)
 
             # Handle 404 gracefully - distribution doesn't exist, return False to allow creation
@@ -630,7 +656,7 @@ class RepositoryManager:
             logging.error("Traceback: %s", traceback.format_exc())
             return False  # Continue with creation if check fails
 
-    def _new_distribution_task(self, methods: Dict[str, Any], new_distribution: DistributionRequest, repo_type: str):
+    def _new_distribution_task(self, methods: RepositoryApiOps, new_distribution: DistributionRequest, repo_type: str):
         """Create a distribution for a repository and return the task ID.
 
          Args:
@@ -642,7 +668,7 @@ class RepositoryManager:
             Task ID for the new distribution
         """
         # Logging is handled by the caller (_create_distribution_task) to avoid duplicate messages
-        distro_response = methods["distro"](new_distribution)
+        distro_response = methods.distro(new_distribution)
         self.client.check_response(distro_response, f"create {repo_type} distribution")
 
         response_data = self._parse_repository_response(distro_response, repo_type, "distribution creation")
@@ -651,7 +677,7 @@ class RepositoryManager:
 
     def _create_distribution_task(
         self,
-        methods: Dict[str, Any],
+        methods: RepositoryApiOps,
         new_distribution: DistributionRequest,
         repo_type: str,
         is_new_repository: bool = False,
@@ -745,4 +771,4 @@ class RepositoryManager:
         return self._distribution_cache
 
 
-__all__ = ["RepositoryManager"]
+__all__ = ["RepositoryApiOps", "RepositoryManager"]

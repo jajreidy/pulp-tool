@@ -71,8 +71,13 @@ pulp-tool --config /etc/rok-access/cli.toml \
 
 ## In-repo code tied to Konflux behavior
 
+### Canonical upload entry (read this first)
+
+- **Primary path for CLI and Konflux:** `pulp_tool/cli/upload.py` uses **`PulpHelper`** (`pulp_tool/utils/pulp_helper.py`) — `setup_repositories` and `process_uploads`, which delegate to **`UploadOrchestrator`** and the helpers in **`upload_service`** / **`upload_collect`** for results JSON and Konflux artifacts.
+- **`UploadService`** (`pulp_tool/services/upload_service.py`) is the same orchestration exposed as a small class for tests and programmatic callers; it delegates to **`PulpHelper`**, not a parallel implementation.
+
 - **CLI:** `pulp_tool/cli/upload.py`, `pulp_tool/cli/upload_files.py` — global options; `--artifact-results` as `url_path,digest_path` for Konflux result files.
-- **Upload / artifact + SBOM integration:** `pulp_tool/services/upload_service.py` — e.g. `_write_konflux_results`, `_handle_artifact_results`, SBOM handling.
+- **Upload / artifact + SBOM integration:** `pulp_tool/services/upload_service.py` and `pulp_tool/services/upload_collect.py` — e.g. `_write_konflux_results`, `_handle_artifact_results`, SBOM handling.
 - **Pull:** `pulp_tool/pull/download.py` — `konflux-` domain prefix behavior for pull.
 - **Container image build:** `.tekton/pulp-tool-container-build-push.yaml` — publishes the Quay image used by the tasks above.
 

@@ -135,10 +135,6 @@ module = "pulp_tool.utils.validation"
 disable_error_code = ["unreachable"]
 
 [[tool.mypy.overrides]]
-module = "pulp_tool.api.task_manager"
-disable_error_code = ["attr-defined"]
-
-[[tool.mypy.overrides]]
 module = "pulp_tool.api.base"
 disable_error_code = ["attr-defined"]
 

@@ -16,6 +16,7 @@ from ..models.repository import RepositoryRefs
 from ..models.artifacts import PulledArtifacts
 from ..utils import PulpHelper, determine_build_id, extract_metadata_from_artifacts
 from ..utils.rpm_operations import upload_rpms_parallel
+from ..utils.pulp_tasks import create_file_content_and_wait
 
 
 def _upload_sboms_and_logs(
@@ -42,12 +43,14 @@ def _upload_sboms_and_logs(
         for name, artifact in sbom_items:
             logging.warning("Uploading SBOM: %s", name)
             try:
-                pulp_client.create_file_content(
+                create_file_content_and_wait(
+                    pulp_client,
                     repositories.sbom_prn,
                     artifact.file,
                     build_id=artifact.labels.get("build_id", ""),
                     pulp_label=artifact.labels,
                     filename=name,
+                    operation=f"upload SBOM {name}",
                 )
                 upload_count += 1
             except Exception as e:
@@ -69,13 +72,15 @@ def _upload_sboms_and_logs(
             try:
                 # Extract arch from labels for relative path construction
                 arch = artifact.labels.get("arch")
-                pulp_client.create_file_content(
+                create_file_content_and_wait(
+                    pulp_client,
                     repositories.logs_prn,
                     artifact.file,
                     build_id=artifact.labels.get("build_id", ""),
                     pulp_label=artifact.labels,
                     filename=name,
                     arch=arch,
+                    operation=f"upload log {name}",
                 )
                 upload_count += 1
             except Exception as e:

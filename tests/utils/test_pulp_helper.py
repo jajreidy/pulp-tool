@@ -5,7 +5,8 @@ This module contains comprehensive tests for the PulpHelper class methods includ
 repository setup, distribution URL retrieval, and helper methods.
 """
 
-from typing import Any
+from types import SimpleNamespace
+from typing import cast
 
 from unittest.mock import Mock, patch
 from httpx import HTTPError
@@ -13,6 +14,7 @@ import pytest
 
 from pulp_tool.models.pulp_api import RpmDistributionRequest, RpmRepositoryRequest
 from pulp_tool.utils import PulpHelper, RepositoryRefs
+from pulp_tool.utils.repository_manager import RepositoryApiOps
 
 
 class TestPulpHelperInitialization:
@@ -34,12 +36,12 @@ class TestPulpHelperRepositoryMethods:
 
         methods = helper._repository_manager.get_repository_methods("rpm")
 
-        assert "get" in methods
-        assert "create" in methods
-        assert "distro" in methods
-        assert "get_distro" in methods
-        assert "update_distro" in methods
-        assert "wait_for_finished_task" in methods
+        assert callable(methods.get)
+        assert callable(methods.create)
+        assert callable(methods.distro)
+        assert callable(methods.get_distro)
+        assert callable(methods.update_distro)
+        assert callable(methods.wait_for_finished_task)
 
 
 class TestPulpHelperRepositorySetup:
@@ -225,11 +227,12 @@ class TestPulpHelperInternalMethods:
         helper = PulpHelper(mock_pulp_client)
 
         mock_response = Mock()
+        mock_response.status_code = 200
         mock_response.json.return_value = {
             "results": [{"prn": "test-prn", "pulp_href": "/pulp/api/v3/repositories/rpm/rpm/12345/"}]
         }
 
-        methods = {"get": Mock(return_value=mock_response)}
+        methods = cast(RepositoryApiOps, SimpleNamespace(get=Mock(return_value=mock_response)))
 
         mock_pulp_client.check_response = Mock()
 
@@ -242,9 +245,10 @@ class TestPulpHelperInternalMethods:
         helper = PulpHelper(mock_pulp_client)
 
         mock_response = Mock()
+        mock_response.status_code = 200
         mock_response.json.return_value = {"results": []}
 
-        methods = {"get": Mock(return_value=mock_response)}
+        methods = cast(RepositoryApiOps, SimpleNamespace(get=Mock(return_value=mock_response)))
 
         mock_pulp_client.check_response = Mock()
 
@@ -263,7 +267,7 @@ class TestPulpHelperInternalMethods:
             "pulp_href": "/pulp/api/v3/repositories/rpm/rpm/12345/",
         }
 
-        methods = {"create": Mock(return_value=mock_create_response)}
+        methods = cast(RepositoryApiOps, SimpleNamespace(create=Mock(return_value=mock_create_response)))
 
         mock_pulp_client.check_response = Mock()
         new_repo = RpmRepositoryRequest(name="test-repo", autopublish=True)
@@ -290,11 +294,11 @@ class TestPulpHelperInternalMethods:
         mock_distro_response.json.return_value = {"base_path": "test-build/rpms"}
         mock_pulp_client.session.get = Mock(return_value=mock_distro_response)
 
-        methods = {"wait_for_finished_task": Mock(return_value=mock_task_response)}
+        methods = cast(RepositoryApiOps, SimpleNamespace(wait_for_finished_task=Mock(return_value=mock_task_response)))
 
         result = helper._repository_manager._wait_for_distribution_task(methods, "task-123", "rpms", "test-build")
 
-        methods["wait_for_finished_task"].assert_called_once_with("task-123")
+        methods.wait_for_finished_task.assert_called_once_with("task-123")
         assert result == "test-build/rpms"
 
     def test_wait_for_distribution_task_no_resources(self, mock_pulp_client):
@@ -307,11 +311,11 @@ class TestPulpHelperInternalMethods:
             pulp_href="/pulp/api/v3/tasks/12345/", state="completed", created_resources=[]
         )
 
-        methods = {"wait_for_finished_task": Mock(return_value=mock_task_response)}
+        methods = cast(RepositoryApiOps, SimpleNamespace(wait_for_finished_task=Mock(return_value=mock_task_response)))
 
         helper._repository_manager._wait_for_distribution_task(methods, "task-123", "rpms", "test-build")
 
-        methods["wait_for_finished_task"].assert_called_once_with("task-123")
+        methods.wait_for_finished_task.assert_called_once_with("task-123")
 
     def test_wait_for_distribution_task_json_error(self, mock_pulp_client):
         """Test PulpHelper _wait_for_distribution_task with failed task."""
@@ -327,7 +331,7 @@ class TestPulpHelperInternalMethods:
             created_resources=[],
         )
 
-        methods = {"wait_for_finished_task": Mock(return_value=mock_task_response)}
+        methods = cast(RepositoryApiOps, SimpleNamespace(wait_for_finished_task=Mock(return_value=mock_task_response)))
 
         with pytest.raises(ValueError, match="Distribution creation task failed"):
             helper._repository_manager._wait_for_distribution_task(methods, "task-123", "rpms", "test-build")
@@ -344,7 +348,7 @@ class TestPulpHelperDistributionOperations:
         mock_response.status_code = 200
         mock_response.json.return_value = {"results": [{"name": "test-build/rpms", "base_path": "test-build/rpms"}]}
 
-        methods = {"get_distro": Mock(return_value=mock_response)}
+        methods = cast(RepositoryApiOps, SimpleNamespace(get_distro=Mock(return_value=mock_response)))
 
         result = helper._repository_manager._check_existing_distribution(methods, "test-build/rpms", "rpms")
 
@@ -355,9 +359,10 @@ class TestPulpHelperDistributionOperations:
         helper = PulpHelper(mock_pulp_client)
 
         mock_response = Mock()
+        mock_response.status_code = 200
         mock_response.json.return_value = {"results": []}
 
-        methods = {"get_distro": Mock(return_value=mock_response)}
+        methods = cast(RepositoryApiOps, SimpleNamespace(get_distro=Mock(return_value=mock_response)))
 
         result = helper._repository_manager._check_existing_distribution(methods, "test-build/rpms", "rpms")
 
@@ -367,7 +372,7 @@ class TestPulpHelperDistributionOperations:
         """Test PulpHelper _check_existing_distribution with error."""
         helper = PulpHelper(mock_pulp_client)
 
-        methods = {"get_distro": Mock(side_effect=HTTPError("API error"))}
+        methods = cast(RepositoryApiOps, SimpleNamespace(get_distro=Mock(side_effect=HTTPError("API error"))))
 
         result = helper._repository_manager._check_existing_distribution(methods, "test-build/rpms", "rpms")
 
@@ -377,7 +382,7 @@ class TestPulpHelperDistributionOperations:
         """Test PulpHelper _check_existing_distribution with AttributeError."""
         helper = PulpHelper(mock_pulp_client)
 
-        methods: dict[str, Any] = {}
+        methods = cast(RepositoryApiOps, SimpleNamespace())
 
         result = helper._repository_manager._check_existing_distribution(methods, "test-build/rpms", "rpms")
 
@@ -387,7 +392,7 @@ class TestPulpHelperDistributionOperations:
         """Test PulpHelper _check_existing_distribution with ValueError."""
         helper = PulpHelper(mock_pulp_client)
 
-        methods = {"get_distro": Mock(side_effect=ValueError("JSON error"))}
+        methods = cast(RepositoryApiOps, SimpleNamespace(get_distro=Mock(side_effect=ValueError("JSON error"))))
 
         result = helper._repository_manager._check_existing_distribution(methods, "test-build/rpms", "rpms")
 
@@ -399,10 +404,13 @@ class TestPulpHelperDistributionOperations:
 
         mock_distro_response = Mock()
         mock_distro_response.json.return_value = {"task": "/pulp/api/v3/tasks/12345/"}
-        methods = {
-            "distro": Mock(return_value=mock_distro_response),
-            "get_distro": Mock(return_value=Mock(json=lambda: {"results": []})),
-        }
+        methods = cast(
+            RepositoryApiOps,
+            SimpleNamespace(
+                distro=Mock(return_value=mock_distro_response),
+                get_distro=Mock(return_value=Mock(json=lambda: {"results": []})),
+            ),
+        )
 
         mock_pulp_client.check_response = Mock()
         new_distro = RpmDistributionRequest(name="test-distro", base_path="test-distro", repository="test-repo")
@@ -413,7 +421,7 @@ class TestPulpHelperDistributionOperations:
         """Test PulpHelper _create_distribution_task."""
         helper = PulpHelper(mock_pulp_client)
 
-        methods: dict[str, Any] = {}
+        methods = cast(RepositoryApiOps, SimpleNamespace())
         new_distro = RpmDistributionRequest(name="test-distro", base_path="test-distro", repository="test-repo")
 
         with (
@@ -432,7 +440,7 @@ class TestPulpHelperDistributionOperations:
         """Test PulpHelper _create_distribution_task when already exists."""
         helper = PulpHelper(mock_pulp_client)
 
-        methods: dict[str, Any] = {}
+        methods = cast(RepositoryApiOps, SimpleNamespace())
         new_distro = RpmDistributionRequest(name="test-distro", base_path="test-distro", repository="test-repo")
 
         with patch.object(helper._repository_manager, "_check_existing_distribution", return_value=True):

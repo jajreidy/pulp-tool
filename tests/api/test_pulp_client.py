@@ -6,12 +6,13 @@ This module contains comprehensive tests for:
 - Content upload operations migrated to PulpClient
 - Content querying and retrieval methods migrated to PulpClient
 - RepositoryManagerMixin: Repository operations (repository_manager.py)
-- TaskManagerMixin: Pulp task management (task_manager.py)
+- TaskMixin: Pulp task management (tasks/operations.py)
 
 All mixin functionality is tested through the integrated PulpClient class,
 which is the correct approach for testing mixin-based architecture.
 """
 
+import asyncio
 import json
 import re
 from pathlib import Path
@@ -525,6 +526,21 @@ class TestPulpClient:
         with pytest.raises(HTTPError, match="Failed to get single resource by name"):
             mock_pulp_client._get_single_resource("api/v3/repositories/", "bad")
 
+    def test_get_single_resource_cache_key_includes_name(self, mock_pulp_client, httpx_mock):
+        """Regression: cache must not return one repo's response for a different ``name``."""
+        httpx_mock.get(
+            "https://pulp.example.com/pulp/api/v3/test-domain/api/v3/repositories/?name=first-repo&offset=0&limit=1"
+        ).mock(return_value=httpx.Response(200, json={"results": [{"prn": "prn-first"}]}))
+        httpx_mock.get(
+            "https://pulp.example.com/pulp/api/v3/test-domain/api/v3/repositories/?name=second-repo&offset=0&limit=1"
+        ).mock(return_value=httpx.Response(200, json={"results": [{"prn": "prn-second"}]}))
+
+        r_first = mock_pulp_client._get_single_resource("api/v3/repositories/", "first-repo")
+        r_second = mock_pulp_client._get_single_resource("api/v3/repositories/", "second-repo")
+
+        assert r_first.json()["results"][0]["prn"] == "prn-first"
+        assert r_second.json()["results"][0]["prn"] == "prn-second"
+
     def test_check_response_success(self, mock_pulp_client, mock_response):
         """Test _check_response method with successful response."""
         mock_pulp_client._check_response(mock_response, "test operation")
@@ -551,6 +567,28 @@ class TestPulpClient:
 
         assert result.status_code == 200
         assert len(result.json()["results"]) == 2
+
+    def test_chunked_get_async_no_chunking(self, mock_pulp_client, httpx_mock):
+        """``_chunked_get_async`` delegates to the shared chunked GET implementation."""
+        httpx_mock.get("https://test.com/api").mock(return_value=httpx.Response(200, json={"results": [{"id": 1}]}))
+
+        async def _run() -> httpx.Response:
+            return await mock_pulp_client._chunked_get_async("https://test.com/api", {"param": "value"})
+
+        result = asyncio.run(_run())
+
+        assert result.status_code == 200
+        assert result.json()["results"][0]["id"] == 1
+
+    def test_chunked_get_module_raises_when_event_loop_running(self, mock_pulp_client):
+        """``pulp_client_chunked_get.chunked_get`` must not run sync wrapper inside async context (line 119)."""
+        from pulp_tool.api.pulp_client_chunked_get import chunked_get
+
+        async def _inner() -> None:
+            with pytest.raises(RuntimeError, match="_chunked_get called from async context"):
+                chunked_get(mock_pulp_client, "https://test.com/api")
+
+        asyncio.run(_inner())
 
     def test_chunked_get_with_chunking(self, mock_pulp_client, httpx_mock):
         """Test _chunked_get method with chunking."""
@@ -581,7 +619,7 @@ class TestPulpClient:
         async def _gather_returns_empty(*_a: object, **_kw: object) -> list:
             return []
 
-        with patch("pulp_tool.api.pulp_client.asyncio.gather", side_effect=_gather_returns_empty):
+        with patch("pulp_tool.api.pulp_client_chunked_get.asyncio.gather", side_effect=_gather_returns_empty):
             result = mock_pulp_client._chunked_get(
                 "https://test.com/api", params, chunk_param="large_param", chunk_size=20
             )
@@ -785,7 +823,7 @@ class TestPulpClient:
 
         # The method now raises TimeoutError instead of returning the last response
         with patch("time.sleep"), patch("time.time", side_effect=[0, 0.5, 1.5, 2.0, 2.5, 3.0, 3.5, 4.0]):
-            with patch("pulp_tool.api.task_manager.logging"):
+            with patch("pulp_tool.api.tasks.operations.logging"):
                 result = mock_pulp_client.wait_for_finished_task("/pulp/api/v3/tasks/12345/", timeout=1)
 
         # Now returns a TaskResponse model even on timeout (last state)
