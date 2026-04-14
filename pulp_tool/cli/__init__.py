@@ -2,17 +2,22 @@
 Unified CLI entry point for Pulp Tool operations using Click.
 
 This module provides the main CLI group and shared options.
+Subcommands are registered from ``[project.entry-points."pulp_tool.commands"]``
+(pulp-cli–style plugin discovery) and attached to :func:`cli`.
 """
 
 import sys
+from importlib.metadata import entry_points
 from typing import Any, Callable, Optional, TypeVar
 
 import click
 
-from . import create_repository, pull, search_by, upload, upload_files
 from .._version import __version__
+from ..exceptions import PulpToolConfigError, PulpToolHTTPError
 
 F = TypeVar("F", bound=Callable[..., Any])
+
+_ENTRYPOINT_GROUP = "pulp_tool.commands"
 
 
 # ============================================================================
@@ -93,12 +98,28 @@ def cli(
     ctx.obj["max_workers"] = max_workers
 
 
-# Register subcommands
-cli.add_command(upload.upload)
-cli.add_command(upload_files.upload_files)
-cli.add_command(pull.pull)
-cli.add_command(search_by.search_by)
-cli.add_command(create_repository.create_repository)
+def _register_entrypoint_commands(group: click.Group) -> None:
+    """Load Click commands from ``pulp_tool.commands`` entry points."""
+    eps = list(entry_points(group=_ENTRYPOINT_GROUP))
+    if eps:
+        for ep in sorted(eps, key=lambda e: e.name):
+            group.add_command(ep.load())
+        return
+    # Editable runs without installed dist-info (e.g. bare pytest): register built-ins explicitly.
+    from . import create_repository as create_repository_mod
+    from . import pull as pull_mod
+    from . import search_by as search_by_mod
+    from . import upload as upload_mod
+    from . import upload_files as upload_files_mod
+
+    group.add_command(upload_mod.upload)
+    group.add_command(upload_files_mod.upload_files)
+    group.add_command(pull_mod.pull)
+    group.add_command(search_by_mod.search_by)
+    group.add_command(create_repository_mod.create_repository)
+
+
+_register_entrypoint_commands(cli)
 
 
 # ============================================================================
@@ -113,6 +134,12 @@ def main() -> None:
     except KeyboardInterrupt:
         click.echo("\n\nOperation cancelled by user", err=True)
         sys.exit(130)
+    except PulpToolConfigError as exc:
+        click.echo(f"Configuration error: {exc}", err=True)
+        sys.exit(2)
+    except PulpToolHTTPError as exc:
+        click.echo(f"Pulp API error: {exc}", err=True)
+        sys.exit(3)
 
 
-__all__ = ["cli", "main", "config_option", "debug_option"]
+__all__ = ["cli", "main", "config_option", "debug_option", "_ENTRYPOINT_GROUP"]

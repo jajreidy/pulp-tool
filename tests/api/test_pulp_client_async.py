@@ -19,9 +19,9 @@ class TestPulpClientAsync:
 
     def test_prepare_async_kwargs_with_auth(self, mock_config):
         """Test _prepare_async_kwargs with auth configured (lines 762-764)."""
-        # PulpClient doesn't take auth in __init__, it's set via _auth property
-        # But _prepare_async_kwargs checks self.auth, so we need to set it
-        client = PulpClient(mock_config)
+        # OAuth per-request auth is merged from request_params only when not using mTLS (no cert in config).
+        config_oauth = {k: v for k, v in mock_config.items() if k not in ("cert", "key")}
+        client = PulpClient(config_oauth)
         auth = OAuth2ClientCredentialsAuth("client-id", "client-secret", "token-url")
         client._auth = auth  # type: ignore[assignment]
 
@@ -47,6 +47,27 @@ class TestPulpClientAsync:
             kwargs = client._prepare_async_kwargs()
             # When no auth is configured, setdefault won't add it
             assert "auth" not in kwargs
+
+    def test_prepare_async_kwargs_merges_correlation_and_call_headers(self, mock_config):
+        """Correlation headers merge with per-call headers (diff coverage for _prepare_async_kwargs)."""
+        config_oauth = {k: v for k, v in mock_config.items() if k not in ("cert", "key")}
+        client = PulpClient(config_oauth, correlation_namespace="n", correlation_build_id="b")
+        kwargs = client._prepare_async_kwargs(headers={"X-Custom": "1"})
+        assert kwargs["headers"]["X-Custom"] == "1"
+        assert "X-Correlation-ID" in kwargs["headers"]
+
+    def test_async_session_default_headers_include_correlation(self, mock_config):
+        """Async client picks up correlation ID in default headers (diff coverage line ~226)."""
+
+        async def _run() -> None:
+            config_oauth = {k: v for k, v in mock_config.items() if k not in ("cert", "key")}
+            client = PulpClient(config_oauth, correlation_namespace="ns", correlation_build_id="bid")
+            ac = client._get_async_session()
+            low = {k.lower(): v for k, v in ac.headers.items()}
+            assert low.get("x-correlation-id") == "ns/bid"
+            await ac.aclose()
+
+        asyncio.run(_run())
 
     def test_prepare_async_kwargs_with_existing_auth(self, mock_config):
         """Test _prepare_async_kwargs when auth already in kwargs."""

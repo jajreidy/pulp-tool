@@ -57,7 +57,11 @@ format = "json"
 dry_run = false
 timeout = 0
 verbose = 0
+# Optional: sent as X-Correlation-ID on API requests (overrides PULP_TOOL_CORRELATION_ID env).
+# correlation_id = "my-trace-id"
 ```
+
+When `--build-id` and `--namespace` are set on the CLI and neither `correlation_id` nor the environment variable `PULP_TOOL_CORRELATION_ID` is set, the client sends `X-Correlation-ID: {namespace}/{build_id}` (or the build id alone if namespace is omitted), similar to [pulp-cli](https://github.com/pulp/pulp-cli) correlation IDs.
 
 ### packages.redhat.com (Hosted Pulp)
 
@@ -305,6 +309,10 @@ make check         # Lint + test
 ```
 
 Before committing: `pre-commit run --all-files` (run twice after fixes). Before a PR: `git fetch origin` and `make test-diff-coverage`. See [CONTRIBUTING.md](CONTRIBUTING.md).
+
+For how the test tree maps to `pulp_tool/`, shared helpers under `tests/support/`, and when to use [Hypothesis](https://hypothesis.readthedocs.io/), see [tests/README.md](tests/README.md).
+
+**Hypothesis Ghostwriter:** With dev dependencies installed, the `hypothesis write` CLI can scaffold property tests from dotted function or module paths (see [Ghostwriter](https://hypothesis.readthedocs.io/en/latest/reference/integrations.html#ghostwriter)); emitted code is formatted with Black and is [CC0](https://creativecommons.org/public-domain/cc0/)-licensed. Use it for pure helpers first—then refine strategies, naming, and coverage. Conventions and caveats for this repo are in [tests/README.md](tests/README.md) and [AGENTS.md](AGENTS.md#hypothesis-ghostwriter-optional-test-scaffolding).
 
 ## Troubleshooting
 

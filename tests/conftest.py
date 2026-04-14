@@ -11,17 +11,35 @@ Best Practices for Temporary Files in Tests:
 4. The temp_file_tracker fixture automatically ensures cleanup of all temp files
 """
 
-import subprocess
 import tempfile
 from pathlib import Path
-from unittest.mock import Mock
+from typing import Generator
+from unittest.mock import Mock, patch
 
-import pytest
 import httpx
+import pytest
 import respx
+
+from tests.support.tls_certs import write_self_signed_pem_pair
 
 # Global registry to track temporary files for cleanup
 _temp_file_registry: set[str] = set()
+
+
+@pytest.fixture(autouse=True)
+def _stub_ensure_pulp_capabilities(request: pytest.FixtureRequest) -> Generator[None, None, None]:
+    """Avoid real Pulp /status/ calls in CLI tests; covered in test_pulp_capabilities."""
+    if "test_pulp_capabilities" in str(request.path):
+        yield
+        return
+    with (
+        patch("pulp_tool.cli.upload.ensure_pulp_capabilities"),
+        patch("pulp_tool.cli.upload_files.ensure_pulp_capabilities"),
+        patch("pulp_tool.cli.create_repository.ensure_pulp_capabilities"),
+        patch("pulp_tool.cli.search_by.ensure_pulp_capabilities"),
+        patch("pulp_tool.pull.download.ensure_pulp_capabilities"),
+    ):
+        yield
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -73,38 +91,13 @@ def unregister_temp_file(path: str) -> None:
     _temp_file_registry.discard(path)
 
 
-def _write_self_signed_pem_pair(cert_path: Path, key_path: Path) -> None:
-    """Create a minimal valid cert/key pair so ssl.load_cert_chain succeeds in tests."""
-    subprocess.run(
-        [
-            "openssl",
-            "req",
-            "-x509",
-            "-newkey",
-            "rsa:2048",
-            "-keyout",
-            str(key_path),
-            "-out",
-            str(cert_path),
-            "-days",
-            "1",
-            "-nodes",
-            "-subj",
-            "/CN=pulp-tool-test",
-        ],
-        check=True,
-        capture_output=True,
-        text=True,
-    )
-
-
 @pytest.fixture
 def mock_config(tmp_path_factory):
     """Mock Pulp config with real PEM files so PulpClient builds a session (HTTP is mocked via respx)."""
     tls_dir = tmp_path_factory.mktemp("pulp_mock_tls")
     cert = tls_dir / "cert.pem"
     key = tls_dir / "key.pem"
-    _write_self_signed_pem_pair(cert, key)
+    write_self_signed_pem_pair(cert, key)
     return {
         "base_url": "https://pulp.example.com",
         "api_root": "/pulp/api/v3",

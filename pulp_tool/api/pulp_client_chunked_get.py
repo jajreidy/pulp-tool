@@ -36,20 +36,20 @@ async def chunked_get_async(
     async_client = client._get_async_session()
 
     if not params or not chunk_param or chunk_param not in params:
-        response = await async_client.get(url, params=params, **kwargs)
+        response = await async_client.get(url, params=params, **client._prepare_async_kwargs(**kwargs))
         client._check_response(response, "chunked GET")
         return response
 
     param_value = params[chunk_param]
     if not isinstance(param_value, str) or "," not in param_value:
-        response = await async_client.get(url, params=params, **kwargs)
+        response = await async_client.get(url, params=params, **client._prepare_async_kwargs(**kwargs))
         client._check_response(response, "chunked GET")
         return response
 
     values = [v.strip() for v in param_value.split(",")]
 
     if len(values) <= chunk_size:
-        response = await async_client.get(url, params=params, **kwargs)
+        response = await async_client.get(url, params=params, **client._prepare_async_kwargs(**kwargs))
         client._check_response(response, "chunked GET")
         return response
 
@@ -70,7 +70,7 @@ async def chunked_get_async(
         chunk_params[chunk_param] = ",".join(chunk)
 
         try:
-            response = await async_client.get(url, params=chunk_params, **kwargs)
+            response = await async_client.get(url, params=chunk_params, **client._prepare_async_kwargs(**kwargs))
             client._check_response(response, f"chunked request {chunk_index}")
 
             chunk_data = response.json()
@@ -97,7 +97,7 @@ async def chunked_get_async(
         last_response._content = json.dumps(aggregated_data).encode("utf-8")
         return last_response
 
-    response = await async_client.get(url, params={chunk_param: ""}, **kwargs)
+    response = await async_client.get(url, params={chunk_param: ""}, **client._prepare_async_kwargs(**kwargs))
     client._check_response(response, "chunked GET (fallback)")
     return response
 

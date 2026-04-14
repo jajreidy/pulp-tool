@@ -17,7 +17,9 @@ from ..api import DistributionClient, PulpClient
 from ..models.artifacts import ArtifactData, ArtifactJsonResponse, DownloadTask
 from ..models.results import DownloadResult
 from ..models.context import PullContext
+from ..exceptions import PulpToolError
 from ..utils import PulpHelper, determine_build_id, extract_metadata_from_artifact_json
+from ..utils.pulp_capabilities import ensure_pulp_capabilities
 from ..utils.artifact_detection import categorize_artifacts_by_type
 from ..utils.config_manager import ConfigManager
 
@@ -138,16 +140,20 @@ def setup_repositories_if_needed(args: PullContext, artifact_json=None) -> Optio
             logging.debug("Added 'konflux-' prefix to domain for pull: %s", domain)
         elif domain:
             logging.debug("Using domain for pull (already has 'konflux-' prefix or empty): %s", domain)
-        client = PulpClient.create_from_config_file(path=args.config, domain=domain if domain else None)
+        build_id = determine_build_id(args, artifact_json=artifact_json)
+        client = PulpClient.create_from_config_file(
+            path=args.config,
+            domain=domain if domain else None,
+            correlation_namespace=args.namespace or None,
+            correlation_build_id=build_id or None,
+        )
+        ensure_pulp_capabilities(client, operation="pull repository setup")
 
         # Extract parent_package from artifact_json for proper distribution base_path
         parent_package = None
         if artifact_json:
             parent_package = extract_metadata_from_artifact_json(artifact_json, "parent_package")
             logging.debug("Extracted parent_package from artifact_json: %s", parent_package)
-
-        # Determine build_id using consolidated function
-        build_id = determine_build_id(args, artifact_json=artifact_json)
 
         logging.info("Setting up repositories for pull operations: %s", build_id)
         repository_helper = PulpHelper(client, parent_package=parent_package)
@@ -156,7 +162,7 @@ def setup_repositories_if_needed(args: PullContext, artifact_json=None) -> Optio
 
         return client
 
-    except (ValueError, RuntimeError, httpx.HTTPError) as e:
+    except (PulpToolError, ValueError, RuntimeError, httpx.HTTPError) as e:
         logging.warning("Failed to setup repositories: %s", e)
         logging.error("Traceback: %s", traceback.format_exc())
         logging.warning("Continuing with distribution-only mode")

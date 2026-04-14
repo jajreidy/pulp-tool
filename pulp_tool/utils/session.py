@@ -5,7 +5,7 @@ This module provides utilities for creating and configuring HTTP clients
 with retry strategies and connection pooling.
 """
 
-from typing import Optional, Tuple, Union
+from typing import Dict, Optional, Tuple, Union
 import os
 import ssl
 import logging
@@ -29,6 +29,7 @@ def create_session_with_retry(
     timeout: float = 30.0,
     max_connections: int = 100,
     auth: Optional[Union[httpx.Auth, Tuple[str, str]]] = None,
+    extra_headers: Optional[Dict[str, str]] = None,
 ) -> httpx.Client:
     """
     Create an httpx client with retry strategy and connection pooling.
@@ -38,6 +39,7 @@ def create_session_with_retry(
         timeout: Total timeout in seconds (default: 30.0)
         max_connections: Maximum number of connections in the pool (default: 100)
         auth: Optional auth for Basic Auth (e.g. httpx.BasicAuth or (username, password) tuple)
+        extra_headers: Optional extra default headers (e.g. correlation ID)
 
     Returns:
         Configured httpx.Client object with:
@@ -90,9 +92,11 @@ def create_session_with_retry(
     )
 
     # Add compression support headers
-    default_headers = {
+    default_headers: Dict[str, str] = {
         "Accept-Encoding": "gzip, deflate, br",
     }
+    if extra_headers:
+        default_headers.update(extra_headers)
 
     # Try to enable HTTP/2 if available, but don't fail if not
     try:

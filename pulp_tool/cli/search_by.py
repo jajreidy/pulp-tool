@@ -47,6 +47,7 @@ from ..api import PulpClient
 from ..models.cli import FoundPackages, SearchByRequest, SearchByResultsJson
 from ..models.pulp_api import RpmPackageResponse
 from ..utils import setup_logging
+from ..utils.pulp_capabilities import ensure_pulp_capabilities
 from ..utils.rpm_pulp_search import (
     search_pulp_by_filenames as _search_pulp_by_filenames,
     search_pulp_by_filenames_with_signed_by as _search_pulp_by_filenames_with_signed_by,
@@ -240,6 +241,9 @@ def _run_direct_search(
     checksums: List[str],
     filenames: List[str],
     signed_by: List[str],
+    *,
+    correlation_namespace: Optional[str] = None,
+    correlation_build_id: Optional[str] = None,
 ) -> None:
     """Search by checksum, filename, and/or signed_by from CLI options and print JSON results."""
     try:
@@ -251,7 +255,12 @@ def _run_direct_search(
     except ValidationError as e:
         _handle_validation_error(e, results_json_context=False)
 
-    client = PulpClient.create_from_config_file(path=config)
+    client = PulpClient.create_from_config_file(
+        path=config,
+        correlation_namespace=correlation_namespace,
+        correlation_build_id=correlation_build_id,
+    )
+    ensure_pulp_capabilities(client, operation="search-by")
     signed_by_val = req.signed_by[0] if req.signed_by else None
 
     if req.checksums:
@@ -332,6 +341,9 @@ def _run_results_json_mode(
     use_filename_from_file: bool,
     signed_by: List[str],
     keep_files: bool = False,
+    *,
+    correlation_namespace: Optional[str] = None,
+    correlation_build_id: Optional[str] = None,
 ) -> None:
     """Load results.json, remove RPMs found in Pulp, write filtered output."""
     try:
@@ -386,7 +398,12 @@ def _run_results_json_mode(
         _handle_validation_error(e, results_json_context=True)
 
     try:
-        client = PulpClient.create_from_config_file(path=config)
+        client = PulpClient.create_from_config_file(
+            path=config,
+            correlation_namespace=correlation_namespace,
+            correlation_build_id=correlation_build_id,
+        )
+        ensure_pulp_capabilities(client, operation="search-by")
         signed_by_val = req.signed_by[0] if req.signed_by else None
 
         if req.checksums:
@@ -536,6 +553,8 @@ def search_by(
             use_filename_from_file=use_filename_from_file,
             signed_by=signed_by_list,
             keep_files=keep_files,
+            correlation_namespace=ctx.obj.get("namespace") or None,
+            correlation_build_id=ctx.obj.get("build_id") or None,
         )
         return
 
@@ -552,6 +571,8 @@ def search_by(
             checksums=checksum_list,
             filenames=filename_list,
             signed_by=signed_by_list,
+            correlation_namespace=ctx.obj.get("namespace") or None,
+            correlation_build_id=ctx.obj.get("build_id") or None,
         )
     except httpx.HTTPError as e:
         handle_http_error(e, "search by")
