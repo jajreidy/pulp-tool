@@ -25,6 +25,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Username/password (Basic Auth) support for packages.redhat.com
 
 ### Changed
+- Pulp HTTP client: validate response status on more code paths before returning or parsing JSON—chunked GET (all branches, including the aggregated-results fallback), repository/distribution GET-by-name (still allows **404** for “not found” lookups), create-resource POST, distribution PATCH (`update_distro`), file content POST, task GET parsing (single `_check_response`), post-task distribution fetch in `RepositoryManager`, and `DistributionClient.pull_artifact` (`raise_for_status` on error status).
 - `pull`: create destination repositories/distributions and re-upload downloaded content only when `--transfer-dest` is set; group-level `--config` alone still supplies auth (and `base_url` for `--build-id` + `--namespace`) but does not create destination repos or upload
 - `pull`: download URLs use only per-artifact `url` fields in artifact results JSON; `distributions` in that file are not used to build download URLs (artifacts without `url` are skipped)
 - `upload` and `upload-files` again exit with code 1 on authentication-related failures (HTTP 401/403, OAuth “failed to obtain access token”, and similar); the previous temporary non-fatal workaround (warning and exit 0) has been removed
@@ -42,6 +43,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Optional docs stack (Sphinx) remains removed from `dev` extras; **CVE-2026-4539** still applies to transitive Pygments from **`pytest`** and **`diff-cover`** until a patched wheel is published
 
 ### Fixed
+- Content search (`GET /api/v3/content/`, including gather-by-`build_id`): empty or non-JSON bodies no longer surface as a bare `JSONDecodeError`; errors include HTTP status, URL, and a short body preview when JSON is invalid (`content_find_results_from_response`). `find_content` rejects non-success HTTP responses before parsing the body.
 - When `cert`/`key` are set for mTLS but PEM files are missing (wrong path in containers, etc.), `PulpClient` now fails fast with a clear error instead of opening a TLS connection without a client certificate (which often surfaced only as HTTP 403)
 - `create_session_with_retry` logs an error when a `cert` tuple is given but the PEM paths do not exist (defensive; `PulpClient` normally validates paths first)
 - Generic `/api/v3/content/` responses that are a bare JSON array (not `{"results": [...]}`) no longer crash gather-by-href or `_find_artifact_content` with `TypeError: list indices must be integers or slices, not str`

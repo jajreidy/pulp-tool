@@ -56,7 +56,7 @@ class TaskMixin:
         url = str(self.config["base_url"]) + href
         response = self.session.get(url, timeout=self.timeout, **self.request_params)
         self._check_response(response, "get task")
-        return BaseResourceMixin._parse_response(self, response, TaskResponse, "get task")
+        return BaseResourceMixin._parse_response(self, response, TaskResponse, "get task", check_success=False)
 
     def list_tasks(self, **query_params: Any) -> tuple[list[TaskResponse], Optional[str], Optional[str], int]:
         """

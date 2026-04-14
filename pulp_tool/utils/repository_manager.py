@@ -408,17 +408,17 @@ class RepositoryManager:
                     distro_response = self.client.session.get(
                         full_url, timeout=self.client.timeout, **self.client.request_params
                     )
-                    if distro_response.is_success:
-                        distro_data = distro_response.json()
-                        base_path = distro_data.get("base_path")
-                        if base_path:
-                            logging.info(
-                                "Retrieved base_path from distribution task: %s (build_id=%s, repo_type=%s)",
-                                base_path,
-                                build_id,
-                                repo_type,
-                            )
-                            break
+                    self.client.check_response(distro_response, "get distribution from task resource")
+                    distro_data = distro_response.json()
+                    base_path = distro_data.get("base_path")
+                    if base_path:
+                        logging.info(
+                            "Retrieved base_path from distribution task: %s (build_id=%s, repo_type=%s)",
+                            base_path,
+                            build_id,
+                            repo_type,
+                        )
+                        break
                 except (httpx.HTTPError, ValueError, KeyError) as e:
                     logging.warning("Could not fetch distribution details from %s: %s", resource_href, e)
         else:

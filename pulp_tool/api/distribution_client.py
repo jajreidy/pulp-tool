@@ -81,7 +81,9 @@ class DistributionClient:
             Response object containing artifact metadata as JSON
         """
         logging.info("Pulling files %s", file_url)
-        return self.session.get(file_url)
+        response = self.session.get(file_url)
+        response.raise_for_status()
+        return response
 
     def pull_data(self, filename: str, file_url: str, arch: str, artifact_type: str = "rpm") -> str:
         """Download and save artifact data to local filesystem.

@@ -41,7 +41,7 @@ import httpx
 
 # Local imports
 from ..utils import create_session_with_retry
-from ..utils.response_utils import content_find_results_from_json
+from ..utils.response_utils import content_find_results_from_response
 from ..utils.artifact_detection import rpm_packages_letter_and_basename
 from ..utils.constants import DEFAULT_CHUNK_SIZE, SUPPORTED_ARCHITECTURES
 from ..utils.validation import sanitize_build_id_for_repository, validate_build_id
@@ -487,19 +487,25 @@ class PulpClient(
 
         if not params or not chunk_param or chunk_param not in params:
             # No chunking needed, make regular request
-            return await async_client.get(url, params=params, **kwargs)
+            response = await async_client.get(url, params=params, **kwargs)
+            self._check_response(response, "chunked GET")
+            return response
 
         # Extract the parameter value and check if it needs chunking
         param_value = params[chunk_param]
         if not isinstance(param_value, str) or "," not in param_value:
             # Not a comma-separated list, make regular request
-            return await async_client.get(url, params=params, **kwargs)
+            response = await async_client.get(url, params=params, **kwargs)
+            self._check_response(response, "chunked GET")
+            return response
 
         values = [v.strip() for v in param_value.split(",")]
 
         if len(values) <= chunk_size:
             # Small list, make regular request
-            return await async_client.get(url, params=params, **kwargs)
+            response = await async_client.get(url, params=params, **kwargs)
+            self._check_response(response, "chunked GET")
+            return response
 
         # Need to chunk the request
         chunks = [values[i : i + chunk_size] for i in range(0, len(values), chunk_size)]
@@ -558,7 +564,9 @@ class PulpClient(
             return last_response
 
         # Fallback: return empty response
-        return await async_client.get(url, params={chunk_param: ""}, **kwargs)
+        response = await async_client.get(url, params={chunk_param: ""}, **kwargs)
+        self._check_response(response, "chunked GET (fallback)")
+        return response
 
     def _chunked_get(
         self,
@@ -813,7 +821,11 @@ class PulpClient(
         """
         url = self._url(f"{endpoint}?")
         url += urlencode({"name": name, "offset": 0, "limit": 1})
-        return self.session.get(url, timeout=self.timeout, **self.request_params)
+        response = self.session.get(url, timeout=self.timeout, **self.request_params)
+        # 404 means "no such resource" for name lookup; callers handle it without treating as HTTP failure.
+        if response.status_code != 404:
+            self._check_response(response, "get single resource by name")
+        return response
 
     def _log_request_headers(self, response: httpx.Response) -> None:
         """Log request headers with sensitive data redacted."""
@@ -1021,7 +1033,9 @@ class PulpClient(
         """
         url = self._url(endpoint)
         data = request_model.model_dump(exclude_none=True)
-        return self.session.post(url, json=data, timeout=self.timeout, **self.request_params)
+        response = self.session.post(url, json=data, timeout=self.timeout, **self.request_params)
+        self._check_response(response, "create resource")
+        return response
 
     def _create_repository(self, endpoint: str, new_repository: Any) -> httpx.Response:
         """Create a repository (delegates to _create_resource)."""
@@ -1086,7 +1100,9 @@ class PulpClient(
                 raise ValueError("Distribution href is required")
             url = str(self.config["base_url"]) + distribution_href
             data = {"publication": publication}
-            return self.session.patch(url, json=data, timeout=self.timeout, **self.request_params)
+            response = self.session.patch(url, json=data, timeout=self.timeout, **self.request_params)
+            self._check_response(response, "update distribution")
+            return response
 
         raise ValueError(f"Unknown operation: {operation}")
 
@@ -1246,7 +1262,9 @@ class PulpClient(
         else:
             raise ValueError(f"Unknown search type: {search_type}")
 
-        return self.session.get(url, timeout=self.timeout, **self.request_params)
+        response = self.session.get(url, timeout=self.timeout, **self.request_params)
+        self._check_response(response, "find content")
+        return response
 
     def get_file_locations(self, artifacts: List[Dict[str, str]]) -> httpx.Response:
         """
@@ -1731,7 +1749,7 @@ class PulpClient(
 
         try:
             resp = self.find_content("build_id", build_id)
-            raw_results = content_find_results_from_json(resp.json())
+            raw_results = content_find_results_from_response(resp, "find content by build_id")
         except Exception:
             logging.error("Failed to get content by build ID", exc_info=True)
             raise
@@ -1749,7 +1767,7 @@ class PulpClient(
                 if href_list:
                     href_query = ",".join(href_list)
                     resp = self.find_content("href", href_query)
-                    raw_results = content_find_results_from_json(resp.json())
+                    raw_results = content_find_results_from_response(resp, "find content by href")
                     logging.info("Found %d content items by href query", len(raw_results))
             except Exception:
                 logging.error("Failed to get content by href", exc_info=True)
