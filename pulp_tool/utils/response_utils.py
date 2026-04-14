@@ -130,6 +130,47 @@ def extract_results_list(response: httpx.Response, operation: str, *, allow_empt
     return results
 
 
+def content_find_results_from_response(
+    response: httpx.Response,
+    operation: str = "content search",
+    *,
+    check_success: bool = True,
+) -> List[Dict[str, Any]]:
+    """
+    Parse the body of a Pulp ``GET /api/v3/content/`` response into normalized result dicts.
+
+    Use this instead of calling ``response.json()`` directly so transient empty bodies,
+    HTML error pages, and other non-JSON responses produce actionable errors.
+
+    Args:
+        response: HTTP response from ``find_content`` or equivalent.
+        operation: Description for error messages.
+        check_success: If True, require ``response.is_success`` before reading the body.
+
+    Raises:
+        ValueError: If the response is unsuccessful, the body is empty/whitespace-only, or JSON is invalid.
+    """
+    if check_success and not response.is_success:
+        raise ValueError(f"Response not successful for {operation}: {response.status_code} - {response.text}")
+
+    raw = response.content or b""
+    if not raw.strip():
+        raise ValueError(
+            f"Empty response body from Pulp during {operation} (status {response.status_code}, url {response.url})"
+        )
+
+    try:
+        data = response.json()
+    except ValueError as e:
+        snippet = response.text[:500] if response.text else ""
+        logging.error("Failed to parse JSON for %s: %s. Body snippet: %r", operation, e, snippet)
+        raise ValueError(
+            f"Invalid JSON response from Pulp API during {operation}: {e}. Body starts with: {snippet[:200]!r}"
+        ) from e
+
+    return content_find_results_from_json(data)
+
+
 def content_find_results_from_json(data: Any) -> List[Dict[str, Any]]:
     """
     Normalize JSON from Pulp's generic ``/api/v3/content/`` list endpoint.
@@ -195,6 +236,7 @@ __all__ = [
     "extract_created_resources",
     "check_task_success",
     "extract_results_list",
+    "content_find_results_from_response",
     "content_find_results_from_json",
     "extract_single_result",
     "get_response_field",

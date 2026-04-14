@@ -10,6 +10,7 @@ from pulp_tool.utils.response_utils import (
     check_task_success,
     extract_results_list,
     content_find_results_from_json,
+    content_find_results_from_response,
     extract_single_result,
     get_response_field,
 )
@@ -165,6 +166,47 @@ class TestExtractResultsList:
         response = httpx.Response(200, json={"count": 0})
         result = extract_results_list(response, "search operation", allow_empty=True)
         assert result == []
+
+
+class TestContentFindResultsFromResponse:
+    """Test content_find_results_from_response utility."""
+
+    def test_success_paginated(self):
+        """Parses standard paginated body."""
+        response = httpx.Response(
+            200,
+            json={"results": [{"pulp_href": "/c/1/"}], "count": 1},
+            request=httpx.Request("GET", "https://pulp.example.com/content/"),
+        )
+        assert content_find_results_from_response(response, "test") == [{"pulp_href": "/c/1/"}]
+
+    def test_empty_body(self):
+        """Empty body yields clear ValueError (not JSONDecodeError)."""
+        response = httpx.Response(
+            200,
+            content=b"",
+            request=httpx.Request("GET", "https://pulp.example.com/content/"),
+        )
+        with pytest.raises(ValueError, match="Empty response body"):
+            content_find_results_from_response(response, "test")
+
+    def test_non_success(self):
+        response = httpx.Response(
+            502,
+            content=b"bad gateway",
+            request=httpx.Request("GET", "https://pulp.example.com/content/"),
+        )
+        with pytest.raises(ValueError, match="Response not successful"):
+            content_find_results_from_response(response, "test")
+
+    def test_invalid_json(self):
+        response = httpx.Response(
+            200,
+            content=b"not json",
+            request=httpx.Request("GET", "https://pulp.example.com/content/"),
+        )
+        with pytest.raises(ValueError, match="Invalid JSON"):
+            content_find_results_from_response(response, "test")
 
 
 class TestContentFindResultsFromJson:

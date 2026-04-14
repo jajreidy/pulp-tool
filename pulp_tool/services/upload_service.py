@@ -29,7 +29,7 @@ if TYPE_CHECKING:
     from ..api.pulp_client import PulpClient
 
 from ..utils import PulpHelper, validate_file_path, create_labels
-from ..utils.response_utils import content_find_results_from_json
+from ..utils.response_utils import content_find_results_from_response
 from ..utils.constants import (
     SBOM_EXTENSIONS,
     SUPPORTED_ARCHITECTURES,
@@ -816,7 +816,9 @@ def _find_artifact_content(client: "PulpClient", task_response: TaskResponse) ->
         logging.error("No content artifact found in task response")
         return None
 
-    content_resp = content_find_results_from_json(client.find_content("href", artifact_href).json())
+    content_resp = content_find_results_from_response(
+        client.find_content("href", artifact_href), "find content by href (task artifact)"
+    )
     if not content_resp:
         logging.error("No content found for href: %s", artifact_href)
         return None

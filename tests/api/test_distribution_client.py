@@ -65,6 +65,15 @@ class TestDistributionClient:
         assert response.status_code == 200
         assert response.json()["artifacts"]["test.rpm"]["labels"]["build_id"] == "test"
 
+    def test_pull_artifact_raises_on_http_error(self, httpx_mock):
+        """Non-success responses fail immediately (raise_for_status)."""
+        httpx_mock.get("https://example.com/missing.json").mock(return_value=httpx.Response(404))
+
+        client = DistributionClient(cert="cert.pem", key="key.pem")
+
+        with pytest.raises(httpx.HTTPStatusError):
+            client.pull_artifact("https://example.com/missing.json")
+
     def test_pull_data(self, httpx_mock):
         """Test pull_data method."""
         httpx_mock.get("https://example.com/file.rpm").mock(

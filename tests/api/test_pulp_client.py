@@ -506,6 +506,25 @@ class TestPulpClient:
         assert result.status_code == 200
         assert result.json()["pulp_href"] == "/pulp/api/v3/repositories/12345/"
 
+    def test_get_single_resource_404_not_checked(self, mock_pulp_client, httpx_mock):
+        """404 is returned for 'not found' name lookups; callers treat it as missing resource."""
+        httpx_mock.get(
+            "https://pulp.example.com/pulp/api/v3/test-domain/api/v3/repositories/?name=no-such&offset=0&limit=1"
+        ).mock(return_value=httpx.Response(404))
+
+        result = mock_pulp_client._get_single_resource("api/v3/repositories/", "no-such")
+
+        assert result.status_code == 404
+
+    def test_get_single_resource_non404_error_raises(self, mock_pulp_client, httpx_mock):
+        """Other error statuses fail fast with HTTPError (same as other API calls)."""
+        httpx_mock.get(
+            "https://pulp.example.com/pulp/api/v3/test-domain/api/v3/repositories/?name=bad&offset=0&limit=1"
+        ).mock(return_value=httpx.Response(502, text="Bad Gateway"))
+
+        with pytest.raises(HTTPError, match="Failed to get single resource by name"):
+            mock_pulp_client._get_single_resource("api/v3/repositories/", "bad")
+
     def test_check_response_success(self, mock_pulp_client, mock_response):
         """Test _check_response method with successful response."""
         mock_pulp_client._check_response(mock_response, "test operation")
@@ -552,6 +571,22 @@ class TestPulpClient:
         assert result.status_code == 200
         # Should aggregate results from multiple chunks (5 chunks * 20 items = 100 items)
         assert len(result.json()["results"]) == 100
+
+    def test_chunked_get_async_fallback_when_no_aggregated_response(self, mock_pulp_client, httpx_mock):
+        """Defensive fallback when chunk gather returns nothing still performs a checked GET."""
+        large_param = ",".join([f"item{i}" for i in range(100)])
+        params = {"large_param": large_param}
+        httpx_mock.get("https://test.com/api").mock(return_value=httpx.Response(200, json={"results": [], "count": 0}))
+
+        async def _gather_returns_empty(*_a: object, **_kw: object) -> list:
+            return []
+
+        with patch("pulp_tool.api.pulp_client.asyncio.gather", side_effect=_gather_returns_empty):
+            result = mock_pulp_client._chunked_get(
+                "https://test.com/api", params, chunk_param="large_param", chunk_size=20
+            )
+        assert result.status_code == 200
+        assert result.json()["results"] == []
 
     def test_upload_content_rpm(self, mock_pulp_client, temp_rpm_file, httpx_mock):
         """Test upload_content method for RPM."""
@@ -791,6 +826,24 @@ class TestPulpClient:
         """Test find_content method with invalid search type."""
         with pytest.raises(ValueError, match="Unknown search type"):
             mock_pulp_client.find_content("invalid", "test-value")
+
+    def test_find_content_raises_on_http_error(self, mock_pulp_client, httpx_mock):
+        """Non-success responses from content search are checked before JSON parsing."""
+        httpx_mock.get(
+            "https://pulp.example.com/pulp/api/v3/test-domain/api/v3/content/?pulp_label_select=build_id~bad"
+        ).mock(return_value=httpx.Response(502, text="Bad Gateway"))
+
+        with pytest.raises(httpx.HTTPError, match="Failed to find content"):
+            mock_pulp_client.find_content("build_id", "bad")
+
+    def test_gather_content_data_empty_body_after_success_status(self, mock_pulp_client, httpx_mock):
+        """Malformed empty200 from Pulp produces a clear error (regression for JSONDecodeError)."""
+        httpx_mock.get(
+            "https://pulp.example.com/pulp/api/v3/test-domain/api/v3/content/?pulp_label_select=build_id~empty-body"
+        ).mock(return_value=httpx.Response(200, content=b""))
+
+        with pytest.raises(ValueError, match="Empty response body"):
+            mock_pulp_client.gather_content_data("empty-body")
 
     def test_get_file_locations(self, mock_pulp_client, httpx_mock):
         """Test get_file_locations method."""
