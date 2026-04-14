@@ -2,7 +2,7 @@
 
 This repository is **pulp-tool**: a Python CLI and library for Pulp API operations (RPM and file content, repositories, uploads, pulls). Much of the code is used both interactively and inside **Konflux** (Tekton) tasks. When you change the `upload` command, global CLI flags, SBOM or artifact-result handling, or the container image, treat the contracts below as integration tests for downstream pipelines.
 
-For platform background (tenants, Tekton, trusted artifacts, releases), see the **[Konflux documentation](https://konflux-ci.dev/docs/)** (e.g. *Building → Image management* for Pulp-related topics). This file focuses on **pulp-tool–specific** behavior and downstream call sites.
+For platform background (tenants, Tekton, trusted artifacts, releases), see the **[Konflux documentation](https://konflux-ci.dev/docs/)** (e.g. *Building → Image management* for Pulp-related topics). For upstream **Pulp** itself (overview, architecture, REST API, plugins, and documentation), see **[pulpproject.org](https://pulpproject.org/)**. This file focuses on **pulp-tool–specific** behavior and downstream call sites.
 
 ### Using this doc in a PR review
 
@@ -92,6 +92,15 @@ When touching any of the following, re-read the two task YAMLs above and conside
 - Container entrypoint, image contents, or `pulp-tool` invocation
 - RPM discovery or directory layout under `--rpm-path`
 - **Upstream pipeline layout:** tasks may change how RPMs and SBOMs are staged (e.g. **ORAS** / trusted-artifacts steps, `oras-staging/`, or replacements). Re-verify **konflux-ci/rpmbuild-pipeline** and **konflux-ci/release-service-catalog** when altering anything that assumes workspace paths; refresh this doc if call sites move.
+
+## Hypothesis Ghostwriter (optional test scaffolding)
+
+[Hypothesis Ghostwriter](https://hypothesis.readthedocs.io/en/latest/reference/integrations.html#ghostwriter) (`hypothesis.extra.ghostwriter`) can generate **starter** property-based tests from the CLI (`hypothesis write …`). Use it to bootstrap `@given` tests for pure helpers, then edit and harden them before merging.
+
+- **Setup:** `pip install -e ".[dev]"` (Hypothesis is in optional `dev` extras). The ghostwriter expects **[Black](https://pypi.org/project/black/)** to be available to format emitted code; this repo already uses Black in `make format` / pre-commit.
+- **Examples:** `hypothesis write --help` lists modes (`--roundtrip`, `--equivalent`, `--idempotent`, `--except`, pytest vs unittest style). You can target a dotted path such as `hypothesis write pulp_tool.utils.correlation.resolve_correlation_id` or pass a module for `magic`-style generation per the docs.
+- **Scope in pulp-tool:** Prefer **small, pure** functions (parsers, sanitizers, dict-in/dict-out helpers)—same boundaries as in [tests/README.md](tests/README.md). Ghostwriting **full `PulpClient` or CLI flows** usually produces tests that need large follow-up (HTTP mocking, fixtures, slow runs); treat that as a manual design task unless you plan to invest in strategies and shrinking.
+- **Before merge:** Treat generated code as a draft—fix imports, align with `tests/` layout and `tests/support/`, cap `@settings(max_examples=…)`, avoid function-scoped pytest fixtures inside `@given` without understanding [Hypothesis health checks](https://hypothesis.readthedocs.io/en/latest/reference/api.html#hypothesis.HealthCheck), and satisfy this repo’s **100% PR diff coverage** gate (`make test-diff-coverage`).
 
 ## LLM workflow in this repository
 

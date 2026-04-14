@@ -40,7 +40,9 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 import httpx
 
 # Local imports
+from ..exceptions import PulpToolConfigError, PulpToolHTTPError
 from ..utils import create_session_with_retry
+from ..utils.correlation import CORRELATION_HEADER, resolve_correlation_id
 from ..utils.response_utils import content_find_results_from_response
 from ..utils.artifact_detection import rpm_packages_letter_and_basename
 from ..utils.constants import DEFAULT_CHUNK_SIZE, SUPPORTED_ARCHITECTURES
@@ -120,7 +122,13 @@ class PulpClient(
     """
 
     def __init__(
-        self, config: Dict[str, Union[str, int]], domain: Optional[str] = None, config_path: Optional[Path] = None
+        self,
+        config: Dict[str, Union[str, int]],
+        domain: Optional[str] = None,
+        config_path: Optional[Path] = None,
+        *,
+        correlation_namespace: Optional[str] = None,
+        correlation_build_id: Optional[str] = None,
     ) -> None:
         """Initialize the Pulp client.
 
@@ -128,12 +136,16 @@ class PulpClient(
             config: Configuration dictionary from the TOML file
             domain: Optional explicit domain override
             config_path: Path to config file for resolving relative cert/key paths
+            correlation_namespace: Optional CLI namespace for ``X-Correlation-ID`` derivation
+            correlation_build_id: Optional CLI build id for correlation ID derivation
         """
         self.domain = domain
         self.config = config
         # Set namespace from domain or config file's domain field
         self.namespace = domain if domain else config.get("domain")
         self.config_path = config_path  # Store config path for resolving relative cert/key paths
+        self._correlation_namespace = correlation_namespace
+        self._correlation_build_id = correlation_build_id
         self.timeout = DEFAULT_TIMEOUT  # Used by Protocol mixins
         self._auth = None
         self._async_session: Optional[httpx.AsyncClient] = None
@@ -190,7 +202,7 @@ class PulpClient(
         self._require_client_cert_files_if_configured()
         # Pass cert to Client constructor if available, otherwise auth will be added per-request
         cert = self.cert if self.config.get("cert") else None
-        return create_session_with_retry(cert=cert)
+        return create_session_with_retry(cert=cert, extra_headers=self.headers)
 
     def _get_async_session(self) -> httpx.AsyncClient:
         """Get or create async session with optimized configuration."""
@@ -205,10 +217,13 @@ class PulpClient(
             )
             timeout = httpx.Timeout(self.timeout, connect=10.0)
 
-            # Add compression headers
-            default_headers = {
+            # Add compression headers and optional correlation ID (pulp-cli ``cid`` pattern)
+            default_headers: Dict[str, str] = {
                 "Accept-Encoding": "gzip, deflate, br",
             }
+            ch = self.headers
+            if ch:
+                default_headers.update(ch)
 
             # Try to enable HTTP/2 if available, but don't fail if not
             try:
@@ -347,7 +362,14 @@ class PulpClient(
         return chunked_get(self, url, params, chunk_param, chunk_size, **kwargs)
 
     @classmethod
-    def create_from_config_file(cls, path: Optional[str] = None, domain: Optional[str] = None) -> "PulpClient":
+    def create_from_config_file(
+        cls,
+        path: Optional[str] = None,
+        domain: Optional[str] = None,
+        *,
+        correlation_namespace: Optional[str] = None,
+        correlation_build_id: Optional[str] = None,
+    ) -> "PulpClient":
         """
         Create a Pulp client from a standard configuration file that is
         used by the `pulp` CLI tool.
@@ -357,6 +379,8 @@ class PulpClient(
         Args:
             path: Path to config file or base64-encoded config content. If None, uses default path.
             domain: Optional domain override
+            correlation_namespace: Optional CLI namespace for ``X-Correlation-ID`` derivation
+            correlation_build_id: Optional CLI build id for correlation ID derivation
         """
         from ..utils.config_utils import load_config_content
 
@@ -368,23 +392,36 @@ class PulpClient(
             config = tomllib.loads(config_bytes.decode("utf-8"))
         except tomllib.TOMLDecodeError as e:
             source_desc = "base64 config" if is_base64 else str(Path(config_source).expanduser())
-            raise ValueError(f"Invalid TOML in configuration {source_desc}: {e}") from e
+            raise PulpToolConfigError(f"Invalid TOML in configuration {source_desc}: {e}") from e
 
         # For base64 config, config_path is None (no file path)
         # For file path, use the expanded path
         config_path = None if is_base64 else Path(config_source).expanduser()
 
-        return cls(config["cli"], domain, config_path=config_path)
+        return cls(
+            config["cli"],
+            domain,
+            config_path=config_path,
+            correlation_namespace=correlation_namespace,
+            correlation_build_id=correlation_build_id,
+        )
 
     @property
     def headers(self) -> Optional[Dict[str, str]]:
         """
-        Get headers for requests.
+        Optional request headers (e.g. ``X-Correlation-ID`` for log correlation).
 
-        Returns:
-            None (no custom headers are currently used)
+        Resolution order: ``cli.correlation_id`` in config > ``PULP_TOOL_CORRELATION_ID`` env >
+        ``namespace/build_id`` from CLI kwargs > ``build_id`` alone.
         """
-        return None
+        cid = resolve_correlation_id(
+            config_value=self.config.get("correlation_id"),
+            namespace=self._correlation_namespace,
+            build_id=self._correlation_build_id,
+        )
+        if not cid:
+            return None
+        return {CORRELATION_HEADER: cid}
 
     @property
     def auth(self) -> Union[OAuth2ClientCredentialsAuth, httpx.BasicAuth]:
@@ -423,7 +460,7 @@ class PulpClient(
                     missing.append("client_id/client_secret (OAuth2)")
                 if username is None or password is None:
                     missing.append("username/password (Basic Auth)")
-                raise ValueError(
+                raise PulpToolConfigError(
                     f"Authentication credentials missing. Provide either: {', or '.join(missing)}. "
                     "See README for configuration."
                 )
@@ -651,7 +688,10 @@ class PulpClient(
                 # Other non-success responses
                 logging.debug("Failed to %s: %s - %s", operation, response.status_code, response.text)
 
-            raise httpx.HTTPError(f"Failed to {operation}: {response.status_code} - {response.text}")
+            raise PulpToolHTTPError(
+                f"Failed to {operation}: {response.status_code} - {response.text}",
+                response=response,
+            )
 
     def check_response(self, response: httpx.Response, operation: str = "request") -> None:
         """Public method to check if a response is successful, raise exception if not."""
@@ -662,10 +702,17 @@ class PulpClient(
     # ============================================================================
 
     def _prepare_async_kwargs(self, **kwargs: Any) -> Dict[str, Any]:
-        """Prepare kwargs for async requests with auth if configured."""
-        if self.auth:
-            kwargs.setdefault("auth", self.auth)
-        return kwargs
+        """Merge default request params (headers, auth) into async call kwargs."""
+        rp = self.request_params
+        out: Dict[str, Any] = dict(kwargs)
+        if "headers" in rp:
+            base_h = dict(rp["headers"])
+            if out.get("headers"):
+                base_h.update(out["headers"])
+            out["headers"] = base_h
+        if "auth" in rp and "auth" not in out and rp["auth"] is not None:
+            out["auth"] = rp["auth"]
+        return out
 
     async def async_get(self, url: str, **kwargs) -> httpx.Response:
         """Async GET request."""

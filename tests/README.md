@@ -1,5 +1,36 @@
 # Testing Best Practices
 
+## Layout (mirrors `pulp_tool/`)
+
+Tests are grouped by package area. Prefer adding new tests next to the code they exercise.
+
+| Directory | Purpose |
+|-----------|---------|
+| `tests/support/` | Shared factories, TLS helpers, constants (import as `tests.support`) |
+| `tests/api/` | `PulpClient` and API-layer behavior |
+| `tests/cli/` | Click CLI commands (`upload`, `pull`, `search-by`, …) |
+| `tests/pull/` | Pull/download flow and reporting |
+| `tests/services/` | Upload service and related orchestration |
+| `tests/utils/` | Utilities, capabilities, small pure helpers |
+| `tests/models/` | Pydantic models |
+
+## Hypothesis (property-based tests)
+
+[Hypothesis](https://hypothesis.readthedocs.io/) is an optional dev dependency. Use it for **small, pure** functions (string parsing, mapping JSON to dicts, correlation ID rules) where randomized inputs catch edge cases without network or heavy I/O.
+
+- **Good fit:** `resolve_correlation_id`, `sanitize_build_id_for_repository`, `versions_from_status_payload`, RPM filename parsers.
+- **Avoid (for now):** Full `PulpClient` HTTP flows—model the API tightly first or tests become slow and flaky.
+
+Property tests live alongside other tests (for example `tests/utils/test_hypothesis_properties.py`). Cap examples with `@settings(max_examples=…)`; mark unusually slow cases with `@pytest.mark.slow` if needed.
+
+### Ghostwriter (`hypothesis write`)
+
+Hypothesis can **generate** initial pytest-style property tests via the CLI. See the [Ghostwriter](https://hypothesis.readthedocs.io/en/latest/reference/integrations.html#ghostwriter) section of the Hypothesis docs (`hypothesis write --help` for options such as `--roundtrip`, `--equivalent`, `--idempotent`, `--except`).
+
+- Requires **Black** (the ghostwriter invokes it); run from an environment with `pip install -e ".[dev]"` so Hypothesis and dev tooling match CI.
+- Example: `hypothesis write pulp_tool.utils.validation.build_id.strip_namespace_from_build_id` prints starter tests you copy into an appropriate `tests/utils/` (or similar) module, then edit.
+- **Always** review output: adjust imports, strategies, and settings; do not use pytest **function-scoped** fixtures as `@given` parameters (Hypothesis will warn—use explicit setup/teardown or module-scoped fixtures per Hypothesis guidance); keep the **100% PR diff coverage** merge gate in mind.
+
 ## Temporary File Handling
 
 All tests that create temporary files **must** clean them up properly. Follow these guidelines:
@@ -167,8 +198,9 @@ def test_better(tmp_path):
 # Run all tests with coverage
 pytest tests/ --cov=pulp_tool --cov-report=term-missing
 
-# Run specific test file
-pytest tests/test_cli.py -v
+# Run specific test file (examples)
+pytest tests/cli/test_cli_core.py -v
+pytest tests/utils/test_hypothesis_properties.py -v
 
 # Run with verbose output
 pytest tests/ -vv

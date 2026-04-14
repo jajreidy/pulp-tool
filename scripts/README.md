@@ -26,7 +26,7 @@ Standardized test execution.
 ./scripts/run-tests.sh
 
 # Run specific tests
-./scripts/run-tests.sh tests/test_cli.py -v
+./scripts/run-tests.sh tests/cli/test_cli_core.py -v
 ```
 
 ### `check-all.sh`

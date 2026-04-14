@@ -123,7 +123,7 @@ make test-diff-coverage
 pytest -v --tb=short --cov=pulp_tool --cov-report=term-missing --cov-fail-under=85
 
 # Run specific test file
-pytest tests/test_cli.py -v
+pytest tests/cli/test_cli_core.py -v
 
 # Run specific test markers
 pytest -m unit

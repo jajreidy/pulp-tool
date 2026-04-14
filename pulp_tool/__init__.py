@@ -11,6 +11,7 @@ __email__ = "rokartifactstorage@redhat.com"
 
 # Import main classes and functions for easy access
 from .api import PulpClient, OAuth2ClientCredentialsAuth, DistributionClient
+from .exceptions import PulpToolConfigError, PulpToolError, PulpToolHTTPError
 from .utils import (
     PulpHelper,
     create_session_with_retry,
@@ -22,6 +23,9 @@ from .utils import (
 from .cli import main as cli_main, cli as cli_group
 
 __all__ = [
+    "PulpToolError",
+    "PulpToolConfigError",
+    "PulpToolHTTPError",
     "PulpClient",
     "OAuth2ClientCredentialsAuth",
     "DistributionClient",
