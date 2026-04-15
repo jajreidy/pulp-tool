@@ -19,7 +19,6 @@ from ..api import PulpClient
 from ..models.context import UploadRpmContext
 from ..services.upload_service import scan_results_json_for_log_and_sbom_keys
 from ..utils import PulpHelper, setup_logging
-from ..utils.pulp_capabilities import ensure_pulp_capabilities
 from ..utils.uploads import rpm_directory_has_log_files
 from ..utils.error_handling import handle_generic_error, handle_http_error
 
@@ -180,7 +179,6 @@ def upload(  # pylint: disable=too-many-arguments,too-many-positional-arguments
             correlation_namespace=namespace or None,
             correlation_build_id=build_id or None,
         )
-        ensure_pulp_capabilities(client, operation="upload")
         date_str = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
 
         # Create context object with generated date_str

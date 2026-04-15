@@ -19,7 +19,6 @@ from ..models.results import DownloadResult
 from ..models.context import PullContext
 from ..exceptions import PulpToolError
 from ..utils import PulpHelper, determine_build_id, extract_metadata_from_artifact_json
-from ..utils.pulp_capabilities import ensure_pulp_capabilities
 from ..utils.artifact_detection import categorize_artifacts_by_type
 from ..utils.config_manager import ConfigManager
 
@@ -147,7 +146,6 @@ def setup_repositories_if_needed(args: PullContext, artifact_json=None) -> Optio
             correlation_namespace=args.namespace or None,
             correlation_build_id=build_id or None,
         )
-        ensure_pulp_capabilities(client, operation="pull repository setup")
 
         # Extract parent_package from artifact_json for proper distribution base_path
         parent_package = None
