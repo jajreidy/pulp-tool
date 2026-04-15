@@ -13,8 +13,7 @@ Best Practices for Temporary Files in Tests:
 
 import tempfile
 from pathlib import Path
-from typing import Generator
-from unittest.mock import Mock, patch
+from unittest.mock import Mock
 
 import httpx
 import pytest
@@ -24,22 +23,6 @@ from tests.support.tls_certs import write_self_signed_pem_pair
 
 # Global registry to track temporary files for cleanup
 _temp_file_registry: set[str] = set()
-
-
-@pytest.fixture(autouse=True)
-def _stub_ensure_pulp_capabilities(request: pytest.FixtureRequest) -> Generator[None, None, None]:
-    """Avoid real Pulp /status/ calls in CLI tests; covered in test_pulp_capabilities."""
-    if "test_pulp_capabilities" in str(request.path):
-        yield
-        return
-    with (
-        patch("pulp_tool.cli.upload.ensure_pulp_capabilities"),
-        patch("pulp_tool.cli.upload_files.ensure_pulp_capabilities"),
-        patch("pulp_tool.cli.create_repository.ensure_pulp_capabilities"),
-        patch("pulp_tool.cli.search_by.ensure_pulp_capabilities"),
-        patch("pulp_tool.pull.download.ensure_pulp_capabilities"),
-    ):
-        yield
 
 
 @pytest.fixture(scope="session", autouse=True)

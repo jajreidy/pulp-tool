@@ -16,7 +16,6 @@ import httpx
 from ..api import PulpClient
 from ..models.context import UploadFilesContext
 from ..utils import PulpHelper, setup_logging
-from ..utils.pulp_capabilities import ensure_pulp_capabilities
 from ..utils.error_handling import handle_generic_error, handle_http_error
 
 
@@ -113,7 +112,6 @@ def upload_files(  # pylint: disable=too-many-arguments,too-many-positional-argu
             correlation_namespace=namespace or None,
             correlation_build_id=build_id or None,
         )
-        ensure_pulp_capabilities(client, operation="upload-files")
         date_str = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
 
         # Convert tuples to lists

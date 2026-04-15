@@ -30,6 +30,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Pulp client façade modules:** `pulp_client_cache` (TTL cache, metrics, `cached_get`), `pulp_client_chunked_get`, and `pulp_client_repository` (get-by-name + `repository_operation` bodies); `PulpClient` delegates without changing mixin order or Tekton-visible behavior
 
 ### Changed
+- Removed **`ensure_pulp_capabilities`** (pre-flight `GET …/status/` and minimum pulpcore / `pulp_rpm` version checks) from **`upload`**, **`upload-files`**, **`create-repository`**, **`search-by`**, and pull repository setup; **`versions_from_status_payload`** remains in **`pulp_tool.utils.pulp_capabilities`** for callers that parse status JSON. Upload and search flows no longer fail early when the status endpoint is missing, returns non-JSON, or sits behind routing that does not expose it like a stock Pulp deployment.
 - **Testing docs and examples:** `tests/README.md` adds a directory map (mirrors `pulp_tool/`) and a short Hypothesis section; root `README` links to it; `CONTRIBUTING.md` and `scripts/README.md` pytest examples point at `tests/cli/test_cli_core.py` instead of the former monolithic `tests/test_cli.py`
 - **AGENTS.md** adds a **Canonical upload entry** subsection: primary path is **`PulpHelper`** (orchestrator + `upload_collect`); **`UploadService`** is a thin wrapper for tests and programmatic callers
 - **`RepositoryManager.get_repository_methods`** now returns **`RepositoryApiOps`** instead of a `dict` of callables (call sites use attribute access, e.g. `ops.get(name)`)

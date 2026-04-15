@@ -15,7 +15,6 @@ from ..models.pulp_api import (
     RpmDistributionRequest,
 )
 from ..utils import PulpHelper, setup_logging
-from ..utils.pulp_capabilities import ensure_pulp_capabilities
 from ..utils.error_handling import handle_generic_error
 
 
@@ -150,7 +149,6 @@ def create_repository(  # pylint: disable=too-many-arguments,too-many-positional
             correlation_namespace=(ctx.obj.get("namespace") or None),
             correlation_build_id=(ctx.obj.get("build_id") or None),
         )
-        ensure_pulp_capabilities(client, operation="create-repository")
         repository_helper = PulpHelper(client)
         if repo_data is not None:
             logging.info(

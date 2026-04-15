@@ -47,7 +47,6 @@ from ..api import PulpClient
 from ..models.cli import FoundPackages, SearchByRequest, SearchByResultsJson
 from ..models.pulp_api import RpmPackageResponse
 from ..utils import setup_logging
-from ..utils.pulp_capabilities import ensure_pulp_capabilities
 from ..utils.rpm_pulp_search import (
     search_pulp_by_filenames as _search_pulp_by_filenames,
     search_pulp_by_filenames_with_signed_by as _search_pulp_by_filenames_with_signed_by,
@@ -260,7 +259,6 @@ def _run_direct_search(
         correlation_namespace=correlation_namespace,
         correlation_build_id=correlation_build_id,
     )
-    ensure_pulp_capabilities(client, operation="search-by")
     signed_by_val = req.signed_by[0] if req.signed_by else None
 
     if req.checksums:
@@ -403,7 +401,6 @@ def _run_results_json_mode(
             correlation_namespace=correlation_namespace,
             correlation_build_id=correlation_build_id,
         )
-        ensure_pulp_capabilities(client, operation="search-by")
         signed_by_val = req.signed_by[0] if req.signed_by else None
 
         if req.checksums:
