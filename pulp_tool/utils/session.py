@@ -5,10 +5,15 @@ This module provides utilities for creating and configuring HTTP clients
 with retry strategies and connection pooling.
 """
 
-from typing import Dict, Optional, Tuple, Union
+from __future__ import annotations
+
+import asyncio
+import logging
 import os
 import ssl
-import logging
+import time
+from typing import Any, Dict, Optional, Sequence, Tuple, Union
+
 import httpx
 from httpx import HTTPTransport
 
@@ -16,12 +21,159 @@ from httpx import HTTPTransport
 # HTTP Configuration Constants
 # ============================================================================
 
-# HTTP status codes that should trigger automatic retries
-RETRY_STATUS_CODES = [429, 500, 502, 503, 504]
+# HTTP status codes that should trigger automatic retries (transient / overload)
+RETRY_STATUS_CODES: Tuple[int, ...] = (429, 500, 502, 503, 504)
 
-# Retry configuration
-MAX_RETRIES = 3
-RETRY_BACKOFF_FACTOR = 0.5  # 0.5s, 1s, 2s delays
+# Connection-level retries (httpx transport; failed connects, etc.)
+TRANSPORT_MAX_RETRIES = 3
+
+# Application-level retries after a complete response with a transient status
+# (initial attempt + (RESPONSE_RETRY_TOTAL_ATTEMPTS - 1) retries)
+RESPONSE_RETRY_TOTAL_ATTEMPTS = 4
+RETRY_BACKOFF_FACTOR = 0.5  # base delay before exponential backoff (seconds)
+
+# Backwards-compatible name (historical: matched transport retries)
+MAX_RETRIES = TRANSPORT_MAX_RETRIES
+
+
+def _compute_retry_delay_s(
+    *,
+    response: httpx.Response,
+    attempt_index: int,
+    base_backoff: float,
+) -> float:
+    """Delay before the next attempt; honors Retry-After for 429 when present."""
+    if response.status_code == 429:
+        retry_after = response.headers.get("Retry-After")
+        if retry_after is not None:
+            try:
+                return float(retry_after)
+            except ValueError:
+                pass
+    return base_backoff * (2**attempt_index)
+
+
+class RetryingHttpClient(httpx.Client):
+    """
+    httpx.Client that retries requests when the server returns a transient status.
+
+    Retries are applied in :meth:`send` (so all high-level calls are covered).
+    Streaming requests are not retried (body may already be in flight).
+    """
+
+    def __init__(
+        self,
+        *args: Any,
+        response_retry_total_attempts: Optional[int] = None,
+        response_retry_status_codes: Optional[Sequence[int]] = None,
+        response_retry_backoff_s: float = RETRY_BACKOFF_FACTOR,
+        **kwargs: Any,
+    ) -> None:
+        super().__init__(*args, **kwargs)
+        eff_attempts = (
+            RESPONSE_RETRY_TOTAL_ATTEMPTS if response_retry_total_attempts is None else response_retry_total_attempts
+        )
+        self._response_retry_total_attempts = max(1, eff_attempts)
+        self._response_retry_status_codes = frozenset(
+            response_retry_status_codes if response_retry_status_codes is not None else RETRY_STATUS_CODES
+        )
+        self._response_retry_backoff_s = response_retry_backoff_s
+
+    def send(  # type: ignore[override]
+        self, request: httpx.Request, *, stream: bool = False, **kwargs: Any
+    ) -> httpx.Response:
+        if stream:
+            return super().send(request, stream=True, **kwargs)
+
+        last_response: Optional[httpx.Response] = None
+        for attempt in range(self._response_retry_total_attempts):
+            response = super().send(request, stream=False, **kwargs)
+            last_response = response
+            if response.status_code not in self._response_retry_status_codes:
+                return response
+            if attempt + 1 >= self._response_retry_total_attempts:
+                break
+            delay_s = _compute_retry_delay_s(
+                response=response,
+                attempt_index=attempt,
+                base_backoff=self._response_retry_backoff_s,
+            )
+            logging.warning(
+                "HTTP %s from %s %s; retrying in %.2fs (attempt %d/%d)",
+                response.status_code,
+                request.method,
+                request.url,
+                delay_s,
+                attempt + 1,
+                self._response_retry_total_attempts,
+            )
+            try:
+                response.close()
+            except Exception:  # pylint: disable=broad-except
+                logging.debug("Could not close response before retry", exc_info=True)
+            time.sleep(delay_s)
+
+        assert last_response is not None
+        return last_response
+
+
+class RetryingAsyncClient(httpx.AsyncClient):
+    """Async counterpart to :class:`RetryingHttpClient`."""
+
+    def __init__(
+        self,
+        *args: Any,
+        response_retry_total_attempts: Optional[int] = None,
+        response_retry_status_codes: Optional[Sequence[int]] = None,
+        response_retry_backoff_s: float = RETRY_BACKOFF_FACTOR,
+        **kwargs: Any,
+    ) -> None:
+        super().__init__(*args, **kwargs)
+        eff_attempts = (
+            RESPONSE_RETRY_TOTAL_ATTEMPTS if response_retry_total_attempts is None else response_retry_total_attempts
+        )
+        self._response_retry_total_attempts = max(1, eff_attempts)
+        self._response_retry_status_codes = frozenset(
+            response_retry_status_codes if response_retry_status_codes is not None else RETRY_STATUS_CODES
+        )
+        self._response_retry_backoff_s = response_retry_backoff_s
+
+    async def send(  # type: ignore[override]
+        self, request: httpx.Request, *, stream: bool = False, **kwargs: Any
+    ) -> httpx.Response:
+        if stream:
+            return await super().send(request, stream=True, **kwargs)
+
+        last_response: Optional[httpx.Response] = None
+        for attempt in range(self._response_retry_total_attempts):
+            response = await super().send(request, stream=False, **kwargs)
+            last_response = response
+            if response.status_code not in self._response_retry_status_codes:
+                return response
+            if attempt + 1 >= self._response_retry_total_attempts:
+                break
+            delay_s = _compute_retry_delay_s(
+                response=response,
+                attempt_index=attempt,
+                base_backoff=self._response_retry_backoff_s,
+            )
+            logging.warning(
+                "HTTP %s from %s %s; retrying in %.2fs (attempt %d/%d)",
+                response.status_code,
+                request.method,
+                request.url,
+                delay_s,
+                attempt + 1,
+                self._response_retry_total_attempts,
+            )
+            try:
+                await response.aclose()
+            except Exception:  # pylint: disable=broad-except
+                logging.debug("Could not close response before retry", exc_info=True)
+            await asyncio.sleep(delay_s)
+
+        assert last_response is not None
+        return last_response
 
 
 def create_session_with_retry(
@@ -42,8 +194,9 @@ def create_session_with_retry(
         extra_headers: Optional extra default headers (e.g. correlation ID)
 
     Returns:
-        Configured httpx.Client object with:
-        - Automatic retry logic with exponential backoff
+        Configured :class:`RetryingHttpClient` with:
+        - Retries on transient HTTP status codes (429, 5xx gateway/load errors) with backoff
+        - Transport-level connection retries
         - HTTP/2 support for multiplexing
         - Compression support (gzip, deflate, br)
         - Optimized connection pooling
@@ -82,12 +235,10 @@ def create_session_with_retry(
                 cert[1],
             )
 
-    # Create transport with retry logic
-    # Note: httpx doesn't have built-in retry like requests.adapters.Retry
-    # We use a custom transport with retries parameter
+    # Transport-level retries (connection failures); response status retries are in RetryingHttpClient
     transport = HTTPTransport(
         limits=limits,
-        retries=MAX_RETRIES,
+        retries=TRANSPORT_MAX_RETRIES,
         verify=verify,
     )
 
@@ -122,7 +273,16 @@ def create_session_with_retry(
         else:
             client_kwargs["auth"] = auth
 
-    return httpx.Client(**client_kwargs)
+    return RetryingHttpClient(**client_kwargs)
 
 
-__all__ = ["create_session_with_retry"]
+__all__ = [
+    "RETRY_STATUS_CODES",
+    "RESPONSE_RETRY_TOTAL_ATTEMPTS",
+    "RETRY_BACKOFF_FACTOR",
+    "TRANSPORT_MAX_RETRIES",
+    "MAX_RETRIES",
+    "RetryingAsyncClient",
+    "RetryingHttpClient",
+    "create_session_with_retry",
+]

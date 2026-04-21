@@ -1,5 +1,5 @@
 ---
-description: Konflux/Tekton downstream contracts for pulp-tool (rpmbuild import-to-quay vs release push-artifacts-to-storage); read AGENTS.md before changing upload CLI or container image
+description: Konflux/Tekton downstream contracts for pulp-tool (rpmbuild import-to-quay vs release push-artifacts-to-storage); read CLAUDE.md before changing upload CLI or container image
 alwaysApply: true
 ---
 
@@ -9,5 +9,5 @@ alwaysApply: true
 - **RPM build path:** [konflux-ci/rpmbuild-pipeline](https://github.com/konflux-ci/rpmbuild-pipeline) — `task/import-to-quay.yaml`, step `push-to-pulp-select-auth`: config **`/pulp-access/cli.toml`**, `upload` with **`--parent-package`**, **`--sbom-path`**, **`--artifact-results`** (Tekton result file paths). Optional secret; skip + empty results if config missing.
 - **Release path:** [konflux-ci/release-service-catalog](https://github.com/konflux-ci/release-service-catalog) — `push-artifacts-to-storage` task, step `push-build-to-artifact-storage`: config **`/etc/rok-access/cli.toml`**, `upload` with **`--rpm-path /var/workdir/results`** (no `--parent-package` / `--sbom-path` in that script). Missing config: step exits **0** without `pulp-tool`; draft skip and other guardrails are in the task/pipeline YAML.
 - **Shared:** Both use **`pulp-tool-container`** from Quay (`artifact-storage-tenant/tooling`); workspace **`/var/workdir/results`**; import-to-quay also uses **`oras-staging/`** for merged SBOM.
-- **Before changing** `upload` / global CLI, `--artifact-results`, SBOM paths, config paths, or the container image: read **`AGENTS.md`** at the repository root for full command patterns, secrets, and the regression checklist.
-- **When merging PRs that change how `pulp-tool` is used or what paths it expects:** re-open the linked task YAMLs above; pipelines are not frozen (e.g. **ORAS** or staging directories like **`oras-staging/`** may be removed or restructured). Update **`AGENTS.md`** if upstream invocation or workspace layout changes.
+- **Before changing** `upload` / global CLI, `--artifact-results`, SBOM paths, config paths, or the container image: read **`CLAUDE.md`** at the repository root for full command patterns, secrets, and the regression checklist.
+- **When merging PRs that change how `pulp-tool` is used or what paths it expects:** re-open the linked task YAMLs above; pipelines are not frozen (e.g. **ORAS** or staging directories like **`oras-staging/`** may be removed or restructured). Update **`CLAUDE.md`** if upstream invocation or workspace layout changes.

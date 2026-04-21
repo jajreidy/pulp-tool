@@ -1,0 +1,14 @@
+# AgentReady — https://github.com/ambient-code/agentready
+#
+# Optional customization when running: agentready assess .
+# Copy from AgentReady’s .agentready-config.example.yaml for full option set.
+#
+# pulp-tool is a Pulp HTTP *client* (no OpenAPI spec checked in here). Optional
+# exclusions below only where we intentionally skip an automated check.
+
+excluded_attributes:
+  - openapi_specs
+  - cicd_pipeline_visibility
+
+# Reports default to .agentready/ (gitignored). Override if needed:
+# output_dir: ./.agentready

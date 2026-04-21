@@ -1,9 +1,7 @@
 """Tests for config_utils module."""
 
 import base64
-
 import pytest
-
 from pulp_tool.utils.config_utils import (
     decode_base64_config,
     is_base64_config,
@@ -15,29 +13,24 @@ from pulp_tool.utils.config_utils import (
 class TestDecodeBase64Config:
     """Tests for decode_base64_config function."""
 
-    def test_decode_valid_base64(self):
+    def test_decode_valid_base64(self) -> None:
         """Test decode_base64_config decodes valid base64."""
         config_content = '[cli]\nbase_url = "https://example.com"'
         base64_config = base64.b64encode(config_content.encode()).decode()
-
         result = decode_base64_config(base64_config)
-
         assert result.decode("utf-8") == config_content
 
-    def test_decode_base64_with_whitespace(self):
+    def test_decode_base64_with_whitespace(self) -> None:
         """Test decode_base64_config handles whitespace."""
         config_content = '[cli]\nbase_url = "https://example.com"'
         base64_config = base64.b64encode(config_content.encode()).decode()
         base64_with_ws = "  " + base64_config + "\n  "
-
         result = decode_base64_config(base64_with_ws)
-
         assert result.decode("utf-8") == config_content
 
-    def test_decode_invalid_base64_raises_error(self):
+    def test_decode_invalid_base64_raises_error(self) -> None:
         """Test decode_base64_config raises ValueError for invalid base64."""
-        invalid_base64 = "A" * 100 + "B" * 100 + "C" * 50 + "=" * 3  # Invalid padding
-
+        invalid_base64 = "A" * 100 + "B" * 100 + "C" * 50 + "=" * 3
         with pytest.raises(ValueError, match="Failed to decode base64 config"):
             decode_base64_config(invalid_base64)
 
@@ -45,178 +38,152 @@ class TestDecodeBase64Config:
 class TestIsBase64Config:
     """Tests for is_base64_config function."""
 
-    def test_none_returns_false(self):
+    def test_none_returns_false(self) -> None:
         """Test is_base64_config returns False for None."""
         assert is_base64_config(None) is False
 
-    def test_short_string_false(self):
+    def test_short_string_false(self) -> None:
         """Test that short strings return False."""
         assert is_base64_config("short") is False
         assert is_base64_config("config.toml") is False
 
-    def test_path_with_separator_false(self):
+    def test_path_with_separator_false(self) -> None:
         """Test that paths with separators return False."""
         assert is_base64_config("/path/to/file") is False
         assert is_base64_config("path/to/file") is False
         assert is_base64_config("path\\to\\file") is False
 
-    def test_path_starting_with_tilde_false(self):
+    def test_path_starting_with_tilde_false(self) -> None:
         """Test that paths starting with ~ return False."""
         assert is_base64_config("~/config.toml") is False
 
-    def test_path_starting_with_dot_false(self):
+    def test_path_starting_with_dot_false(self) -> None:
         """Test that paths starting with . return False."""
         assert is_base64_config("./config.toml") is False
         assert is_base64_config("../config.toml") is False
 
-    def test_long_path_starting_with_slash_false(self):
+    def test_long_path_starting_with_slash_false(self) -> None:
         """Test that long paths starting with / return False."""
-        # Long path starting with / that would otherwise look like base64
         long_path = "/" + "a" * 100 + "b" * 100
         assert is_base64_config(long_path) is False
 
-    def test_long_path_starting_with_tilde_false(self):
+    def test_long_path_starting_with_tilde_false(self) -> None:
         """Test that long paths starting with ~ return False (covers line 65)."""
-        # Long path starting with ~ that doesn't contain / or \\
-        # Must be long enough (>50 chars) to pass length check
         long_path = "~" + "a" * 100 + "b" * 100
         assert is_base64_config(long_path) is False
 
-    def test_long_path_starting_with_dot_false(self):
+    def test_long_path_starting_with_dot_false(self) -> None:
         """Test that long paths starting with . return False (covers line 65)."""
-        # Long path starting with . that doesn't contain / or \\
         long_path = "." + "a" * 100 + "b" * 100
         assert is_base64_config(long_path) is False
 
-    def test_valid_base64_true(self):
+    def test_valid_base64_true(self) -> None:
         """Test that valid base64 strings return True."""
         config_content = '[cli]\nbase_url = "https://example.com"'
         base64_config = base64.b64encode(config_content.encode()).decode()
-
         assert is_base64_config(base64_config) is True
 
-    def test_long_base64_string_true(self):
+    def test_long_base64_string_true(self) -> None:
         """Test that long base64 strings return True."""
         long_content = "A" * 100 + "B" * 100 + "C" * 100
         base64_long = base64.b64encode(long_content.encode()).decode()
-
         assert is_base64_config(base64_long) is True
 
-    def test_base64_with_whitespace_true(self):
+    def test_base64_with_whitespace_true(self) -> None:
         """Test that base64 with whitespace returns True."""
         config_content = '[cli]\nbase_url = "https://example.com"'
         base64_config = base64.b64encode(config_content.encode()).decode()
         base64_with_ws = "  " + base64_config + "\n"
-
         assert is_base64_config(base64_with_ws) is True
 
-    def test_non_base64_long_string_false(self):
+    def test_non_base64_long_string_false(self) -> None:
         """Test that long non-base64 strings return False."""
-        # Long string with invalid base64 characters
         long_invalid = "!" * 200
-
         assert is_base64_config(long_invalid) is False
 
-    def test_mixed_content_false(self):
+    def test_mixed_content_false(self) -> None:
         """Test that strings with mixed content return False."""
         mixed = "some/path/with/base64=" + base64.b64encode(b"test").decode()
-
         assert is_base64_config(mixed) is False
 
 
 class TestLoadConfigContent:
     """Tests for load_config_content function."""
 
-    def test_none_raises_error(self):
+    def test_none_raises_error(self) -> None:
         """Test load_config_content raises ValueError for None."""
         with pytest.raises(ValueError, match="Config cannot be None"):
             load_config_content(None)
 
-    def test_load_from_file(self, tmp_path):
+    def test_load_from_file(self, tmp_path) -> None:
         """Test load_config_content loads from file path."""
         config_file = tmp_path / "config.toml"
         config_content = '[cli]\nbase_url = "https://example.com"'
         config_file.write_text(config_content)
-
         content, is_base64 = load_config_content(str(config_file))
-
         assert is_base64 is False
         assert content.decode("utf-8") == config_content
 
-    def test_load_from_file_containing_base64(self, tmp_path):
+    def test_load_from_file_containing_base64(self, tmp_path) -> None:
         """Test load_config_content decodes base64 when file content is base64-encoded."""
         config_file = tmp_path / "cli.toml"
         config_content = '[cli]\nbase_url = "https://example.com"\ndomain = "test"'
         base64_content = base64.b64encode(config_content.encode()).decode()
         config_file.write_text(base64_content)
-
         content, is_base64 = load_config_content(str(config_file))
-
-        # Source was a file path, so is_base64 is False; content is decoded TOML
         assert is_base64 is False
         assert content.decode("utf-8") == config_content
 
-    def test_load_from_file_with_tilde(self, tmp_path, monkeypatch):
+    def test_load_from_file_with_tilde(self, tmp_path, monkeypatch) -> None:
         """Test load_config_content handles tilde expansion."""
         config_file = tmp_path / "config.toml"
         config_content = '[cli]\nbase_url = "https://example.com"'
         config_file.write_text(config_content)
-
-        # Mock home directory
         import os.path
 
-        def mock_expanduser(path):
+        def mock_expanduser(path) -> None:
             if path.startswith("~"):
                 return str(tmp_path / path[2:])
             return path
 
         monkeypatch.setattr(os.path, "expanduser", mock_expanduser)
-
         content, is_base64 = load_config_content("~/config.toml")
-
         assert is_base64 is False
         assert content.decode("utf-8") == config_content
 
-    def test_load_from_base64(self):
+    def test_load_from_base64(self) -> None:
         """Test load_config_content loads from base64."""
         config_content = '[cli]\nbase_url = "https://example.com"\ndomain = "test"'
         base64_config = base64.b64encode(config_content.encode()).decode()
-
         content, is_base64 = load_config_content(base64_config)
-
         assert is_base64 is True
         assert content.decode("utf-8") == config_content
 
-    def test_load_from_base64_with_whitespace(self):
+    def test_load_from_base64_with_whitespace(self) -> None:
         """Test load_config_content handles base64 with whitespace."""
         config_content = '[cli]\nbase_url = "https://example.com"'
         base64_config = base64.b64encode(config_content.encode()).decode()
         base64_with_ws = "  " + base64_config + "\n  "
-
         content, is_base64 = load_config_content(base64_with_ws)
-
         assert is_base64 is True
         assert content.decode("utf-8") == config_content
 
-    def test_load_file_not_found(self):
+    def test_load_file_not_found(self) -> None:
         """Test load_config_content raises FileNotFoundError for missing file."""
         with pytest.raises(FileNotFoundError):
             load_config_content("/nonexistent/config.toml")
 
-    def test_load_invalid_base64_raises_error(self):
+    def test_load_invalid_base64_raises_error(self) -> None:
         """Test load_config_content raises ValueError for invalid base64."""
-        invalid_base64 = "A" * 100 + "B" * 100 + "C" * 50 + "=" * 3  # Invalid padding
-
+        invalid_base64 = "A" * 100 + "B" * 100 + "C" * 50 + "=" * 3
         with pytest.raises(ValueError, match="Failed to decode base64 config"):
             load_config_content(invalid_base64)
 
-    def test_load_from_file_binary_content_returns_raw(self, tmp_path):
+    def test_load_from_file_binary_content_returns_raw(self, tmp_path) -> None:
         """Test load_config_content returns raw bytes when file is non-UTF-8 (UnicodeDecodeError path)."""
         config_file = tmp_path / "config.toml"
         config_file.write_bytes(b"\xff\xfe\x00\x80")
-
         content, is_base64 = load_config_content(str(config_file))
-
         assert is_base64 is False
         assert content == b"\xff\xfe\x00\x80"
 
@@ -224,35 +191,31 @@ class TestLoadConfigContent:
 class TestLoadFileContentMaybeBase64:
     """Tests for load_file_content_maybe_base64 function."""
 
-    def test_load_raw_content_returns_as_is(self, tmp_path):
+    def test_load_raw_content_returns_as_is(self, tmp_path) -> None:
         """Test file with raw PEM-like content is returned unchanged."""
         pem_file = tmp_path / "cert.pem"
         pem_content = b"-----BEGIN CERTIFICATE-----\nMIIBkTCB+wIJAK\n-----END CERTIFICATE-----"
         pem_file.write_bytes(pem_content)
-
         content, was_base64 = load_file_content_maybe_base64(pem_file)
-
         assert was_base64 is False
         assert content == pem_content
 
-    def test_load_base64_content_decodes(self, tmp_path):
+    def test_load_base64_content_decodes(self, tmp_path) -> None:
         """Test file containing base64-encoded content is decoded."""
         encoded_file = tmp_path / "key.txt"
         raw_content = b"-----BEGIN PRIVATE KEY-----\nMIIEvgIBADANBg\n-----END PRIVATE KEY-----"
         base64_content = base64.b64encode(raw_content).decode()
         encoded_file.write_text(base64_content)
-
         content, was_base64 = load_file_content_maybe_base64(encoded_file)
-
         assert was_base64 is True
         assert content == raw_content
 
-    def test_load_file_not_found_raises(self):
+    def test_load_file_not_found_raises(self) -> None:
         """Test load_file_content_maybe_base64 raises FileNotFoundError for missing file."""
         with pytest.raises(FileNotFoundError, match="File not found"):
             load_file_content_maybe_base64("/nonexistent/cert.pem")
 
-    def test_accepts_path_string(self, tmp_path):
+    def test_accepts_path_string(self, tmp_path) -> None:
         """Test path can be passed as string."""
         f = tmp_path / "f.txt"
         raw = b"-----BEGIN CERTIFICATE-----\nline\n-----END-----"
@@ -261,12 +224,10 @@ class TestLoadFileContentMaybeBase64:
         assert was_base64 is False
         assert content == raw
 
-    def test_load_binary_content_returns_raw(self, tmp_path):
+    def test_load_binary_content_returns_raw(self, tmp_path) -> None:
         """Test file with non-UTF-8 binary content returns raw bytes (UnicodeDecodeError path)."""
         binary_file = tmp_path / "binary.bin"
         binary_file.write_bytes(b"\xff\xfe\x00\x80")
-
         content, was_base64 = load_file_content_maybe_base64(binary_file)
-
         assert was_base64 is False
         assert content == b"\xff\xfe\x00\x80"

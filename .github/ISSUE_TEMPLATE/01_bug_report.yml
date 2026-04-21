@@ -1,0 +1,39 @@
+name: Bug report
+description: Report unexpected behavior or a regression
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: Thanks for taking the time to file a bug. Search [existing issues](https://github.com/konflux/pulp-tool/issues) first.
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: What went wrong in one or two sentences?
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: Command line, config (redact secrets), and what you expected vs what happened.
+      render: shell
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: pulp-tool version or commit
+      placeholder: e.g. pip show pulp-tool / git rev-parse HEAD
+    validations:
+      required: true
+  - type: input
+    id: py
+    attributes:
+      label: Python version
+      placeholder: "3.12"
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Logs (redact tokens), environment (Konflux, laptop), optional.

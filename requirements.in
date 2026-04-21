@@ -1,0 +1,5 @@
+# Editable install with dev extras. Regenerate the lockfile after changing pyproject.toml:
+#   pip install pip-tools && pip-compile requirements.in
+# Or: make lock
+
+-e .[dev]

@@ -2,9 +2,7 @@
 
 import tempfile
 from unittest.mock import MagicMock, patch
-
 import pytest
-
 from pulp_tool.models.pulp_api import RpmPackageResponse, TaskResponse
 from pulp_tool.utils.rpm_overwrite import (
     filter_rpm_hrefs_in_repository_version,
@@ -14,18 +12,12 @@ from pulp_tool.utils.rpm_overwrite import (
 
 
 def _rpm_pkg(href: str, sha: str = "a" * 64) -> RpmPackageResponse:
-    return RpmPackageResponse(
-        pulp_href=href,
-        name="pkg",
-        version="1",
-        release="1",
-        arch="x86_64",
-        sha256=sha,
-    )
+    return RpmPackageResponse(pulp_href=href, name="pkg", version="1", release="1", arch="x86_64", sha256=sha)
 
 
 class TestSha256HexFile:
-    def test_sha256_hex_file(self):
+
+    def test_sha256_hex_file(self) -> None:
         with tempfile.NamedTemporaryFile(delete=False) as tmp:
             tmp.write(b"hello")
             tmp.flush()
@@ -39,14 +31,10 @@ class TestSha256HexFile:
 
 
 class TestFilterRpmHrefsInRepositoryVersion:
-    def test_filters_to_packages_returned_by_list(self):
+
+    def test_filters_to_packages_returned_by_list(self) -> None:
         client = MagicMock()
-        client.list_rpm_packages.return_value = (
-            [_rpm_pkg("/p/a/"), _rpm_pkg("/p/b/")],
-            None,
-            None,
-            2,
-        )
+        client.list_rpm_packages.return_value = ([_rpm_pkg("/p/a/"), _rpm_pkg("/p/b/")], None, None, 2)
         rv = "/versions/1/"
         candidates = ["/p/a/", "/p/b/", "/p/c/"]
         out = filter_rpm_hrefs_in_repository_version(client, rv, candidates)
@@ -58,29 +46,27 @@ class TestFilterRpmHrefsInRepositoryVersion:
         assert "/p/b/" in call_kw["pulp_href__in"]
         assert "/p/c/" in call_kw["pulp_href__in"]
 
-    def test_empty_candidates(self):
+    def test_empty_candidates(self) -> None:
         client = MagicMock()
         assert filter_rpm_hrefs_in_repository_version(client, "/v/", []) == []
         client.list_rpm_packages.assert_not_called()
 
 
 class TestRemoveRpmsMatchingLocalFilesFromRepository:
-    def test_no_paths(self):
+
+    def test_no_paths(self) -> None:
         client = MagicMock()
         assert remove_rpms_matching_local_files_from_repository(client, [], "/repo/", None) == 0
         client.fetch_rpm_repository_by_href.assert_not_called()
 
-    def test_no_latest_version_skips_modify(self):
+    def test_no_latest_version_skips_modify(self) -> None:
         with tempfile.NamedTemporaryFile(suffix=".rpm", delete=False) as tmp:
             tmp.write(b"z")
             path = tmp.name
         try:
             client = MagicMock()
             pkg = _rpm_pkg("/pulp/api/v3/content/rpm/packages/nv/")
-            with patch(
-                "pulp_tool.utils.rpm_overwrite.search_rpms_by_checksums_for_overwrite",
-                return_value=[pkg],
-            ):
+            with patch("pulp_tool.utils.rpm_overwrite.search_rpms_by_checksums_for_overwrite", return_value=[pkg]):
                 repo = MagicMock()
                 repo.latest_version_href = None
                 client.fetch_rpm_repository_by_href.return_value = repo
@@ -92,7 +78,7 @@ class TestRemoveRpmsMatchingLocalFilesFromRepository:
 
             os.unlink(path)
 
-    def test_filter_empty_nothing_to_remove_skips_modify(self):
+    def test_filter_empty_nothing_to_remove_skips_modify(self) -> None:
         with tempfile.NamedTemporaryFile(suffix=".rpm", delete=False) as tmp:
             tmp.write(b"w")
             path = tmp.name
@@ -100,10 +86,7 @@ class TestRemoveRpmsMatchingLocalFilesFromRepository:
             client = MagicMock()
             pkg = _rpm_pkg("/pulp/api/v3/content/rpm/packages/out/")
             with (
-                patch(
-                    "pulp_tool.utils.rpm_overwrite.search_rpms_by_checksums_for_overwrite",
-                    return_value=[pkg],
-                ),
+                patch("pulp_tool.utils.rpm_overwrite.search_rpms_by_checksums_for_overwrite", return_value=[pkg]),
                 patch("pulp_tool.utils.rpm_overwrite.filter_rpm_hrefs_in_repository_version", return_value=[]),
             ):
                 repo = MagicMock()
@@ -117,16 +100,13 @@ class TestRemoveRpmsMatchingLocalFilesFromRepository:
 
             os.unlink(path)
 
-    def test_no_matching_packages_in_pulp(self):
+    def test_no_matching_packages_in_pulp(self) -> None:
         with tempfile.NamedTemporaryFile(suffix=".rpm", delete=False) as tmp:
             tmp.write(b"x")
             path = tmp.name
         try:
             client = MagicMock()
-            with patch(
-                "pulp_tool.utils.rpm_overwrite.search_rpms_by_checksums_for_overwrite",
-                return_value=[],
-            ):
+            with patch("pulp_tool.utils.rpm_overwrite.search_rpms_by_checksums_for_overwrite", return_value=[]):
                 n = remove_rpms_matching_local_files_from_repository(client, [path], "/repo/", None)
             assert n == 0
             client.fetch_rpm_repository_by_href.assert_not_called()
@@ -135,7 +115,7 @@ class TestRemoveRpmsMatchingLocalFilesFromRepository:
 
             os.unlink(path)
 
-    def test_removes_when_confirmed_in_repo(self):
+    def test_removes_when_confirmed_in_repo(self) -> None:
         with tempfile.NamedTemporaryFile(suffix=".rpm", delete=False) as tmp:
             tmp.write(b"unique-bytes-for-hash")
             path = tmp.name
@@ -143,13 +123,9 @@ class TestRemoveRpmsMatchingLocalFilesFromRepository:
             client = MagicMock()
             pkg = _rpm_pkg("/pulp/api/v3/content/rpm/packages/xyz/")
             with (
+                patch("pulp_tool.utils.rpm_overwrite.search_rpms_by_checksums_for_overwrite", return_value=[pkg]),
                 patch(
-                    "pulp_tool.utils.rpm_overwrite.search_rpms_by_checksums_for_overwrite",
-                    return_value=[pkg],
-                ),
-                patch(
-                    "pulp_tool.utils.rpm_overwrite.filter_rpm_hrefs_in_repository_version",
-                    return_value=[pkg.pulp_href],
+                    "pulp_tool.utils.rpm_overwrite.filter_rpm_hrefs_in_repository_version", return_value=[pkg.pulp_href]
                 ),
             ):
                 repo = MagicMock()
@@ -170,7 +146,7 @@ class TestRemoveRpmsMatchingLocalFilesFromRepository:
 
             os.unlink(path)
 
-    def test_raises_when_task_failed(self):
+    def test_raises_when_task_failed(self) -> None:
         with tempfile.NamedTemporaryFile(suffix=".rpm", delete=False) as tmp:
             tmp.write(b"y")
             path = tmp.name
@@ -178,13 +154,9 @@ class TestRemoveRpmsMatchingLocalFilesFromRepository:
             client = MagicMock()
             pkg = _rpm_pkg("/pulp/api/v3/content/rpm/packages/fail/")
             with (
+                patch("pulp_tool.utils.rpm_overwrite.search_rpms_by_checksums_for_overwrite", return_value=[pkg]),
                 patch(
-                    "pulp_tool.utils.rpm_overwrite.search_rpms_by_checksums_for_overwrite",
-                    return_value=[pkg],
-                ),
-                patch(
-                    "pulp_tool.utils.rpm_overwrite.filter_rpm_hrefs_in_repository_version",
-                    return_value=[pkg.pulp_href],
+                    "pulp_tool.utils.rpm_overwrite.filter_rpm_hrefs_in_repository_version", return_value=[pkg.pulp_href]
                 ),
             ):
                 repo = MagicMock()

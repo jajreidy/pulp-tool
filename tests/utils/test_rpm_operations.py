@@ -8,10 +8,7 @@ import os
 from unittest.mock import Mock, patch
 import pytest
 import httpx
-
-from pulp_tool.utils import (
-    upload_rpms_logs,
-)
+from pulp_tool.utils import upload_rpms_logs
 from pulp_tool.utils.rpm_operations import (
     calculate_sha256_checksum,
     _create_batches,
@@ -25,60 +22,53 @@ from pulp_tool.utils.rpm_operations import (
 class TestChecksumUtilities:
     """Test checksum utility functions."""
 
-    def test_calculate_sha256_checksum(self, temp_file):
+    def test_calculate_sha256_checksum(self, temp_file) -> None:
         """Test _calculate_sha256_checksum function."""
         checksum = calculate_sha256_checksum(temp_file)
+        assert len(checksum) == 64
+        assert all((c in "0123456789abcdef" for c in checksum))
 
-        assert len(checksum) == 64  # SHA256 hex length
-        assert all(c in "0123456789abcdef" for c in checksum)
-
-    def test_calculate_sha256_checksum_file_not_found(self):
+    def test_calculate_sha256_checksum_file_not_found(self) -> None:
         """Test _calculate_sha256_checksum function with non-existent file."""
         with pytest.raises(FileNotFoundError):
             calculate_sha256_checksum("/non/existent/file")
 
-    def test_calculate_sha256_checksum_io_error(self):
+    def test_calculate_sha256_checksum_io_error(self) -> None:
         """Test _calculate_sha256_checksum with IO error."""
         import tempfile
 
         with tempfile.NamedTemporaryFile(delete=False) as f:
             temp_path = f.name
             f.write(b"test content")
-
         try:
-            # Make the file unreadable
-            os.chmod(temp_path, 0o000)
-
+            os.chmod(temp_path, 0)
             with pytest.raises(IOError, match="Error reading file"):
                 calculate_sha256_checksum(temp_path)
         finally:
-            os.chmod(temp_path, 0o644)
+            os.chmod(temp_path, 420)
             os.unlink(temp_path)
 
 
 class TestBatchProcessingUtilities:
     """Test batch processing utility functions."""
 
-    def test_create_batches(self):
+    def test_create_batches(self) -> None:
         """Test _create_batches function."""
         items = [str(i) for i in range(100)]
         batches = list(_create_batches(items, batch_size=25))
-
         assert len(batches) == 4
         assert len(batches[0]) == 25
         assert len(batches[-1]) == 25
 
-    def test_create_batches_empty(self):
+    def test_create_batches_empty(self) -> None:
         """Test _create_batches function with empty list."""
         batches = list(_create_batches([], batch_size=25))
-
         assert len(batches) == 0
 
-    def test_create_batches_single_batch(self):
+    def test_create_batches_single_batch(self) -> None:
         """Test _create_batches function with single batch."""
         items = [str(i) for i in range(10)]
         batches = list(_create_batches(items, batch_size=25))
-
         assert len(batches) == 1
         assert len(batches[0]) == 10
 
@@ -86,69 +76,67 @@ class TestBatchProcessingUtilities:
 class TestParseRpmFilenameToNvr:
     """Test parse_rpm_filename_to_nvr function."""
 
-    def test_parse_src_rpm(self):
+    def test_parse_src_rpm(self) -> None:
         """Parse src.rpm filename."""
         result = parse_rpm_filename_to_nvr("osci-internal-test-package-0.2.0-257.el10.src.rpm")
         assert result == ("osci-internal-test-package", "0.2.0", "257.el10")
 
-    def test_parse_x86_64_rpm(self):
+    def test_parse_x86_64_rpm(self) -> None:
         """Parse x86_64.rpm filename."""
         result = parse_rpm_filename_to_nvr("pkg-1.0-1.x86_64.rpm")
         assert result == ("pkg", "1.0", "1")
 
-    def test_parse_with_path(self):
+    def test_parse_with_path(self) -> None:
         """Parse filename with path - uses basename."""
         result = parse_rpm_filename_to_nvr("x86_64/pkg-1.0-1.x86_64.rpm")
         assert result == ("pkg", "1.0", "1")
 
-    def test_parse_epoch_in_version(self):
+    def test_parse_epoch_in_version(self) -> None:
         """Parse filename with epoch in version (name-epoch:version-release)."""
         result = parse_rpm_filename_to_nvr("pkg-1:2.3-4.el8.x86_64.rpm")
         assert result == ("pkg", "1:2.3", "4.el8")
 
-    def test_parse_epoch_prefix(self):
+    def test_parse_epoch_prefix(self) -> None:
         """Parse filename with epoch prefix (epoch:name-version-release, rpmUtils format)."""
         result = parse_rpm_filename_to_nvr("1:bar-9-123a.ia64.rpm")
         assert result == ("bar", "9", "123a")
 
-    def test_parse_release_starts_with_letter(self):
+    def test_parse_release_starts_with_letter(self) -> None:
         """Parse filename where release starts with letter (e.g. test_15.el10)."""
         result = parse_rpm_filename_to_nvr("libecpg-16.1-test_15.el10.src.rpm")
         assert result == ("libecpg", "16.1", "test_15.el10")
         result2 = parse_rpm_filename_to_nvr("libpgtypes-16.1-test_15.el10.s390x.rpm")
         assert result2 == ("libpgtypes", "16.1", "test_15.el10")
 
-    def test_parse_noarch(self):
+    def test_parse_noarch(self) -> None:
         """Parse noarch rpm."""
         result = parse_rpm_filename_to_nvr("my-pkg-0.1.0-1.noarch.rpm")
         assert result == ("my-pkg", "0.1.0", "1")
 
-    def test_parse_aarch64(self):
+    def test_parse_aarch64(self) -> None:
         """Parse aarch64 rpm."""
         result = parse_rpm_filename_to_nvr("package-1.0.0-1.aarch64.rpm")
         assert result == ("package", "1.0.0", "1")
 
-    def test_parse_invalid_no_rpm_suffix(self):
+    def test_parse_invalid_no_rpm_suffix(self) -> None:
         """Return None for non-.rpm file."""
         assert parse_rpm_filename_to_nvr("pkg.tar.gz") is None
 
-    def test_parse_invalid_malformed(self):
+    def test_parse_invalid_malformed(self) -> None:
         """Return None for malformed rpm filename."""
         assert parse_rpm_filename_to_nvr("package.rpm") is None
         assert parse_rpm_filename_to_nvr("package-1.0.rpm") is None
 
-    def test_parse_invalid_empty_name_version_or_release(self):
+    def test_parse_invalid_empty_name_version_or_release(self) -> None:
         """Return None when name, version, or release is empty after parsing (line 117)."""
-        # Release empty: pkg-1.0-.rpm (trailing -)
         assert parse_rpm_filename_to_nvr("pkg-1.0-.rpm") is None
-        # Version empty: pkg--1.rpm (double -)
         assert parse_rpm_filename_to_nvr("pkg--1.rpm") is None
 
 
 class TestParseRpmFilenameToNvra:
     """Test parse_rpm_filename_to_nvra function."""
 
-    def test_parse_includes_arch(self):
+    def test_parse_includes_arch(self) -> None:
         """Parse filename and extract architecture."""
         assert parse_rpm_filename_to_nvra("pkg-1.0-1.x86_64.rpm") == ("pkg", "1.0", "1", "x86_64")
         assert parse_rpm_filename_to_nvra("pkg-1.0-1.aarch64.rpm") == ("pkg", "1.0", "1", "aarch64")
@@ -156,12 +144,12 @@ class TestParseRpmFilenameToNvra:
         assert parse_rpm_filename_to_nvra("pkg-1.0-1.src.rpm") == ("pkg", "1.0", "1", "src")
         assert parse_rpm_filename_to_nvra("pkg-1.0-1.noarch.rpm") == ("pkg", "1.0", "1", "noarch")
 
-    def test_parse_with_path(self):
+    def test_parse_with_path(self) -> None:
         """Parse filename with path - uses basename for arch extraction."""
         result = parse_rpm_filename_to_nvra("x86_64/pkg-1.0-1.x86_64.rpm")
         assert result == ("pkg", "1.0", "1", "x86_64")
 
-    def test_parse_invalid_returns_none(self):
+    def test_parse_invalid_returns_none(self) -> None:
         """Return None for unparseable filenames."""
         assert parse_rpm_filename_to_nvra("pkg.tar.gz") is None
         assert parse_rpm_filename_to_nvra("package.rpm") is None
@@ -170,17 +158,15 @@ class TestParseRpmFilenameToNvra:
 class TestNVRAUtilities:
     """Test NVRA utility functions."""
 
-    def test_get_nvra(self):
+    def test_get_nvra(self) -> None:
         """Test _get_nvra function."""
         result = {"name": "test-package", "version": "1.0.0", "release": "1", "arch": "x86_64"}
-
         nvra = _get_nvra(result)
         assert nvra == "test-package-1.0.0-1.x86_64"
 
-    def test_get_nvra_missing_fields(self):
+    def test_get_nvra_missing_fields(self) -> None:
         """Test _get_nvra function with missing fields."""
         result = {"name": "test-package", "version": "1.0.0"}
-
         nvra = _get_nvra(result)
         assert nvra == "test-package-1.0.0-None.None"
 
@@ -188,35 +174,27 @@ class TestNVRAUtilities:
 class TestRPMUtilities:
     """Test RPM utility functions."""
 
-    def test_upload_rpms_logs(self, mock_pulp_client, temp_rpm_file, httpx_mock):
+    def test_upload_rpms_logs(self, mock_pulp_client, temp_rpm_file, httpx_mock) -> None:
         """Test upload_rpms_logs function."""
         from pulp_tool.models import PulpResultsModel, RepositoryRefs
 
-        # Mock the RPM search endpoint
         httpx_mock.get(
             "https://pulp.example.com/pulp/api/v3/test-domain/api/v3/content/rpm/packages/"
             "?pulp_label_select=build_id~test-build"
         ).mock(return_value=httpx.Response(200, json={"results": []}))
-
-        # Mock the file content creation endpoint for log uploads
         httpx_mock.post("https://pulp.example.com/pulp/api/v3/test-domain/api/v3/content/file/files/").mock(
             return_value=httpx.Response(202, json={"task": "/pulp/api/v3/tasks/12345/"})
         )
-
-        # Mock the task endpoint for wait_for_finished_task
         httpx_mock.get("https://pulp.example.com/pulp/api/v3/tasks/12345/").mock(
             return_value=httpx.Response(
                 200,
                 json={"pulp_href": "/pulp/api/v3/tasks/12345/", "state": "completed", "result": {"status": "success"}},
             )
         )
-
         args = Mock()
         args.build_id = "test-build"
         args.namespace = "test-namespace"
         args.parent_package = "test-package"
-
-        # Create results model
         repositories = RepositoryRefs(
             rpms_href="/rpms/",
             rpms_prn="rpms-prn",
@@ -228,12 +206,10 @@ class TestRPMUtilities:
             artifacts_prn="artifacts-prn",
         )
         results_model = PulpResultsModel(build_id="test-build", repositories=repositories)
-
         with (
             patch("glob.glob", return_value=[temp_rpm_file]),
             patch("pulp_tool.utils.uploads.upload_rpms_parallel", return_value=[]),
         ):
-
             result = upload_rpms_logs(
                 os.path.dirname(temp_rpm_file),
                 args,
@@ -244,10 +220,9 @@ class TestRPMUtilities:
                 date="2024-01-01 12:00:00",
                 results_model=results_model,
             )
-
         assert result.uploaded_rpms == [temp_rpm_file]
 
-    def test_upload_rpms_logs_no_files(self, mock_pulp_client, temp_dir):
+    def test_upload_rpms_logs_no_files(self, mock_pulp_client, temp_dir) -> None:
         """Test upload_rpms_logs with no RPMs or logs."""
         from pulp_tool.models import PulpResultsModel, RepositoryRefs
 
@@ -255,8 +230,6 @@ class TestRPMUtilities:
         args.build_id = "test-build"
         args.namespace = "test-namespace"
         args.parent_package = "test-package"
-
-        # Create results model
         repositories = RepositoryRefs(
             rpms_href="/rpms/",
             rpms_prn="rpms-prn",
@@ -268,7 +241,6 @@ class TestRPMUtilities:
             artifacts_prn="artifacts-prn",
         )
         results_model = PulpResultsModel(build_id="test-build", repositories=repositories)
-
         with patch("glob.glob", return_value=[]):
             result = upload_rpms_logs(
                 temp_dir,
@@ -280,10 +252,9 @@ class TestRPMUtilities:
                 date="2024-01-01 12:00:00",
                 results_model=results_model,
             )
-
         assert result.uploaded_rpms == []
 
-    def test_upload_rpms_logs_raises_when_logs_present_but_empty_prn(self, mock_pulp_client, temp_dir):
+    def test_upload_rpms_logs_raises_when_logs_present_but_empty_prn(self, mock_pulp_client, temp_dir) -> None:
         """Log files require a non-empty logs repository PRN."""
         from pulp_tool.models import PulpResultsModel, RepositoryRefs
 
@@ -291,7 +262,6 @@ class TestRPMUtilities:
         args.build_id = "test-build"
         args.namespace = "test-namespace"
         args.parent_package = "test-package"
-
         repositories = RepositoryRefs(
             rpms_href="/rpms/",
             rpms_prn="rpms-prn",
@@ -303,7 +273,6 @@ class TestRPMUtilities:
             artifacts_prn="artifacts-prn",
         )
         results_model = PulpResultsModel(build_id="test-build", repositories=repositories)
-
         rpm_path = os.path.join(temp_dir, "pkg.rpm")
         log_path = os.path.join(temp_dir, "x.log")
         with patch("glob.glob", side_effect=[[rpm_path], [log_path]]):
@@ -319,18 +288,15 @@ class TestRPMUtilities:
                     results_model=results_model,
                 )
 
-    def test_upload_rpms_parallel_empty_list(self, mock_pulp_client):
+    def test_upload_rpms_parallel_empty_list(self, mock_pulp_client) -> None:
         """Test upload_rpms_parallel with empty list."""
         result = upload_rpms_parallel(mock_pulp_client, [], {}, "x86_64")
-
         assert result == []
 
-    def test_upload_rpms_parallel_with_rpms(self, mock_pulp_client, temp_rpm_file):
+    def test_upload_rpms_parallel_with_rpms(self, mock_pulp_client, temp_rpm_file) -> None:
         """Test upload_rpms_parallel with RPMs."""
         mock_pulp_client.upload_content = Mock(return_value="/pulp/api/v3/content/rpm/packages/12345/")
-
         result = upload_rpms_parallel(mock_pulp_client, [temp_rpm_file], {"arch": "x86_64"}, "x86_64")
-
         assert len(result) == 1
         assert result[0][0] == temp_rpm_file
         assert result[0][1] == "/pulp/api/v3/content/rpm/packages/12345/"

@@ -20,7 +20,7 @@ This file is specifically designed for LLM assistants (like Claude, ChatGPT, etc
 
 ## Upstream Pulp (domain reference)
 
-**[pulpproject.org](https://pulpproject.org/)** is the official Pulp project site: repositories, content types, REST API shapes, plugins, and user or admin docs. Consult it when reasoning about Pulp server behavior or API semantics that this repo’s client implements. Konflux call sites, config paths, and **`upload`** contracts for downstream pipelines stay documented in **`AGENTS.md`** (and `.cursor/rules/konflux-ecosystem.mdc`).
+**[pulpproject.org](https://pulpproject.org/)** is the official Pulp project site: repositories, content types, REST API shapes, plugins, and user or admin docs. Consult it when reasoning about Pulp server behavior or API semantics that this repo’s client implements. Konflux call sites, config paths, and **`upload`** contracts for downstream pipelines stay documented in **`CLAUDE.md`** (and `.cursor/rules/konflux-ecosystem.mdc`).
 
 ## GitHub PR description (ask first; generate on confirmation)
 
@@ -30,12 +30,26 @@ When the turn involved **substantive code or repository changes** that could bec
 
 - **Only after the user confirms** (in the same thread or a follow-up message), provide a paste-ready PR description **and**, if applicable, apply the `CHANGELOG.md` edits for that PR in the same turn.
 
+**PR template:** The repository defines **`.github/PULL_REQUEST_TEMPLATE.md`** (Summary, How to test, Checklist, Notes for reviewers). When generating paste-ready PR text, **align with that structure**—either use those section headings and fill them, or ensure the same information appears so maintainers can paste into GitHub’s PR composer with minimal editing.
+
 When you do generate it, use a clear heading such as `### PR description (GitHub)` and write in **complete sentences** with good grammar. Include whatever applies:
 
 - **What**: Concise summary of the change.
 - **Why**: Motivation or problem solved.
 - **How to test**: Commands or scenarios (for example `make lint`, `make test`, manual steps).
 - **Notes for reviewers**: Risks, follow-ups, or design choices (optional).
+
+**Suggested commit message:** When the user asks for a PR message or confirms PR materials, also provide a **paste-ready `git commit` message** under `### Suggested commit message` using this shape (subject line as conventional commit; blank line; then trailers):
+
+```
+<type(scope): short description>
+
+Assisted-By: <name of the assistant used — e.g. Cursor, Composer, Claude>
+Signed-off-by: <human author — use the contributor’s GitHub/git identity>
+```
+
+- **Assisted-By:** The **agent or product** used for the change (e.g. `Cursor`, `Composer`, `Claude`, `ChatGPT`), not a person’s name unless the user specifies otherwise.
+- **Signed-off-by:** The **human** who owns the commit — typically the same as `git config user.name` and `git config user.email` (often matching their [GitHub noreply or verified email](https://docs.github.com/en/account-and-profile/setting-up-and-managing-your-personal-account-on-github/managing-email-preferences/setting-your-commit-email-address)). Do **not** invent a real email; use a clear placeholder such as `Jane Doe <jane@users.noreply.github.com>` and tell the author to replace it with their identity, or run `git interpret-trailers` / edit before committing.
 
 **`CHANGELOG.md`**: Do **not** add or edit `CHANGELOG.md` while iterating on a fix or feature mid-conversation unless the user explicitly asks. When the user confirms they want PR materials, **then** add `[Unreleased]` entries (if the change is user-facing or notable per CONTRIBUTING) **as part of drafting the PR**—either by editing the file in that turn or listing exact changelog lines in the PR draft for the author to paste.
 
@@ -384,6 +398,9 @@ The CI/CD pipeline uses `diff-cover` against the merge base; **anything short of
 ## References
 
 - **Pulp upstream**: [pulpproject.org](https://pulpproject.org/)
+- **Maintainer / Konflux / agent context**: `CLAUDE.md`
+- **GitHub PR template**: `.github/PULL_REQUEST_TEMPLATE.md`
+- **Commit message layout (AI-assisted)**: `.github/commit-message-template.txt`; see **CONTRIBUTING.md** (AI-assisted commits)
 - **Pre-commit configuration**: `.pre-commit-config.yaml`
 - **Makefile targets**: `Makefile`
 - **Tool configurations**: `pyproject.toml`
@@ -401,13 +418,13 @@ The CI/CD pipeline uses `diff-cover` against the merge base; **anything short of
 3. ✅ Run `pre-commit run --all-files` and **repeat** (fix → re-run) until **all hooks pass**
 4. ✅ Run `make test` (full suite) and **repeat** (fix → re-run) until **all tests pass**
 5. ✅ Run `make test-diff-coverage` after `git fetch origin` and **repeat** (fix → re-run) until **100% diff coverage** passes (same gate as PR CI)
-6. ✅ If there are substantive edits that could ship as a PR, **ask whether the user wants PR materials**; **only after they confirm**, draft the paste-ready GitHub PR description **and** update `CHANGELOG.md` when required (same turn)—see **GitHub PR description (ask first; generate on confirmation)** and **Update CHANGELOG.md when drafting the PR**
+6. ✅ If there are substantive edits that could ship as a PR, **ask whether the user wants PR materials**; **only after they confirm**, draft the paste-ready GitHub PR description (**using `.github/PULL_REQUEST_TEMPLATE.md` sections**), a **suggested commit message** (`Assisted-By:` + `Signed-off-by:` trailers as in that section), and update `CHANGELOG.md` when required (same turn)—see **GitHub PR description (ask first; generate on confirmation)** and **Update CHANGELOG.md when drafting the PR**
 
 **Critical Requirements**:
 - **Pre-commit must end clean** - Run `pre-commit run --all-files` in a loop until zero failures; do not stop after one failed run without a subsequent fully passing run
 - **Tests must end green** - Run `make test` in a loop until the suite passes
 - **100% diff coverage before a PR** - Run `make test-diff-coverage` (compare branch defaults to `origin/main`); CI enforces the same; extend tests and re-run until the diff is fully covered
-- **Ask before PR text** - End with a short question about drafting the GitHub PR; provide the full paste-ready body only after the user says they are ready
+- **Ask before PR text** - End with a short question about drafting the GitHub PR; provide the full paste-ready body only after the user says they are ready (align with **`.github/PULL_REQUEST_TEMPLATE.md`**; include a **suggested commit message** with **`Assisted-By:`** and **`Signed-off-by:`** trailers when generating PR materials)
 - **`CHANGELOG.md` at PR draft time only** - Do not touch the changelog on every iteration; add `[Unreleased]` entries when the user confirms PR drafting (unless they explicitly ask earlier)
 - **`make test-diff-coverage`** - Treat as required before declaring a branch PR-ready alongside `make test`
 
