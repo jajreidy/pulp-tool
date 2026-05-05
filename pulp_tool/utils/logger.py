@@ -3,10 +3,22 @@ Logging configuration and utilities for the Konflux Pulp package.
 
 This module provides logging setup, custom formatters, and logging utilities
 to ensure consistent and readable logging across the package.
+
+Set ``PULP_TOOL_JSON_LOG=1`` for newline-delimited JSON logs (e.g. log aggregation)
+using python-json-logger; default remains human-readable plain text.
 """
 
 import logging
+import os
 from typing import Optional
+
+try:
+    from pythonjsonlogger.json import JsonFormatter as _JsonLogFormatter
+except ImportError:  # pragma: no cover - runtime dependency in pyproject.toml
+    try:
+        from pythonjsonlogger.jsonlogger import JsonFormatter as _JsonLogFormatter
+    except ImportError:
+        _JsonLogFormatter = None  # type: ignore[misc, assignment]
 
 # ============================================================================
 # Logging Configuration Constants
@@ -103,7 +115,34 @@ def setup_logging(verbosity: int = 0, use_wrapping: bool = False) -> None:
         >>> setup_logging(1)  # INFO level
         >>> setup_logging(2)  # DEBUG level
         >>> setup_logging(3)  # DEBUG level with HTTP logs
+
+    JSON logs (structured, one JSON object per line) when environment variable
+    ``PULP_TOOL_JSON_LOG`` is set to ``1``, ``true``, or ``yes`` (case-insensitive).
     """
+    json_log = os.environ.get("PULP_TOOL_JSON_LOG", "").strip().lower() in ("1", "true", "yes")
+    if json_log and _JsonLogFormatter is not None:
+        if verbosity == 0:
+            level = logging.WARNING
+        elif verbosity == 1:
+            level = logging.INFO
+        else:
+            level = logging.DEBUG
+        fmt = "%(asctime)s %(name)s %(levelname)s %(message)s"
+        json_formatter = _JsonLogFormatter(fmt=fmt)
+        handler = logging.StreamHandler()
+        handler.setFormatter(json_formatter)
+        root_logger = logging.getLogger()
+        root_logger.handlers.clear()
+        root_logger.addHandler(handler)
+        root_logger.setLevel(level)
+        if verbosity < 3:
+            logging.getLogger("httpx").setLevel(logging.WARNING)
+            logging.getLogger("httpcore").setLevel(logging.WARNING)
+        else:
+            logging.getLogger("httpx").setLevel(logging.DEBUG)
+            logging.getLogger("httpcore").setLevel(logging.DEBUG)
+        return
+
     # Map verbosity count to logging level
     if verbosity == 0:
         level = logging.WARNING

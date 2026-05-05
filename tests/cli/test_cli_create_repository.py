@@ -1,9 +1,7 @@
 """Tests for Click CLI commands."""
 
 from unittest.mock import Mock, patch
-
 from click.testing import CliRunner
-
 from pulp_tool.cli import cli
 
 
@@ -11,25 +9,17 @@ class TestCreateRepositoryCommand:
 
     @patch("pulp_tool.cli.create_repository.PulpClient")
     @patch("pulp_tool.cli.create_repository.PulpHelper")
-    def test_create_repository_success(self, mock_helper_class, mock_client_class):
+    def test_create_repository_success(self, mock_helper_class, mock_client_class) -> None:
         """Test successful create-repository flow."""
         runner = CliRunner()
-
-        # Setup mocks
-
         mock_client = Mock()
         mock_client.close = Mock()
         mock_client.add_content.return_value = Mock(pulp_href="test-href")
         mock_client.wait_for_finished_task.return_value = Mock(created_resources=["test-href"])
         mock_client_class.create_from_config_file.return_value = mock_client
-
         mock_helper = Mock()
-        mock_helper.create_or_get_repository.return_value = (
-            "test-prn",
-            "test-href",
-        )
+        mock_helper.create_or_get_repository.return_value = ("test-prn", "test-href")
         mock_helper_class.return_value = mock_helper
-
         result = runner.invoke(
             cli,
             [
@@ -46,38 +36,29 @@ class TestCreateRepositoryCommand:
 
     @patch("pulp_tool.cli.create_repository.PulpClient")
     @patch("pulp_tool.cli.create_repository.PulpHelper")
-    def test_create_repository_no_packages_json(self, mock_helper_class, mock_client_class):
+    def test_create_repository_no_packages_json(self, mock_helper_class, mock_client_class) -> None:
         """Test missing packages."""
         runner = CliRunner()
-
-        # Setup mocks
-
         mock_client = Mock()
         mock_client.close = Mock()
         mock_client.add_content.return_value = Mock(pulp_href="test-href")
         mock_client.wait_for_finished_task.return_value = Mock(created_resources=["test-href"])
         mock_client_class.create_from_config_file.return_value = mock_client
-
         mock_helper = Mock()
-        mock_helper.create_or_get_repository.return_value = (
-            "test-prn",
-            "test-href",
-        )
+        mock_helper.create_or_get_repository.return_value = ("test-prn", "test-href")
         mock_helper_class.return_value = mock_helper
-
+        json_data = (
+            '{\n                    "name": "test-repo-name",\n                    '
+            '"distribution_options": {\n                        "name": "test-distro-name",\n                        '
+            '"base_path": "test-base-path"\n                    },\n                    "packages":[]\n                '
+            "}"
+        )
         result = runner.invoke(
             cli,
             [
                 "create-repository",
                 "--json-data",
-                """{
-                    "name": "test-repo-name",
-                    "distribution_options": {
-                        "name": "test-distro-name",
-                        "base_path": "test-base-path"
-                    },
-                    "packages":[]
-                }""",
+                json_data,
             ],
         )
         assert result.exit_code == 1
@@ -85,25 +66,17 @@ class TestCreateRepositoryCommand:
 
     @patch("pulp_tool.cli.create_repository.PulpClient")
     @patch("pulp_tool.cli.create_repository.PulpHelper")
-    def test_create_repository_no_packages_cli(self, mock_helper_class, mock_client_class):
+    def test_create_repository_no_packages_cli(self, mock_helper_class, mock_client_class) -> None:
         """Test successful create-repository flow."""
         runner = CliRunner()
-
-        # Setup mocks
-
         mock_client = Mock()
         mock_client.close = Mock()
         mock_client.add_content.return_value = Mock(pulp_href="test-href")
         mock_client.wait_for_finished_task.return_value = Mock(created_resources=["test-href"])
         mock_client_class.create_from_config_file.return_value = mock_client
-
         mock_helper = Mock()
-        mock_helper.create_or_get_repository.return_value = (
-            "test-prn",
-            "test-href",
-        )
+        mock_helper.create_or_get_repository.return_value = ("test-prn", "test-href")
         mock_helper_class.return_value = mock_helper
-
         result = runner.invoke(
             cli,
             [
@@ -120,25 +93,17 @@ class TestCreateRepositoryCommand:
 
     @patch("pulp_tool.cli.create_repository.PulpClient")
     @patch("pulp_tool.cli.create_repository.PulpHelper")
-    def test_create_repository_unexpected_error(self, mock_helper_class, mock_client_class):
+    def test_create_repository_unexpected_error(self, mock_helper_class, mock_client_class) -> None:
         """Test successful create-repository flow."""
         runner = CliRunner()
-
-        # Setup mocks
-
         mock_client = Mock()
         mock_client.close = Mock()
         mock_client.add_content.return_value = Mock(pulp_href="test-href")
         mock_client.wait_for_finished_task.return_value = Mock(side_effect=Exception())
         mock_client_class.create_from_config_file.return_value = mock_client
-
         mock_helper = Mock()
-        mock_helper.create_or_get_repository.return_value = (
-            "test-prn",
-            "test-href",
-        )
+        mock_helper.create_or_get_repository.return_value = ("test-prn", "test-href")
         mock_helper_class.return_value = mock_helper
-
         result = runner.invoke(
             cli,
             [

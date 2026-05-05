@@ -52,6 +52,35 @@ make format    # Format code
 make check     # Run all checks
 ```
 
+### Documentation for coding agents
+
+- **[CLAUDE.md](CLAUDE.md)** — quick reference, architecture, Konflux/Tekton integration contracts, and links to the LLM workflow (`.cursor/rules/llm-development-guidelines.mdc`).
+- Optional: [AgentReady](https://github.com/ambient-code/agentready) (`agentready assess .`) with [.agentready-config.yaml](.agentready-config.yaml).
+
+### Dependency lock file
+
+Pinned lockfiles:
+
+- **`requirements.txt`** — from **`requirements.in`** via [pip-tools](https://github.com/jazzband/pip-tools) (`pip-compile`).
+- **`uv.lock`** — from the same **`pyproject.toml`** via **[uv](https://github.com/astral-sh/uv)** (`uv lock` or `python3 -m uv lock`).
+
+After changing dependencies in **`pyproject.toml`**, regenerate both:
+
+```bash
+pip install -e ".[dev]"   # includes pip-tools
+make lock
+```
+
+Commit the updated **`requirements.txt`** and **`uv.lock`**. Normal installs remain **`pip install -e ".[dev]"`** from pyproject; lockfiles support reproducible CI and audits.
+
+### Commit messages
+
+Optional [**Conventional Commits**](https://www.conventionalcommits.org/) (`feat:`, `fix:`, `docs:`, …) are enforced if you install commit-msg hooks:
+
+```bash
+pre-commit install --hook-type commit-msg
+```
+
 ## Code Style
 
 ### Formatting
@@ -225,6 +254,22 @@ docs(readme): update installation instructions
 
 Adds Python 3.12 support information.
 ```
+
+#### AI-assisted commits
+
+When the work was produced with an AI assistant, end the commit message with this trailer block (after a blank line following the subject or body):
+
+```
+<type(scope): short description>
+
+Assisted-By: Cursor
+Signed-off-by: Your Name <your-email@example.com>
+```
+
+- **Assisted-By:** The **agent or product** you used (e.g. `Cursor`, `Composer`, `Claude`).
+- **Signed-off-by:** **You** as the human author, in [Developer Certificate of Origin](https://developercertificate.org/) form — typically `git config user.name` and `git config user.email`, often aligned with your [GitHub commit email](https://docs.github.com/en/account-and-profile/setting-up-and-managing-your-personal-account-on-github/managing-email-preferences/setting-your-commit-email-address).
+
+A blank layout you can copy is **`.github/commit-message-template.txt`**. To use it as the editor starter for every commit: `git config commit.template .github/commit-message-template.txt` (repo-relative path; adjust if you set it globally).
 
 ### PR Description Template
 

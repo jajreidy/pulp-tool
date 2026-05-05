@@ -1,0 +1,23 @@
+name: Feature request
+description: Suggest an enhancement or new capability
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or use case
+      description: What are you trying to do that is hard or impossible today?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior
+      description: How should pulp-tool behave? CLI/API sketch if helpful.
+    validations:
+      required: true
+  - type: textarea
+    id: downstream
+    attributes:
+      label: Konflux / downstream impact
+      description: If this touches `upload`, flags, or the container image, note impact on Tekton tasks (see CLAUDE.md).

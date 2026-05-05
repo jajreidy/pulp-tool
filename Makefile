@@ -3,7 +3,7 @@
 COMPARE_BRANCH ?= origin/main
 AUDIT_VENV ?= .audit-venv
 
-.PHONY: help install install-dev test test-diff-coverage lint format check clean audit
+.PHONY: help install install-dev test test-diff-coverage lint format check clean audit lock
 
 # Default target
 help:
@@ -17,6 +17,7 @@ help:
 	@echo "  make check        - Run all checks (lint + test)"
 	@echo "  make audit        - Run pip-audit in a throwaway venv (only this project's dev deps)"
 	@echo "  make clean        - Clean build artifacts"
+	@echo "  make lock         - Regenerate requirements.txt from requirements.in (pip-compile)"
 	@echo ""
 	@echo "  Diff coverage base: COMPARE_BRANCH=origin/main (override for e.g. origin/release-1.0)"
 
@@ -27,6 +28,11 @@ install:
 install-dev:
 	pip install -e ".[dev]"
 	pre-commit install || echo "pre-commit not available, skipping"
+	pre-commit install --hook-type commit-msg || echo "commit-msg hooks skipped"
+
+lock:
+	pip-compile requirements.in -o requirements.txt --resolver=backtracking
+	@command -v uv >/dev/null 2>&1 && uv lock || python3 -m uv lock
 
 # Testing
 test:

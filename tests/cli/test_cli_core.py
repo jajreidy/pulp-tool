@@ -1,24 +1,22 @@
 """Tests for Click CLI commands."""
 
 from unittest.mock import patch
-
 import pytest
 from click.testing import CliRunner
-
 from pulp_tool.cli import cli, main
 
 
 class TestCLIEntryPoint:
     """Test CLI entry point and main function."""
 
-    def test_main_function_success(self):
+    def test_main_function_success(self) -> None:
         """Test main() entry point calls cli successfully."""
         with patch("pulp_tool.cli.cli") as mock_cli:
             mock_cli.return_value = None
             main()
             mock_cli.assert_called_once()
 
-    def test_main_function_keyboard_interrupt(self):
+    def test_main_function_keyboard_interrupt(self) -> None:
         """Test main() handles KeyboardInterrupt gracefully."""
         with patch("pulp_tool.cli.cli") as mock_cli, patch("pulp_tool.cli.sys.exit") as mock_exit:
             mock_cli.side_effect = KeyboardInterrupt()
@@ -30,7 +28,7 @@ class TestCLIHelp:
     """Test CLI help commands."""
 
     @pytest.mark.parametrize("argv,expect_short_hint", [(["--help"], False), (["-h"], True)])
-    def test_main_help(self, argv, expect_short_hint):
+    def test_main_help(self, argv, expect_short_hint) -> None:
         """Main CLI help via ``--help`` or ``-h``."""
         runner = CliRunner()
         result = runner.invoke(cli, argv)
@@ -48,13 +46,12 @@ class TestCLIHelp:
         if expect_short_hint:
             assert "-h, --help" in result.output
 
-    def test_upload_help(self):
+    def test_upload_help(self) -> None:
         """Test upload command help output."""
         runner = CliRunner()
         result = runner.invoke(cli, ["upload", "--help"])
         assert result.exit_code == 0
         assert "Upload RPMs, logs, and SBOM files" in result.output
-        # Group-level options are not shown in command help
         assert "--parent-package" in result.output
         assert "--rpm-path" in result.output
         assert "--sbom-results" in result.output
@@ -62,7 +59,7 @@ class TestCLIHelp:
         assert "--overwrite" in result.output
         assert "--target-arch-repo" in result.output
 
-    def test_upload_files_help(self):
+    def test_upload_files_help(self) -> None:
         """Test upload-files command help output."""
         runner = CliRunner()
         result = runner.invoke(cli, ["upload-files", "--help"])
@@ -77,7 +74,7 @@ class TestCLIHelp:
         assert "--artifact-results" in result.output
         assert "--sbom-results" in result.output
 
-    def test_pull_help(self):
+    def test_pull_help(self) -> None:
         """Test pull command help output."""
         runner = CliRunner()
         result = runner.invoke(cli, ["pull", "--help"])
@@ -87,9 +84,8 @@ class TestCLIHelp:
         assert "--content-types" in result.output
         assert "--archs" in result.output
         assert "--transfer-dest" in result.output
-        # Group-level options are not shown in command help
 
-    def test_create_repository_help(self):
+    def test_create_repository_help(self) -> None:
         """Test create-repository command help output."""
         runner = CliRunner()
         result = runner.invoke(cli, ["create-repository", "--help"])
@@ -109,34 +105,34 @@ class TestCLIHelp:
 class TestCLIValidation:
     """Test CLI input validation."""
 
-    def test_upload_missing_required_args(self):
+    def test_upload_missing_required_args(self) -> None:
         """Test upload command with missing required arguments."""
         runner = CliRunner()
         result = runner.invoke(cli, ["upload"])
         assert result.exit_code != 0
         assert "Missing option" in result.output or "required" in result.output.lower()
 
-    def test_pull_missing_required_args(self):
+    def test_pull_missing_required_args(self) -> None:
         """Test pull command with missing required arguments."""
         runner = CliRunner()
         result = runner.invoke(cli, ["pull"], catch_exceptions=False, standalone_mode=False)
         assert result.exit_code != 0
 
-    def test_create_repository_missing_required_args(self):
+    def test_create_repository_missing_required_args(self) -> None:
         """Test create-repository command with missing required arguments."""
         runner = CliRunner()
         result = runner.invoke(cli, ["create-repository"])
         assert result.exit_code != 0
         assert "Missing option" in result.output or "required" in result.output.lower()
 
-    def test_create_repository_missing_json_fields(self):
+    def test_create_repository_missing_json_fields(self) -> None:
         """Test create-repository command with missing json fields."""
         runner = CliRunner()
         result = runner.invoke(cli, ["create-repository", "--json-data", "{}"])
         assert result.exit_code != 0
         assert "Field required" in result.output
 
-    def test_create_repository_bad_json_arg(self):
+    def test_create_repository_bad_json_arg(self) -> None:
         """Test create-repository command with impropper json"""
         runner = CliRunner()
         result = runner.invoke(cli, ["create-repository", "--json-data", "{"])
@@ -147,7 +143,7 @@ class TestCLIValidation:
 class TestCLIVersion:
     """Test CLI version output."""
 
-    def test_version(self):
+    def test_version(self) -> None:
         """Test version flag."""
         runner = CliRunner()
         result = runner.invoke(cli, ["--version"])

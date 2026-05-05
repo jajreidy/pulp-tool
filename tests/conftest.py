@@ -14,15 +14,24 @@ Best Practices for Temporary Files in Tests:
 import tempfile
 from pathlib import Path
 from unittest.mock import Mock
-
 import httpx
 import pytest
 import respx
-
 from tests.support.tls_certs import write_self_signed_pem_pair
 
-# Global registry to track temporary files for cleanup
 _temp_file_registry: set[str] = set()
+
+
+@pytest.fixture(autouse=True)
+def production_respx_expects_single_http_transport_attempt(monkeypatch) -> None:
+    """
+    API tests use deterministic respx side_effects (one entry per logical HTTP call).
+
+    The real client retries transient 5xx/429 up to RESPONSE_RETRY_TOTAL_ATTEMPTS times;
+    tests monkeypatch that constant to 1 so mock call counts match production behavior
+    without duplication.
+    """
+    monkeypatch.setattr("pulp_tool.utils.session.RESPONSE_RETRY_TOTAL_ATTEMPTS", 1)
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -35,15 +44,12 @@ def temp_file_cleanup():
     weren't properly cleaned up in individual tests.
     """
     yield
-
-    # Cleanup any files in the registry
     for temp_path in _temp_file_registry:
         try:
             if Path(temp_path).exists():
                 Path(temp_path).unlink()
         except Exception:
-            pass  # Best effort cleanup
-
+            pass
     _temp_file_registry.clear()
 
 
@@ -75,7 +81,7 @@ def unregister_temp_file(path: str) -> None:
 
 
 @pytest.fixture
-def mock_config(tmp_path_factory):
+def mock_config(tmp_path_factory) -> None:
     """Mock Pulp config with real PEM files so PulpClient builds a session (HTTP is mocked via respx)."""
     tls_dir = tmp_path_factory.mktemp("pulp_mock_tls")
     cert = tls_dir / "cert.pem"
@@ -100,17 +106,16 @@ def httpx_mock():
 
 
 @pytest.fixture
-def mock_pulp_client(mock_config, httpx_mock):
+def mock_pulp_client(mock_config, httpx_mock) -> None:
     """Mock PulpClient instance with respx."""
     from pulp_tool.api import PulpClient
 
     client = PulpClient(mock_config)
-    # Use real client instead of mock
     return client
 
 
 @pytest.fixture
-def mock_oauth_auth():
+def mock_oauth_auth() -> None:
     """Mock OAuth2ClientCredentialsAuth instance."""
     from pulp_tool.api import OAuth2ClientCredentialsAuth
 
@@ -125,7 +130,7 @@ def mock_oauth_auth():
 
 
 @pytest.fixture
-def mock_response():
+def mock_response() -> None:
     """Mock httpx Response object."""
     response = Mock(spec=httpx.Response)
     response.status_code = 200
@@ -135,16 +140,14 @@ def mock_response():
     response.url = httpx.URL("https://pulp.example.com/api/v3/test")
     response.request = Mock(spec=httpx.Request)
     response.request.method = "GET"
-    # Add httpx-specific attributes
     response.is_success = True
     response.is_error = False
-    # For compatibility, add 'ok' attribute (similar to requests)
     response.ok = response.status_code < 400
     return response
 
 
 @pytest.fixture
-def mock_error_response():
+def mock_error_response() -> None:
     """Mock error httpx Response object."""
     response = Mock(spec=httpx.Response)
     response.status_code = 500
@@ -154,18 +157,16 @@ def mock_error_response():
     response.url = httpx.URL("https://pulp.example.com/api/v3/test")
     response.request = Mock(spec=httpx.Request)
     response.request.method = "GET"
-    response.request.headers = httpx.Headers({})  # Add headers to request
-    response.request.content = b'{"test": "data"}'  # Add content to request
-    # Add httpx-specific attributes
+    response.request.headers = httpx.Headers({})
+    response.request.content = b'{"test": "data"}'
     response.is_success = False
     response.is_error = True
-    # For compatibility, add 'ok' attribute (similar to requests)
     response.ok = response.status_code < 400
     return response
 
 
 @pytest.fixture
-def mock_task_response():
+def mock_task_response() -> None:
     """Mock task response from Pulp API."""
     return {
         "pulp_href": "/pulp/api/v3/tasks/12345/",
@@ -176,7 +177,7 @@ def mock_task_response():
 
 
 @pytest.fixture
-def mock_repository_data():
+def mock_repository_data() -> None:
     """Mock repository data from Pulp API."""
     return {
         "results": [
@@ -190,7 +191,7 @@ def mock_repository_data():
 
 
 @pytest.fixture
-def mock_distribution_data():
+def mock_distribution_data() -> None:
     """Mock distribution data from Pulp API."""
     return {
         "results": [
@@ -204,7 +205,7 @@ def mock_distribution_data():
 
 
 @pytest.fixture
-def mock_content_data():
+def mock_content_data() -> None:
     """Mock content data from Pulp API."""
     return {
         "results": [
@@ -219,7 +220,7 @@ def mock_content_data():
 
 
 @pytest.fixture
-def mock_artifact_data():
+def mock_artifact_data() -> None:
     """Mock artifact data from Pulp API."""
     return {
         "results": [
@@ -233,7 +234,7 @@ def mock_artifact_data():
 
 
 @pytest.fixture
-def mock_rpm_data():
+def mock_rpm_data() -> None:
     """Mock RPM package data from Pulp API."""
     return {
         "results": [
@@ -255,10 +256,7 @@ def temp_file():
     with tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".txt") as f:
         f.write("test content")
         temp_path = f.name
-
     yield temp_path
-
-    # Cleanup
     Path(temp_path).unlink(missing_ok=True)
 
 
@@ -268,10 +266,7 @@ def temp_rpm_file():
     with tempfile.NamedTemporaryFile(mode="wb", delete=False, suffix=".rpm") as f:
         f.write(b"fake rpm content")
         temp_path = f.name
-
     yield temp_path
-
-    # Cleanup
     Path(temp_path).unlink(missing_ok=True)
 
 
@@ -281,10 +276,7 @@ def temp_dir():
     import shutil
 
     temp_path = tempfile.mkdtemp()
-
     yield temp_path
-
-    # Cleanup
     shutil.rmtree(temp_path, ignore_errors=True)
 
 
@@ -292,7 +284,6 @@ def temp_dir():
 def temp_config_file(mock_config):
     """Create a temporary TOML config file."""
     with tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".toml") as f:
-        # Write valid TOML format
         f.write("[cli]\n")
         for key, value in mock_config.items():
             if isinstance(value, str):
@@ -300,15 +291,12 @@ def temp_config_file(mock_config):
             else:
                 f.write(f"{key} = {value}\n")
         temp_path = f.name
-
     yield temp_path
-
-    # Cleanup
     Path(temp_path).unlink(missing_ok=True)
 
 
 @pytest.fixture
-def temp_files(tmp_path):
+def temp_files(tmp_path) -> None:
     """
     Fixture providing a cleaner way to create temporary files.
 
@@ -329,7 +317,7 @@ def temp_files(tmp_path):
 
 
 @pytest.fixture
-def create_temp_file(tmp_path):
+def create_temp_file(tmp_path) -> None:
     """
     Factory fixture for creating multiple temporary files in a test.
 
@@ -342,7 +330,7 @@ def create_temp_file(tmp_path):
         Callable: Function to create temp files
     """
 
-    def _create(filename: str, content: str = "", binary: bool = False):
+    def _create(filename: str, content: str = "", binary: bool = False) -> None:
         """Create a temporary file with content."""
         file_path = tmp_path / filename
         if binary:
@@ -355,7 +343,7 @@ def create_temp_file(tmp_path):
 
 
 @pytest.fixture
-def mock_args():
+def mock_args() -> None:
     """Mock command line arguments."""
     args = Mock()
     args.rpm_path = "/path/to/rpms"
@@ -374,7 +362,7 @@ def mock_args():
 
 
 @pytest.fixture
-def mock_artifacts_json():
+def mock_artifacts_json() -> None:
     """Mock artifacts JSON data."""
     return {
         "artifacts": {
@@ -394,7 +382,7 @@ def mock_artifacts_json():
 
 
 @pytest.fixture
-def mock_repositories():
+def mock_repositories() -> None:
     """Mock repository information."""
     return {
         "rpms_prn": "pulp:///api/v3/repositories/rpm/rpm/12345/",
@@ -406,7 +394,7 @@ def mock_repositories():
 
 
 @pytest.fixture
-def mock_distribution_urls():
+def mock_distribution_urls() -> None:
     """Mock distribution URLs."""
     return {
         "rpms": "https://pulp.example.com/pulp/content/test-build/rpms/",
@@ -417,7 +405,7 @@ def mock_distribution_urls():
 
 
 @pytest.fixture
-def mock_upload_info():
+def mock_upload_info() -> None:
     """Mock upload information."""
     return {
         "build_id": "test-build-123",
@@ -431,7 +419,7 @@ def mock_upload_info():
 
 
 @pytest.fixture
-def mock_pulled_artifacts():
+def mock_pulled_artifacts() -> None:
     """Mock pulled artifacts data."""
     from pulp_tool.models.artifacts import PulledArtifacts
 
@@ -453,7 +441,7 @@ def mock_pulled_artifacts():
 
 
 @pytest.fixture
-def mock_file_locations():
+def mock_file_locations() -> None:
     """Mock file locations data."""
     return {
         "results": [
@@ -467,7 +455,7 @@ def mock_file_locations():
 
 
 @pytest.fixture
-def mock_results_structure():
+def mock_results_structure() -> None:
     """Mock results structure."""
     return {
         "artifacts": {
@@ -488,7 +476,7 @@ def mock_results_structure():
 class MockClient:
     """Mock httpx client for testing."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.get_calls = []
         self.post_calls = []
         self.patch_calls = []
@@ -496,7 +484,7 @@ class MockClient:
         self.delete_calls = []
         self.close_called = False
 
-    def get(self, url, **kwargs):
+    def get(self, url, **kwargs) -> None:
         self.get_calls.append((url, kwargs))
         response = Mock(spec=httpx.Response)
         response.status_code = 200
@@ -508,7 +496,7 @@ class MockClient:
         response.request.method = "GET"
         return response
 
-    def post(self, url, **kwargs):
+    def post(self, url, **kwargs) -> None:
         self.post_calls.append((url, kwargs))
         response = Mock(spec=httpx.Response)
         response.status_code = 201
@@ -520,7 +508,7 @@ class MockClient:
         response.request.method = "POST"
         return response
 
-    def patch(self, url, **kwargs):
+    def patch(self, url, **kwargs) -> None:
         self.patch_calls.append((url, kwargs))
         response = Mock(spec=httpx.Response)
         response.status_code = 200
@@ -532,7 +520,7 @@ class MockClient:
         response.request.method = "PATCH"
         return response
 
-    def put(self, url, **kwargs):
+    def put(self, url, **kwargs) -> None:
         self.put_calls.append((url, kwargs))
         response = Mock(spec=httpx.Response)
         response.status_code = 200
@@ -544,7 +532,7 @@ class MockClient:
         response.request.method = "PUT"
         return response
 
-    def delete(self, url, **kwargs):
+    def delete(self, url, **kwargs) -> None:
         self.delete_calls.append((url, kwargs))
         response = Mock(spec=httpx.Response)
         response.status_code = 204
@@ -555,18 +543,18 @@ class MockClient:
         response.request.method = "DELETE"
         return response
 
-    def close(self):
+    def close(self) -> None:
         self.close_called = True
 
 
 @pytest.fixture
-def mock_client():
+def mock_client() -> None:
     """Mock httpx client."""
     return MockClient()
 
 
 @pytest.fixture
-def mock_thread_pool_executor():
+def mock_thread_pool_executor() -> None:
     """Mock ThreadPoolExecutor."""
     executor = Mock()
     executor.submit = Mock()
@@ -576,7 +564,7 @@ def mock_thread_pool_executor():
 
 
 @pytest.fixture
-def mock_future():
+def mock_future() -> None:
     """Mock Future object."""
     future = Mock()
     future.result = Mock(return_value="test-result")

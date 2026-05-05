@@ -31,6 +31,7 @@ dependencies = [
     "httpx>=0.28.1",
     "pydantic>=2.13.0",
     "click>=8.3.2",
+    "python-json-logger>=3.2.1,<4",
 ]
 
 [project.optional-dependencies]
@@ -57,6 +58,8 @@ dev = [
     # Dependency CVE audit (local: make audit). When Pygments >2.19.2 is on PyPI, add
     # "pygments>=2.19.3" here and remove CVE-2026-4539 ignores from .github/workflows/security-scan.yml.
     "pip-audit>=2.10.0",
+    "pip-tools>=7.4.0",
+    "radon>=6.0.1",
 ]
 
 [project.scripts]
@@ -136,8 +139,16 @@ strict_equality = true
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
-module = "pulp_tool.api.pulp_client"
+module = "pulp_tool.api.pulp_client.client"
 disable_error_code = ["override", "misc"]
+
+[[tool.mypy.overrides]]
+module = "pulp_tool.api.pulp_client.content_query"
+disable_error_code = ["attr-defined"]
+
+[[tool.mypy.overrides]]
+module = "pulp_tool.api.pulp_client.results"
+disable_error_code = ["attr-defined"]
 
 [[tool.mypy.overrides]]
 module = "pulp_tool.utils.validation"
@@ -183,9 +194,19 @@ disable_error_code = ["attr-defined"]
 module = "pulp_tool.cli.*"
 disable_error_code = ["attr-defined"]
 
+# Tests often assert on invalid inputs, mocks, and bulk-added -> None on fixtures;
+# keep production (pulp_tool/) strict via lint-mypy on pulp_tool/ only.
 [[tool.mypy.overrides]]
 module = "tests.*"
-disable_error_code = ["attr-defined", "method-assign"]
+disable_error_code = [
+    "attr-defined",
+    "method-assign",
+    "return-value",
+    "var-annotated",
+    "assignment",
+    "arg-type",
+    "call-arg",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
