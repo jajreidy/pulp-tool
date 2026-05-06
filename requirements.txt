@@ -110,7 +110,7 @@ nodeenv==1.10.0
     # via pre-commit
 packageurl-python==0.17.6
     # via cyclonedx-python-lib
-packaging==26.1
+packaging==26.2
     # via
     #   black
     #   build
