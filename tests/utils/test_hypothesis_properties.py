@@ -11,10 +11,15 @@ from pulp_tool.utils.rpm_operations import parse_rpm_filename_to_nvra, parse_rpm
 from pulp_tool.utils.validation.build_id import sanitize_build_id_for_repository, strip_namespace_from_build_id
 
 
+def _env_safe_text(max_size: int) -> st.SearchStrategy[str]:
+    """Environment values cannot contain NUL (POSIX / ``os.environ``)."""
+    return st.text(min_size=0, max_size=max_size).filter(lambda s: "\x00" not in s)
+
+
 @settings(max_examples=40)
 @given(
     cfg=st.one_of(st.none(), st.text(min_size=0, max_size=64)),
-    env=st.one_of(st.none(), st.text(min_size=0, max_size=64)),
+    env=st.one_of(st.none(), _env_safe_text(64)),
     ns=st.one_of(st.none(), st.text(min_size=0, max_size=32)),
     bid=st.one_of(st.none(), st.text(min_size=0, max_size=32)),
 )

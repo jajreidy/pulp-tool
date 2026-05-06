@@ -95,14 +95,17 @@ def _extract_build_id_namespace_from_results_json(results_json_path: Path) -> Tu
 )
 @click.option(
     "--signed-by",
-    help="Add pulp_label signed_by and upload to separate signed repos/distributions",
+    help=(
+        "Add pulp_label signed_by and upload to separate signed repos/distributions "
+        "(value may include commas; quote the argument in the shell if needed)"
+    ),
 )
 @click.option(
     "--overwrite",
     is_flag=True,
     default=False,
     help=(
-        "RPM only: before uploading, search Pulp by each local RPM's SHA256 (and signed_by if set) "
+        "RPM only: before uploading, search Pulp by each local RPM's NVRA filename (and signed_by if set) "
         "and remove matching package units from the target RPM repository via remove_content_units"
     ),
 )

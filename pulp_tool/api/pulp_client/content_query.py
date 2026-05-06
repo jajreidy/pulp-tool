@@ -11,11 +11,40 @@ from typing import Any, Dict, List, Optional, Tuple
 import httpx
 
 from ...utils.artifact_detection import rpm_packages_letter_and_basename
-from ...utils.constants import SUPPORTED_ARCHITECTURES
+from ...utils.constants import DEFAULT_CHUNK_SIZE, SUPPORTED_ARCHITECTURES
 from ...utils.rpm_operations import parse_rpm_filename_to_nvr
 from ...utils.validation import sanitize_build_id_for_repository, validate_build_id
 
 from .helpers import EMPTY_RESPONSE_REQUEST, dedupe_results_by_pulp_href
+
+
+def _filter_rpm_results_by_signed_by_labels(results: List[Any], signed_by_values: List[str]) -> List[Any]:
+    """
+    Keep RPM JSON rows whose pulp_labels.signed_by equals one of signed_by_values (exact, stripped).
+
+    Used when Pulp's label filter cannot represent the value: LabelFilter splits ``pulp_label_select``
+    on commas before parsing terms, so a single label value that contains a comma must be matched
+    client-side (see Pulp ``LabelFilter`` and "Manage labels" docs).
+    """
+    wanted = {v.strip() for v in signed_by_values if v is not None and str(v).strip()}
+    if not wanted:
+        return list(results)
+    out: List[Any] = []
+    for item in results:
+        labels = item.get("pulp_labels")
+        if not isinstance(labels, dict):
+            continue
+        raw = labels.get("signed_by")
+        if raw is None:
+            continue
+        if str(raw).strip() in wanted:
+            out.append(item)
+    return out
+
+
+def _signed_by_values_require_client_label_filter(signed_by_values: List[str]) -> bool:
+    """True if any value contains a comma and must not be passed through ``pulp_label_select=``."""
+    return any("," in (v or "") for v in signed_by_values)
 
 
 class PulpClientContentQueryMixin:
@@ -422,6 +451,9 @@ class PulpClientContentQueryMixin:
                 request=EMPTY_RESPONSE_REQUEST,
             )
 
+        if _signed_by_values_require_client_label_filter(signed_by_values):
+            return await self._async_get_rpm_by_signed_by_paginate_filter_labels(signed_by_values)
+
         # Pulp limits q expression complexity to 8. (A OR B OR C OR D) = 7.
         chunk_size = 4
         chunks = [signed_by_values[i : i + chunk_size] for i in range(0, len(signed_by_values), chunk_size)]
@@ -455,6 +487,41 @@ class PulpClientContentQueryMixin:
             request=EMPTY_RESPONSE_REQUEST,
         )
 
+    async def _async_get_rpm_by_signed_by_paginate_filter_labels(self, signed_by_values: List[str]) -> httpx.Response:
+        """
+        List RPM packages with pagination (no ``pulp_label_select``), filter by exact signed_by labels.
+
+        Used when values contain commas (Pulp LabelFilter splits on comma).
+        """
+        url = self._build_rpm_packages_url()
+        params: dict[str, str | int] = {"limit": 100}
+        all_matching: List[Any] = []
+        next_url: Optional[str] = None
+
+        while True:
+            req_url = next_url if next_url else url
+            req_params: dict[str, str | int] | None = None if next_url else params
+            response = await self._get_async_session().get(
+                req_url,
+                params=req_params,
+                timeout=self.timeout,
+                **self.request_params,
+            )
+            self._check_response(response, "get RPM by signed_by (paginated label filter)")
+            data = response.json()
+            page = data.get("results", [])
+            all_matching.extend(_filter_rpm_results_by_signed_by_labels(page, signed_by_values))
+            next_url = data.get("next")
+            if not next_url:
+                break
+
+        filtered = dedupe_results_by_pulp_href(all_matching)
+        return httpx.Response(
+            200,
+            content=json.dumps({"count": len(filtered), "results": filtered}).encode("utf-8"),
+            request=EMPTY_RESPONSE_REQUEST,
+        )
+
     def get_rpm_by_checksums_and_signed_by(self, checksums: List[str], signed_by: str) -> httpx.Response:
         """
         Get RPMs by checksums AND signed_by in a single query (server-side filter).
@@ -470,6 +537,26 @@ class PulpClientContentQueryMixin:
             return httpx.Response(
                 200,
                 content=json.dumps({"count": 0, "results": []}).encode("utf-8"),
+                request=EMPTY_RESPONSE_REQUEST,
+            )
+
+        if "," in signed_by:
+            params = {"pkgId__in": ",".join(checksums)}
+            response = await self._chunked_get_async(
+                url,
+                params=params,
+                chunk_param="pkgId__in",
+                chunk_size=DEFAULT_CHUNK_SIZE,
+                timeout=self.timeout,
+                **self.request_params,
+            )
+            self._check_response(response, "get RPM by checksums (signed_by contains comma)")
+            pkg_rows = response.json().get("results", [])
+            filtered = _filter_rpm_results_by_signed_by_labels(pkg_rows, [signed_by])
+            all_results = dedupe_results_by_pulp_href(filtered)
+            return httpx.Response(
+                200,
+                content=json.dumps({"count": len(all_results), "results": all_results}).encode("utf-8"),
                 request=EMPTY_RESPONSE_REQUEST,
             )
 
@@ -525,6 +612,17 @@ class PulpClientContentQueryMixin:
             )
 
         nvr_list = [(n, v, r) for n, v, r in nvrs]
+        if "," in signed_by:
+            resp = await self.async_get_rpm_by_nvr(nvr_list)
+            self._check_response(resp, "get RPM by NVR (signed_by contains comma)")
+            filtered = _filter_rpm_results_by_signed_by_labels(resp.json().get("results", []), [signed_by])
+            deduped = dedupe_results_by_pulp_href(filtered)
+            return httpx.Response(
+                200,
+                content=json.dumps({"count": len(deduped), "results": deduped}).encode("utf-8"),
+                request=EMPTY_RESPONSE_REQUEST,
+            )
+
         try:
             response = await self._fetch_rpm_by_nvr_and_signed_by_combined(nvr_list, signed_by)
             if response.status_code in (400, 500):

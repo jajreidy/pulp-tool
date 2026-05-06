@@ -54,7 +54,10 @@ make check     # Run all checks
 
 ### Documentation for coding agents
 
-- **[CLAUDE.md](CLAUDE.md)** — quick reference, architecture, Konflux/Tekton integration contracts, and links to the LLM workflow (`.cursor/rules/llm-development-guidelines.mdc`).
+- **[AGENTS.md](AGENTS.md)** — canonical agent scaffold; **§ Bootstrap** lists the read-first order (minimizes context thrash).
+- **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** — system design, code map, diagrams, invariants, glossary (living doc).
+- **Cursor rules:** [`.cursor/rules/llm-development-guidelines.mdc`](.cursor/rules/llm-development-guidelines.mdc) (always-on essentials), [`.cursor/rules/llm-development-guidelines-deep.mdc`](.cursor/rules/llm-development-guidelines-deep.mdc) (optional `@` for full PR/lint detail).
+- **[CLAUDE.md](CLAUDE.md)** — Konflux/Tekton downstream contracts (paths, flags, task YAMLs), regression checklist; complements **AGENTS.md** / **ARCHITECTURE.md**.
 - Optional: [AgentReady](https://github.com/ambient-code/agentready) (`agentready assess .`) with [.agentready-config.yaml](.agentready-config.yaml).
 
 ### Dependency lock file

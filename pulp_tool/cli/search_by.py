@@ -481,7 +481,10 @@ def _run_results_json_mode(
 @click.option(
     "--signed-by",
     "signed_by_key",
-    help="Search for RPMs signed by the given key (e.g. key-id-123). Single value only.",
+    help=(
+        "Search for RPMs with this signed_by label value (e.g. key-id-123). "
+        "Value may include commas; quote the argument in the shell if needed."
+    ),
 )
 @click.option(
     "--results-json",

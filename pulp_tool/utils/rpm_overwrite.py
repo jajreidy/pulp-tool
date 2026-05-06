@@ -4,11 +4,11 @@ RPM upload --overwrite: locate existing package units in Pulp and remove them fr
 
 from __future__ import annotations
 
-import hashlib
 import logging
 from typing import TYPE_CHECKING, List, Optional
 
-from pulp_tool.utils.rpm_pulp_search import search_rpms_by_checksums_for_overwrite
+from pulp_tool.utils.rpm_operations import parse_rpm_filename_to_nvra
+from pulp_tool.utils.rpm_pulp_search import search_rpms_by_filenames_for_overwrite
 
 if TYPE_CHECKING:
     from pulp_tool.api.pulp_client import PulpClient
@@ -17,13 +17,21 @@ if TYPE_CHECKING:
 _PULP_HREF_IN_CHUNK = 20
 
 
-def sha256_hex_file(path: str) -> str:
-    """Compute lowercase hex SHA256 of file contents."""
-    digest = hashlib.sha256()
-    with open(path, "rb") as fp:
-        for chunk in iter(lambda: fp.read(1024 * 1024), b""):
-            digest.update(chunk)
-    return digest.hexdigest().lower()
+def _rpm_paths_to_pulp_query_filenames(rpm_paths: List[str]) -> List[str]:
+    """Derive name-version-release.arch.rpm strings from local paths (same basis as search-by --filenames)."""
+    seen: set[tuple[str, str, str, str]] = set()
+    out: List[str] = []
+    for path in rpm_paths:
+        nvra = parse_rpm_filename_to_nvra(path)
+        if nvra is None:
+            logging.warning("Overwrite: skipping unparseable RPM path: %s", path)
+            continue
+        if nvra in seen:
+            continue
+        seen.add(nvra)
+        n, ver, rel, arch = nvra
+        out.append(f"{n}-{ver}-{rel}.{arch}.rpm")
+    return out
 
 
 def filter_rpm_hrefs_in_repository_version(
@@ -60,7 +68,7 @@ def remove_rpms_matching_local_files_from_repository(
     signed_by: Optional[str],
 ) -> int:
     """
-    Search Pulp by SHA256 of local RPM files; remove matching RPM package units from the repo.
+    Search Pulp by NVRA filename from each local path (and signed_by when set); remove matching units from the repo.
 
     Only removes units present in the repository's latest version.
 
@@ -70,13 +78,11 @@ def remove_rpms_matching_local_files_from_repository(
     if not rpm_paths:
         return 0
 
-    checksums = [sha256_hex_file(p) for p in rpm_paths]
-    checksums = list(dict.fromkeys(checksums))
-
-    packages = search_rpms_by_checksums_for_overwrite(client, checksums, signed_by)
+    query_filenames = _rpm_paths_to_pulp_query_filenames(rpm_paths)
+    packages = search_rpms_by_filenames_for_overwrite(client, query_filenames, signed_by)
     candidate_hrefs = list(dict.fromkeys(p.pulp_href for p in packages))
     if not candidate_hrefs:
-        logging.info("Overwrite: no RPM packages in Pulp matched local file checksums")
+        logging.info("Overwrite: no RPM packages in Pulp matched local filenames (and signed_by when set)")
         return 0
 
     repo = client.fetch_rpm_repository_by_href(rpm_repository_href)
@@ -104,5 +110,4 @@ def remove_rpms_matching_local_files_from_repository(
 __all__ = [
     "filter_rpm_hrefs_in_repository_version",
     "remove_rpms_matching_local_files_from_repository",
-    "sha256_hex_file",
 ]

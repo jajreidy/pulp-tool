@@ -96,18 +96,22 @@ dist.pull_data(filename="pkg.rpm", file_url="...", arch="x86_64", artifact_type=
 
 ## Development
 
-**Konflux / Tekton:** pulp-tool runs in RPM build (`import-to-quay`) and release (`push-artifacts-to-storage`) tasks. If you change `upload`, SBOM/artifact behavior, or the container image, read **[CLAUDE.md](CLAUDE.md)** for contracts and regression checks; re-verify **konflux-ci/rpmbuild-pipeline** (`task/import-to-quay.yaml`) and **konflux-ci/release-service-catalog** (`tasks/managed/push-artifacts-to-storage/`). Pipelines evolve (e.g. ORAS or `oras-staging/`); update **CLAUDE.md** when upstream staging changes.
+**Konflux / Tekton:** pulp-tool runs in RPM build (`import-to-quay`) and release (`push-artifacts-to-storage`) tasks. If you change `upload`, SBOM/artifact behavior, or the container image, read **[CLAUDE.md](CLAUDE.md)** for contracts and regression checks; re-verify **konflux-ci/rpmbuild-pipeline** (`task/import-to-quay.yaml`) and **konflux-ci/release-service-catalog** (`tasks/managed/push-artifacts-to-storage/`). Pipelines evolve (e.g. ORAS or `oras-staging/`); update **CLAUDE.md** when upstream staging changes. Architecture overview: **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)**.
 
 ```bash
-make install-dev
-make test
-make test-diff-coverage
-make lint
-make format
-make check
+make install-dev          # editable install + pre-commit install
+make format               # black pulp_tool/ tests/
+make lint                 # black --check, flake8, pylint, mypy
+pre-commit run --all-files   # loop: fix reported issues, re-run until fully green
+make test                 # full suite + coverage (85%+ project threshold)
+git fetch origin
+make test-diff-coverage   # PR gate: 100% diff vs COMPARE_BRANCH (default origin/main)
+make check                # lint + test
 ```
 
-Before committing: `pre-commit run --all-files`. Before a PR: `git fetch origin` and `make test-diff-coverage`. See [CONTRIBUTING.md](CONTRIBUTING.md), [tests/README.md](tests/README.md), and [CLAUDE.md](CLAUDE.md) for tests, Hypothesis, and AI-assisted workflows. Optional [AgentReady](https://github.com/ambient-code/agentready): `pip install agentready && agentready assess .` ([.agentready-config.yaml](.agentready-config.yaml); reports under `.agentready/`, gitignored).
+**Dependency lockfile:** `requirements.txt` is generated from `requirements.in`; after changing dependencies in `pyproject.toml`, run `make lock`.
+
+Before a PR, ensure `pre-commit` has passed and, after `git fetch origin`, `make test-diff-coverage` is green. For AI-assisted work see **[AGENTS.md](AGENTS.md)** (start with § **Bootstrap**), **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)**, and **[CLAUDE.md](CLAUDE.md)** (Konflux contracts); also [CONTRIBUTING.md](CONTRIBUTING.md) and [tests/README.md](tests/README.md). Optional [AgentReady](https://github.com/ambient-code/agentready): `pip install agentready && agentready assess .` ([.agentready-config.yaml](.agentready-config.yaml); reports under `.agentready/`, gitignored).
 
 **Troubleshooting**
 
