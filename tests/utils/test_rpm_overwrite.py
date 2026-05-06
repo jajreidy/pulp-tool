@@ -1,13 +1,16 @@
 """Tests for RPM upload overwrite helpers."""
 
+import logging
+import os
 import tempfile
 from unittest.mock import MagicMock, patch
+
 import pytest
+
 from pulp_tool.models.pulp_api import RpmPackageResponse, TaskResponse
 from pulp_tool.utils.rpm_overwrite import (
     filter_rpm_hrefs_in_repository_version,
     remove_rpms_matching_local_files_from_repository,
-    sha256_hex_file,
 )
 
 
@@ -15,19 +18,16 @@ def _rpm_pkg(href: str, sha: str = "a" * 64) -> RpmPackageResponse:
     return RpmPackageResponse(pulp_href=href, name="pkg", version="1", release="1", arch="x86_64", sha256=sha)
 
 
-class TestSha256HexFile:
+def _touch_rpm(path: str, content: bytes = b"x") -> None:
+    with open(path, "wb") as fp:
+        fp.write(content)
 
-    def test_sha256_hex_file(self) -> None:
-        with tempfile.NamedTemporaryFile(delete=False) as tmp:
-            tmp.write(b"hello")
-            tmp.flush()
-            path = tmp.name
-        try:
-            assert sha256_hex_file(path) == "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824"
-        finally:
-            import os
 
-            os.unlink(path)
+def _valid_rpm_path(name: str = "overwrite-test-pkg-1.0-1.x86_64.rpm", content: bytes = b"x") -> str:
+    tmp = tempfile.mkdtemp()
+    path = os.path.join(tmp, name)
+    _touch_rpm(path, content)
+    return path
 
 
 class TestFilterRpmHrefsInRepositoryVersion:
@@ -60,13 +60,11 @@ class TestRemoveRpmsMatchingLocalFilesFromRepository:
         client.fetch_rpm_repository_by_href.assert_not_called()
 
     def test_no_latest_version_skips_modify(self) -> None:
-        with tempfile.NamedTemporaryFile(suffix=".rpm", delete=False) as tmp:
-            tmp.write(b"z")
-            path = tmp.name
+        path = _valid_rpm_path()
         try:
             client = MagicMock()
             pkg = _rpm_pkg("/pulp/api/v3/content/rpm/packages/nv/")
-            with patch("pulp_tool.utils.rpm_overwrite.search_rpms_by_checksums_for_overwrite", return_value=[pkg]):
+            with patch("pulp_tool.utils.rpm_overwrite.search_rpms_by_filenames_for_overwrite", return_value=[pkg]):
                 repo = MagicMock()
                 repo.latest_version_href = None
                 client.fetch_rpm_repository_by_href.return_value = repo
@@ -74,19 +72,16 @@ class TestRemoveRpmsMatchingLocalFilesFromRepository:
             assert n == 0
             client.modify_repository_content.assert_not_called()
         finally:
-            import os
-
             os.unlink(path)
+            os.rmdir(os.path.dirname(path))
 
     def test_filter_empty_nothing_to_remove_skips_modify(self) -> None:
-        with tempfile.NamedTemporaryFile(suffix=".rpm", delete=False) as tmp:
-            tmp.write(b"w")
-            path = tmp.name
+        path = _valid_rpm_path()
         try:
             client = MagicMock()
             pkg = _rpm_pkg("/pulp/api/v3/content/rpm/packages/out/")
             with (
-                patch("pulp_tool.utils.rpm_overwrite.search_rpms_by_checksums_for_overwrite", return_value=[pkg]),
+                patch("pulp_tool.utils.rpm_overwrite.search_rpms_by_filenames_for_overwrite", return_value=[pkg]),
                 patch("pulp_tool.utils.rpm_overwrite.filter_rpm_hrefs_in_repository_version", return_value=[]),
             ):
                 repo = MagicMock()
@@ -96,34 +91,71 @@ class TestRemoveRpmsMatchingLocalFilesFromRepository:
             assert n == 0
             client.modify_repository_content.assert_not_called()
         finally:
-            import os
-
             os.unlink(path)
+            os.rmdir(os.path.dirname(path))
 
     def test_no_matching_packages_in_pulp(self) -> None:
-        with tempfile.NamedTemporaryFile(suffix=".rpm", delete=False) as tmp:
-            tmp.write(b"x")
-            path = tmp.name
+        path = _valid_rpm_path()
         try:
             client = MagicMock()
-            with patch("pulp_tool.utils.rpm_overwrite.search_rpms_by_checksums_for_overwrite", return_value=[]):
+            with patch("pulp_tool.utils.rpm_overwrite.search_rpms_by_filenames_for_overwrite", return_value=[]):
                 n = remove_rpms_matching_local_files_from_repository(client, [path], "/repo/", None)
             assert n == 0
             client.fetch_rpm_repository_by_href.assert_not_called()
         finally:
-            import os
-
             os.unlink(path)
+            os.rmdir(os.path.dirname(path))
+
+    def test_deduplicates_same_nvra_before_search(self) -> None:
+        tmp = tempfile.mkdtemp()
+        p1 = os.path.join(tmp, "dedup-pkg-1.0-1.fc40.x86_64.rpm")
+        p2 = os.path.join(tmp, "nested", "dedup-pkg-1.0-1.fc40.x86_64.rpm")
+        try:
+            os.makedirs(os.path.dirname(p2), exist_ok=True)
+            _touch_rpm(p1)
+            _touch_rpm(p2)
+            client = MagicMock()
+            captured: list[list[str]] = []
+
+            def _capture(_c: MagicMock, filenames: list[str], _sb: str | None) -> list[RpmPackageResponse]:
+                captured.append(list(filenames))
+                return []
+
+            with patch(
+                "pulp_tool.utils.rpm_overwrite.search_rpms_by_filenames_for_overwrite",
+                side_effect=_capture,
+            ):
+                n = remove_rpms_matching_local_files_from_repository(client, [p1, p2], "/repo/", None)
+            assert n == 0
+            assert captured == [["dedup-pkg-1.0-1.fc40.x86_64.rpm"]]
+        finally:
+            os.unlink(p1)
+            os.unlink(p2)
+            os.rmdir(os.path.join(tmp, "nested"))
+            os.rmdir(tmp)
+
+    def test_unparseable_paths_skipped_warns(self, caplog: pytest.LogCaptureFixture) -> None:
+        tmp = tempfile.mkdtemp()
+        bad = os.path.join(tmp, "foo.rpm")
+        try:
+            _touch_rpm(bad)
+            client = MagicMock()
+            with patch("pulp_tool.utils.rpm_overwrite.search_rpms_by_filenames_for_overwrite", return_value=[]):
+                with caplog.at_level(logging.WARNING):
+                    n = remove_rpms_matching_local_files_from_repository(client, [bad], "/repo/", None)
+            assert n == 0
+            assert any("unparseable RPM path" in r.message for r in caplog.records)
+        finally:
+            os.unlink(bad)
+            os.rmdir(tmp)
 
     def test_removes_when_confirmed_in_repo(self) -> None:
-        with tempfile.NamedTemporaryFile(suffix=".rpm", delete=False) as tmp:
-            tmp.write(b"unique-bytes-for-hash")
-            path = tmp.name
+        path = _valid_rpm_path(content=b"unique-bytes-for-content")
         try:
             client = MagicMock()
             pkg = _rpm_pkg("/pulp/api/v3/content/rpm/packages/xyz/")
             with (
-                patch("pulp_tool.utils.rpm_overwrite.search_rpms_by_checksums_for_overwrite", return_value=[pkg]),
+                patch("pulp_tool.utils.rpm_overwrite.search_rpms_by_filenames_for_overwrite", return_value=[pkg]),
                 patch(
                     "pulp_tool.utils.rpm_overwrite.filter_rpm_hrefs_in_repository_version", return_value=[pkg.pulp_href]
                 ),
@@ -142,19 +174,16 @@ class TestRemoveRpmsMatchingLocalFilesFromRepository:
             client.modify_repository_content.assert_called_once()
             assert client.modify_repository_content.call_args[1]["remove_content_units"] == [pkg.pulp_href]
         finally:
-            import os
-
             os.unlink(path)
+            os.rmdir(os.path.dirname(path))
 
     def test_raises_when_task_failed(self) -> None:
-        with tempfile.NamedTemporaryFile(suffix=".rpm", delete=False) as tmp:
-            tmp.write(b"y")
-            path = tmp.name
+        path = _valid_rpm_path()
         try:
             client = MagicMock()
             pkg = _rpm_pkg("/pulp/api/v3/content/rpm/packages/fail/")
             with (
-                patch("pulp_tool.utils.rpm_overwrite.search_rpms_by_checksums_for_overwrite", return_value=[pkg]),
+                patch("pulp_tool.utils.rpm_overwrite.search_rpms_by_filenames_for_overwrite", return_value=[pkg]),
                 patch(
                     "pulp_tool.utils.rpm_overwrite.filter_rpm_hrefs_in_repository_version", return_value=[pkg.pulp_href]
                 ),
@@ -171,6 +200,5 @@ class TestRemoveRpmsMatchingLocalFilesFromRepository:
                 with pytest.raises(RuntimeError, match="Overwrite remove_content_units task failed"):
                     remove_rpms_matching_local_files_from_repository(client, [path], "/repo/", None)
         finally:
-            import os
-
             os.unlink(path)
+            os.rmdir(os.path.dirname(path))

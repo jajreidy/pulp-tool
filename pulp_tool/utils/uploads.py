@@ -246,7 +246,7 @@ def upload_rpms(
         results_model: PulpResultsModel to update with upload counts
 
     When context has overwrite=True (UploadRpmContext), existing RPM package units in the
-    target repository matching local file checksums are removed before upload.
+    target repository matching local RPM NVRA filenames (and signed_by when set) are removed before upload.
 
     Returns:
         List of created resource hrefs from the add_content operation

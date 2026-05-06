@@ -56,22 +56,22 @@ def search_pulp_by_filenames_with_signed_by(
     return parse_rpm_response(client.get_rpm_by_filenames_and_signed_by(filenames, signed_by))
 
 
-def search_rpms_by_checksums_for_overwrite(
+def search_rpms_by_filenames_for_overwrite(
     client: "PulpClient",
-    checksums: List[str],
+    filenames: List[str],
     signed_by: Optional[str],
 ) -> List[RpmPackageResponse]:
     """
-    Find RPM content units by SHA256 (pkgId), optionally scoped with signed_by.
+    Find RPM content units by NVRA filename (name-version-release.arch.rpm), optionally scoped with signed_by.
 
     Used by upload --overwrite to locate packages to remove before re-uploading.
     """
-    if not checksums:
+    if not filenames:
         return []
     sb = signed_by.strip() if signed_by and signed_by.strip() else None
     if sb:
-        return search_pulp_for_rpms_with_signed_by(client, checksums, sb)
-    return search_pulp_for_rpms(client, checksums)
+        return search_pulp_by_filenames_with_signed_by(client, filenames, sb)
+    return search_pulp_by_filenames(client, filenames)
 
 
 __all__ = [
@@ -81,5 +81,5 @@ __all__ = [
     "search_pulp_by_signed_by",
     "search_pulp_for_rpms",
     "search_pulp_for_rpms_with_signed_by",
-    "search_rpms_by_checksums_for_overwrite",
+    "search_rpms_by_filenames_for_overwrite",
 ]

@@ -35,4 +35,4 @@ What did we decide?
 What becomes easier or harder?
 ```
 
-See also [CLAUDE.md](../../CLAUDE.md) for Konflux-specific integration notes (Tekton tasks, paths, flags).
+See also [AGENTS.md](../../AGENTS.md), [ARCHITECTURE.md](../ARCHITECTURE.md), and [CLAUDE.md](../../CLAUDE.md) for agent commands, system architecture, and Konflux integration (Tekton tasks, paths, flags).
