@@ -238,10 +238,13 @@ class TestPulpClient:
             client = PulpClient(config_with_relative, config_path=config_file)
             _ = client.cert
             assert client._cert_temp_dir is not None
-            client._cert_temp_dir.cleanup = Mock(side_effect=OSError("cleanup failed"))
+            cert_tmp = client._cert_temp_dir
+            real_cleanup = cert_tmp.cleanup
+            cert_tmp.cleanup = Mock(side_effect=OSError("cleanup failed"))
             client.close()
             assert client._cert_temp_dir is None
             assert client._cert_paths is None
+            real_cleanup()
 
     def test_cert_property_with_existing_relative_paths(self, mock_config, tmp_path) -> None:
         """Test cert property when relative paths exist in current directory."""

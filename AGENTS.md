@@ -43,7 +43,7 @@ Copy-paste **`make` / pre-commit** flow, **`make lock`** for dependencies, and P
 
 ## PR and commit
 
-- PR body: align with [.github/PULL_REQUEST_TEMPLATE.md](.github/PULL_REQUEST_TEMPLATE.md).
+- PR body: use [.github/PULL_REQUEST_TEMPLATE.md](.github/PULL_REQUEST_TEMPLATE.md) **as-is**—same section headings and checklist items; fill in content under each section only.
 - AI-assisted commits: [.github/commit-message-template.txt](.github/commit-message-template.txt), `Assisted-By:` + `Signed-off-by:` — details in [CONTRIBUTING.md](CONTRIBUTING.md#ai-assisted-commits).
 - Essentials (always-on): [`.cursor/rules/llm-development-guidelines.mdc`](.cursor/rules/llm-development-guidelines.mdc); extended reference: [`.cursor/rules/llm-development-guidelines-deep.mdc`](.cursor/rules/llm-development-guidelines-deep.mdc) and [CONTRIBUTING.md](CONTRIBUTING.md).
 

@@ -115,7 +115,7 @@ make lint
 # Or individually:
 flake8 pulp_tool/ tests/
 pylint pulp_tool/ --errors-only
-mypy pulp_tool/ --show-error-codes
+mypy pulp_tool/ tests/ --show-error-codes
 ```
 
 ### Type Annotations

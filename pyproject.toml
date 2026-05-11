@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=82.0.1", "wheel", "setuptools_scm[toml]>=10.0.5"]
+requires = ["setuptools>=82.0.1", "wheel>=0.47.0", "setuptools_scm[toml]>=10.0.5"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -29,7 +29,7 @@ classifiers = [
 requires-python = ">=3.12"
 dependencies = [
     "httpx>=0.28.1",
-    "pydantic>=2.13.0",
+    "pydantic>=2.13.4",
     "click>=8.3.2",
     "python-json-logger>=3.2.1,<4",
 ]
@@ -47,13 +47,13 @@ dev = [
     # Code formatting and linting
     "black>=26.3.1",
     "flake8>=7.3.0",
-    "mypy>=1.20.1",
+    "mypy>=2.0.0",
     "pylint>=4.0.5",
     # Pre-commit hooks
-    "pre-commit>=4.5.1",
+    "pre-commit>=4.6.0",
     # Build tools
     "setuptools>=82.0.1",
-    "wheel",
+    "wheel>=0.47.0",
     "setuptools-scm[toml]>=8.0",
     # Dependency CVE audit (local: make audit). When Pygments >2.19.2 is on PyPI, add
     # "pygments>=2.19.3" here and remove CVE-2026-4539 ignores from .github/workflows/security-scan.yml.
@@ -194,8 +194,9 @@ disable_error_code = ["attr-defined"]
 module = "pulp_tool.cli.*"
 disable_error_code = ["attr-defined"]
 
-# Tests often assert on invalid inputs, mocks, and bulk-added -> None on fixtures;
-# keep production (pulp_tool/) strict via lint-mypy on pulp_tool/ only.
+# Tests often assert on invalid inputs, mocks, and bulk-added -> None on fixtures.
+# lint-mypy runs mypy on pulp_tool/ and tests/; production code uses the overrides above,
+# tests use this relaxed block (see Makefile lint-mypy).
 [[tool.mypy.overrides]]
 module = "tests.*"
 disable_error_code = [
@@ -224,3 +225,7 @@ markers = [
 
 [tool.coverage.report]
 fail_under = 85
+
+# Keep transitive pin aligned with closed MintMaker PRs until a deliberate bump.
+[tool.uv]
+constraint-dependencies = ["markdown-it-py==4.1.0"]

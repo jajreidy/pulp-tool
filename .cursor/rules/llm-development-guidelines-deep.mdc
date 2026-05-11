@@ -32,14 +32,18 @@ When the turn involved **substantive code or repository changes** that could bec
 
 - **Only after the user confirms** (in the same thread or a follow-up message), provide a paste-ready PR description **and**, if applicable, apply the `CHANGELOG.md` edits for that PR in the same turn.
 
-**PR template:** The repository defines **`.github/PULL_REQUEST_TEMPLATE.md`** (Summary, How to test, Checklist, Notes for reviewers). When generating paste-ready PR text, **align with that structure**—either use those section headings and fill them, or ensure the same information appears so maintainers can paste into GitHub’s PR composer with minimal editing.
+**PR template (mandatory structure):** The file **`.github/PULL_REQUEST_TEMPLATE.md`** defines the canonical body. When generating paste-ready PR text, **reproduce that skeleton exactly**:
 
-When you do generate it, use a clear heading such as `### PR description (GitHub)` and write in **complete sentences** with good grammar. Include whatever applies:
+1. `## Summary` — replace the HTML comment with the real summary (what/why).
+2. `## How to test` — replace the comment with concrete commands or steps.
+3. `## Checklist` — keep all three `- [ ]` lines **unchanged** (contributor checks them in GitHub).
+4. `## Notes for reviewers` — optional content; delete the HTML comment or add notes.
 
-- **What**: Concise summary of the change.
-- **Why**: Motivation or problem solved.
-- **How to test**: Commands or scenarios (for example `make lint`, `make test`, manual steps).
-- **Notes for reviewers**: Risks, follow-ups, or design choices (optional).
+Do **not** rename sections, omit the checklist, or use a different heading outline unless the user explicitly overrides. Extra prose is fine **inside** those sections only.
+
+When you deliver it in chat, you may prefix with `### PR description (GitHub)` for clarity, but the block the user pastes into GitHub should start with `## Summary` per the template.
+
+When you do generate it, write in **complete sentences** with good grammar.
 
 **Suggested commit message:** When the user asks for a PR message or confirms PR materials, also provide a **paste-ready `git commit` message** under `### Suggested commit message` using this shape (subject line as conventional commit; blank line; then trailers):
 
@@ -127,7 +131,7 @@ This repository uses multiple linting tools to ensure code quality. All tools ar
 
 - **Purpose**: Static type checking
 - **Configuration**: Python 3.12, ignore missing imports, show error codes
-- **Run manually**: `make lint-mypy` or `mypy pulp_tool/ --show-error-codes`
+- **Run manually**: `make lint-mypy` or `mypy pulp_tool/ tests/ --show-error-codes`
 - **Config file**: `pyproject.toml` (`[tool.mypy]` section)
 - **Note**: Some modules have type checking disabled (see `[[tool.mypy.overrides]]`)
 

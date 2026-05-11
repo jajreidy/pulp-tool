@@ -15,7 +15,7 @@ alwaysApply: true
 ## Pull requests and CHANGELOG
 
 - **Do not** paste a full PR body every turn. If the turn might become a PR, **ask once** if the user wants paste-ready PR text.
-- **After they confirm:** provide PR text aligned with `.github/PULL_REQUEST_TEMPLATE.md`, a suggested commit (`Assisted-By:` + `Signed-off-by:` per `.github/commit-message-template.txt`), and **`CHANGELOG.md`** under `[Unreleased]` when notable — **same turn**. Full templates: **deep** rule § *GitHub PR description*.
+- **After they confirm:** provide PR text that **follows `.github/PULL_REQUEST_TEMPLATE.md` verbatim**: use the same **`##` headings** in order (`## Summary`, `## How to test`, `## Checklist`, `## Notes for reviewers`), keep the **checklist lines** as written (typically unchecked `- [ ]` items), then fill **Summary** / **How to test** / **Notes**—do not substitute a different outline. Also provide a suggested commit (`Assisted-By:` + `Signed-off-by:` per `.github/commit-message-template.txt`), and **`CHANGELOG.md`** under `[Unreleased]` when notable — **same turn**. Full detail: **deep** rule § *GitHub PR description*.
 - **No** `CHANGELOG` edits on every debug fix unless the user asks.
 - **Merge gate:** **100% diff coverage** on the PR diff (`make test-diff-coverage`). Overall project % is separate.
 

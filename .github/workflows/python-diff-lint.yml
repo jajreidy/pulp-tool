@@ -56,7 +56,7 @@ jobs:
 
       - name: Type check with Mypy
         id: mypy
-        run: mypy pulp_tool tests
+        run: mypy pulp_tool tests --show-error-codes
         continue-on-error: true
 
       - name: Check for linting failures

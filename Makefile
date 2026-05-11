@@ -67,7 +67,7 @@ lint-pylint:
 	python3 -m pylint pulp_tool/ --errors-only
 
 lint-mypy:
-	python3 -m mypy pulp_tool/ --show-error-codes
+	python3 -m mypy pulp_tool/ tests/ --show-error-codes
 
 # Formatting
 format:

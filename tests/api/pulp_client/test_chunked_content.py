@@ -59,7 +59,11 @@ class TestPulpClient:
         params = {"large_param": large_param}
         httpx_mock.get("https://test.com/api").mock(return_value=httpx.Response(200, json={"results": [], "count": 0}))
 
-        async def _gather_returns_empty(*_a: object, **_kw: object) -> list:
+        async def _gather_returns_empty(*awaitables: object, **_kw: object) -> list:
+            # Real gather would drive these coroutines; closing avoids "never awaited" warnings.
+            for item in awaitables:
+                if asyncio.iscoroutine(item):
+                    item.close()
             return []
 
         with patch("pulp_tool.api.pulp_client.chunked_get.asyncio.gather", side_effect=_gather_returns_empty):

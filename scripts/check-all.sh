@@ -39,7 +39,7 @@ echo ""
 
 # Mypy type checking
 echo "4. Running Mypy type checking..."
-python3 -m mypy pulp_tool/ --show-error-codes || {
+python3 -m mypy pulp_tool/ tests/ --show-error-codes || {
     echo "❌ Mypy type checking failed."
     exit 1
 }
