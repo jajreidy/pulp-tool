@@ -6,10 +6,11 @@ import asyncio
 import json
 import logging
 from functools import lru_cache
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 import httpx
 
+from ...models.pulp_label_values import normalize_signed_by_value_for_pulp
 from ...utils.artifact_detection import rpm_packages_letter_and_basename
 from ...utils.constants import DEFAULT_CHUNK_SIZE, SUPPORTED_ARCHITECTURES
 from ...utils.rpm_operations import parse_rpm_filename_to_nvr
@@ -18,13 +19,31 @@ from ...utils.validation import sanitize_build_id_for_repository, validate_build
 from .helpers import EMPTY_RESPONSE_REQUEST, dedupe_results_by_pulp_href
 
 
+def _normalize_signed_by_query_values(values: Sequence[Optional[str]]) -> List[str]:
+    """Apply the same signed_by substitution as upload so ``pulp_label_select`` queries work server-side."""
+    result: List[str] = []
+    for v in values:
+        if v is None:
+            continue
+        s = str(v).strip()
+        if not s:
+            continue
+        result.append(normalize_signed_by_value_for_pulp(s))
+    return result
+
+
+def _normalize_signed_by_query_string(signed_by: str) -> str:
+    s = str(signed_by).strip()
+    return normalize_signed_by_value_for_pulp(s) if s else s
+
+
 def _filter_rpm_results_by_signed_by_labels(results: List[Any], signed_by_values: List[str]) -> List[Any]:
     """
     Keep RPM JSON rows whose pulp_labels.signed_by equals one of signed_by_values (exact, stripped).
 
-    Used when Pulp's label filter cannot represent the value: LabelFilter splits ``pulp_label_select``
-    on commas before parsing terms, so a single label value that contains a comma must be matched
-    client-side (see Pulp ``LabelFilter`` and "Manage labels" docs).
+    Used when Pulp's label filter cannot represent the value: ``pulp_label_select`` splits on commas
+    before parsing terms, and pulpcore rejects storing label values containing comma or parentheses—
+    clients may still pass raw strings when calling helpers, so match those client-side when needed.
     """
     wanted = {v.strip() for v in signed_by_values if v is not None and str(v).strip()}
     if not wanted:
@@ -37,14 +56,21 @@ def _filter_rpm_results_by_signed_by_labels(results: List[Any], signed_by_values
         raw = labels.get("signed_by")
         if raw is None:
             continue
-        if str(raw).strip() in wanted:
+        raw_s = str(raw).strip()
+        if raw_s in wanted or normalize_signed_by_value_for_pulp(raw_s) in wanted:
             out.append(item)
     return out
 
 
-def _signed_by_values_require_client_label_filter(signed_by_values: List[str]) -> bool:
-    """True if any value contains a comma and must not be passed through ``pulp_label_select=``."""
-    return any("," in (v or "") for v in signed_by_values)
+def _signed_by_values_require_client_label_filter(signed_by_values: Sequence[Optional[str]]) -> bool:
+    """True if any value must not be embedded in ``pulp_label_select=`` (comma or parentheses)."""
+    for v in signed_by_values:
+        if v is None:
+            continue
+        s = str(v)
+        if "," in s or "(" in s or ")" in s:
+            return True
+    return False
 
 
 class PulpClientContentQueryMixin:
@@ -451,12 +477,20 @@ class PulpClientContentQueryMixin:
                 request=EMPTY_RESPONSE_REQUEST,
             )
 
-        if _signed_by_values_require_client_label_filter(signed_by_values):
-            return await self._async_get_rpm_by_signed_by_paginate_filter_labels(signed_by_values)
+        normalized_signed = _normalize_signed_by_query_values(signed_by_values)
+        if not normalized_signed:
+            return httpx.Response(
+                200,
+                content=json.dumps({"count": 0, "results": []}).encode("utf-8"),
+                request=EMPTY_RESPONSE_REQUEST,
+            )
+
+        if _signed_by_values_require_client_label_filter(normalized_signed):
+            return await self._async_get_rpm_by_signed_by_paginate_filter_labels(normalized_signed)
 
         # Pulp limits q expression complexity to 8. (A OR B OR C OR D) = 7.
         chunk_size = 4
-        chunks = [signed_by_values[i : i + chunk_size] for i in range(0, len(signed_by_values), chunk_size)]
+        chunks = [normalized_signed[i : i + chunk_size] for i in range(0, len(normalized_signed), chunk_size)]
 
         if len(chunks) == 1:
             q_parts = [f'pulp_label_select="signed_by={v}"' for v in chunks[0]]
@@ -540,7 +574,9 @@ class PulpClientContentQueryMixin:
                 request=EMPTY_RESPONSE_REQUEST,
             )
 
-        if "," in signed_by:
+        signed_by_q = _normalize_signed_by_query_string(signed_by)
+
+        if _signed_by_values_require_client_label_filter([signed_by_q]):
             params = {"pkgId__in": ",".join(checksums)}
             response = await self._chunked_get_async(
                 url,
@@ -550,9 +586,9 @@ class PulpClientContentQueryMixin:
                 timeout=self.timeout,
                 **self.request_params,
             )
-            self._check_response(response, "get RPM by checksums (signed_by contains comma)")
+            self._check_response(response, "get RPM by checksums (signed_by client label filter)")
             pkg_rows = response.json().get("results", [])
-            filtered = _filter_rpm_results_by_signed_by_labels(pkg_rows, [signed_by])
+            filtered = _filter_rpm_results_by_signed_by_labels(pkg_rows, [signed_by_q])
             all_results = dedupe_results_by_pulp_href(filtered)
             return httpx.Response(
                 200,
@@ -563,7 +599,7 @@ class PulpClientContentQueryMixin:
         # Pulp limits q expression complexity to 8. (A OR B OR C) AND pulp_label_select = 7.
         chunk_size = 3
         chunks = [checksums[i : i + chunk_size] for i in range(0, len(checksums), chunk_size)]
-        signed_by_filter = f'pulp_label_select="signed_by={signed_by}"'
+        signed_by_filter = f'pulp_label_select="signed_by={signed_by_q}"'
 
         if len(chunks) == 1:
             pkg_parts = [f'pkgId="{c}"' for c in chunks[0]]
@@ -612,10 +648,11 @@ class PulpClientContentQueryMixin:
             )
 
         nvr_list = [(n, v, r) for n, v, r in nvrs]
-        if "," in signed_by:
+        signed_by_q = _normalize_signed_by_query_string(signed_by)
+        if _signed_by_values_require_client_label_filter([signed_by_q]):
             resp = await self.async_get_rpm_by_nvr(nvr_list)
-            self._check_response(resp, "get RPM by NVR (signed_by contains comma)")
-            filtered = _filter_rpm_results_by_signed_by_labels(resp.json().get("results", []), [signed_by])
+            self._check_response(resp, "get RPM by NVR (signed_by client label filter)")
+            filtered = _filter_rpm_results_by_signed_by_labels(resp.json().get("results", []), [signed_by_q])
             deduped = dedupe_results_by_pulp_href(filtered)
             return httpx.Response(
                 200,
@@ -624,7 +661,7 @@ class PulpClientContentQueryMixin:
             )
 
         try:
-            response = await self._fetch_rpm_by_nvr_and_signed_by_combined(nvr_list, signed_by)
+            response = await self._fetch_rpm_by_nvr_and_signed_by_combined(nvr_list, signed_by_q)
             if response.status_code in (400, 500):
                 raise httpx.HTTPStatusError(
                     f"Combined query returned {response.status_code}",
@@ -633,7 +670,7 @@ class PulpClientContentQueryMixin:
                 )
             return response
         except (httpx.HTTPStatusError, httpx.HTTPError, ValueError):
-            return await self._fetch_rpm_by_nvr_and_signed_by_fallback(nvr_list, signed_by)
+            return await self._fetch_rpm_by_nvr_and_signed_by_fallback(nvr_list, signed_by_q)
 
     async def _fetch_rpm_by_nvr_and_signed_by_combined(
         self, nvrs: List[Tuple[str, str, str]], signed_by: str

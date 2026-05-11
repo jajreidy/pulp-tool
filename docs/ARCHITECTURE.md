@@ -100,7 +100,7 @@ No application database: state is on Pulp and in generated JSON artifacts.
 
 1. **Single orchestration path** to production upload behavior: CLI and `UploadService` go through `PulpHelper` / shared helpers.
 2. **Konflux contracts** (flags, paths, skip-vs-fail) must stay aligned with linked upstream task YAMLs when changing `upload` or the image.
-3. **Labels and APIs:** RPM queries use Pulp filters; some label values (e.g. `signed_by` with commas) cannot be expressed in server-side `pulp_label_select`—client-side filtering is required where implemented.
+3. **Labels and APIs:** Pulpcore forbids `,`, `(`, and `)` in label **values**; `signed_by` replaces `,` with `:` and maps parentheses to `[` / `]` before upload and before RPM queries, so `pulp_label_select` is usually applied server-side together with checksum or NVR filters. Client-side label matching remains a fallback when a query cannot be expressed safely.
 4. **Merge gate:** PR diffs require **100% diff coverage** (`make test-diff-coverage`), not only line coverage in unchanged code.
 
 ---

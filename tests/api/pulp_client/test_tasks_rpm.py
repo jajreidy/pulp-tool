@@ -216,13 +216,13 @@ class TestPulpClient:
         assert result.json()["results"][0]["pulp_labels"]["signed_by"] == "key-123"
 
     def test_get_rpm_by_checksums_and_signed_by_comma_in_value(self, mock_pulp_client, httpx_mock) -> None:
-        """Pulp cannot express comma-containing signed_by in pulp_label_select; use pkgId + client filter."""
+        """Comma in signed_by is normalized; combined pkgId + pulp_label_select query is server-side."""
         httpx_mock.post("https://sso.redhat.com/auth/realms/redhat-external/protocol/openid-connect/token").mock(
             return_value=httpx.Response(200, json={"access_token": "test-token", "expires_in": 3600})
         )
         cs_a = "a" * 64
         cs_b = "b" * 64
-        httpx_mock.get(re.compile(".*content/rpm/packages/.*pkgId__in.*")).mock(
+        httpx_mock.get(re.compile(".*content/rpm/packages/.*q=.*pkgId.*signed_by")).mock(
             return_value=httpx.Response(
                 200,
                 json={
@@ -230,12 +230,7 @@ class TestPulpClient:
                         {
                             "pulp_href": "/pkg/a/",
                             "pkgId": cs_a,
-                            "pulp_labels": {"signed_by": "org,key-a"},
-                        },
-                        {
-                            "pulp_href": "/pkg/b/",
-                            "pkgId": cs_b,
-                            "pulp_labels": {"signed_by": "other"},
+                            "pulp_labels": {"signed_by": "org:key-a"},
                         },
                     ]
                 },
@@ -246,28 +241,18 @@ class TestPulpClient:
         assert len(result.json()["results"]) == 1
         assert result.json()["results"][0]["pulp_href"] == "/pkg/a/"
 
-    def test_get_rpm_by_signed_by_comma_in_value_paginates(self, mock_pulp_client, httpx_mock) -> None:
-        """Label filter with comma uses unpaginated list + match signed_by on each page."""
+    def test_get_rpm_by_signed_by_comma_in_value_uses_server_side_query(self, mock_pulp_client, httpx_mock) -> None:
+        """Comma in signed_by is normalized to ':' so pulp_label_select runs in one request."""
         httpx_mock.post("https://sso.redhat.com/auth/realms/redhat-external/protocol/openid-connect/token").mock(
             return_value=httpx.Response(200, json={"access_token": "test-token", "expires_in": 3600})
         )
-        httpx_mock.get(re.compile(".*content/rpm/packages/.*")).mock(
-            side_effect=[
-                httpx.Response(
-                    200,
-                    json={
-                        "results": [{"pulp_href": "/x/", "pulp_labels": {"signed_by": "other"}}],
-                        "next": "https://pulp.example.com/pulp/api/v3/content/rpm/packages/?offset=100",
-                    },
-                ),
-                httpx.Response(
-                    200,
-                    json={
-                        "results": [{"pulp_href": "/y/", "pulp_labels": {"signed_by": "id1,id2"}}],
-                        "next": None,
-                    },
-                ),
-            ]
+        httpx_mock.get(re.compile(".*content/rpm/packages/.*q=.*signed_by")).mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "results": [{"pulp_href": "/y/", "pulp_labels": {"signed_by": "id1:id2"}}],
+                },
+            )
         )
         result = mock_pulp_client.get_rpm_by_signed_by(["id1,id2"])
         assert result.status_code == 200
@@ -275,7 +260,7 @@ class TestPulpClient:
         assert result.json()["results"][0]["pulp_href"] == "/y/"
 
     def test_get_rpm_by_filenames_and_signed_by_comma_in_value(self, mock_pulp_client, httpx_mock) -> None:
-        """Filenames + signed_by with comma skips broken pulp_label_select q; NVR query then label filter."""
+        """Filenames + signed_by normalizes comma; NVR + pulp_label_select query is server-side."""
         httpx_mock.post("https://sso.redhat.com/auth/realms/redhat-external/protocol/openid-connect/token").mock(
             return_value=httpx.Response(200, json={"access_token": "test-token", "expires_in": 3600})
         )
@@ -287,12 +272,7 @@ class TestPulpClient:
                         {
                             "pulp_href": "/pkg/good/",
                             "location_href": "pkg-1.0-1.x86_64.rpm",
-                            "pulp_labels": {"signed_by": "sig,a"},
-                        },
-                        {
-                            "pulp_href": "/pkg/bad/",
-                            "location_href": "pkg-1.0-1.x86_64.rpm",
-                            "pulp_labels": {"signed_by": "other"},
+                            "pulp_labels": {"signed_by": "sig:a"},
                         },
                     ]
                 },
@@ -548,6 +528,94 @@ class TestPulpClient:
         assert result.status_code == 200
         assert len(result.json()["results"]) == 9
 
+    def test_normalize_signed_by_query_values_skips_none_and_blank(self) -> None:
+        from pulp_tool.api.pulp_client.content_query import _normalize_signed_by_query_values
+
+        assert _normalize_signed_by_query_values([None, "", "  ", "a,b"]) == ["a:b"]
+
+    def test_signed_by_values_require_client_filter_detects_comma_and_paren(self) -> None:
+        from pulp_tool.api.pulp_client.content_query import _signed_by_values_require_client_label_filter
+
+        assert _signed_by_values_require_client_label_filter(["plain"]) is False
+        assert _signed_by_values_require_client_label_filter(["a,b"]) is True
+        assert _signed_by_values_require_client_label_filter(["a(b"]) is True
+
+    def test_get_rpm_by_signed_by_blank_only_normalized_returns_empty(self, mock_pulp_client) -> None:
+        result = mock_pulp_client.get_rpm_by_signed_by(["", "  "])
+        assert result.json()["count"] == 0
+        assert result.json()["results"] == []
+
+    def test_get_rpm_by_signed_by_paginate_when_client_filter_forced(self, mock_pulp_client, httpx_mock) -> None:
+        """Fallback path: list RPM pages and match signed_by labels locally."""
+        httpx_mock.post("https://sso.redhat.com/auth/realms/redhat-external/protocol/openid-connect/token").mock(
+            return_value=httpx.Response(200, json={"access_token": "test-token", "expires_in": 3600})
+        )
+        httpx_mock.get(re.compile(".*content/rpm/packages/.*")).mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "results": [{"pulp_href": "/z/", "pulp_labels": {"signed_by": "key-1"}}],
+                    "next": None,
+                },
+            )
+        )
+        with patch(
+            "pulp_tool.api.pulp_client.content_query._signed_by_values_require_client_label_filter",
+            return_value=True,
+        ):
+            result = mock_pulp_client.get_rpm_by_signed_by(["key-1"])
+        assert result.status_code == 200
+        assert len(result.json()["results"]) == 1
+
+    def test_get_rpm_by_checksums_and_signed_by_client_filter_when_forced(self, mock_pulp_client, httpx_mock) -> None:
+        httpx_mock.post("https://sso.redhat.com/auth/realms/redhat-external/protocol/openid-connect/token").mock(
+            return_value=httpx.Response(200, json={"access_token": "test-token", "expires_in": 3600})
+        )
+        cs = "a" * 64
+        httpx_mock.get(re.compile(".*content/rpm/packages/.*pkgId__in.*")).mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "results": [
+                        {"pulp_href": "/p/", "pkgId": cs, "pulp_labels": {"signed_by": "sb-val"}},
+                    ]
+                },
+            )
+        )
+        with patch(
+            "pulp_tool.api.pulp_client.content_query._signed_by_values_require_client_label_filter",
+            return_value=True,
+        ):
+            result = mock_pulp_client.get_rpm_by_checksums_and_signed_by([cs], "sb-val")
+        assert result.status_code == 200
+        assert len(result.json()["results"]) == 1
+
+    def test_get_rpm_by_filenames_and_signed_by_client_filter_when_forced(self, mock_pulp_client, httpx_mock) -> None:
+        httpx_mock.post("https://sso.redhat.com/auth/realms/redhat-external/protocol/openid-connect/token").mock(
+            return_value=httpx.Response(200, json={"access_token": "test-token", "expires_in": 3600})
+        )
+        httpx_mock.get(re.compile(".*content/rpm/packages/.*name=pkg")).mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "results": [
+                        {
+                            "pulp_href": "/good/",
+                            "location_href": "pkg-1.0-1.x86_64.rpm",
+                            "pulp_labels": {"signed_by": "sb-f"},
+                        },
+                    ]
+                },
+            )
+        )
+        with patch(
+            "pulp_tool.api.pulp_client.content_query._signed_by_values_require_client_label_filter",
+            return_value=True,
+        ):
+            result = mock_pulp_client.get_rpm_by_filenames_and_signed_by(["pkg-1.0-1.x86_64.rpm"], "sb-f")
+        assert result.status_code == 200
+        assert len(result.json()["results"]) == 1
+
     def test_get_rpm_by_unsigned_checksums_chunking(self, mock_pulp_client, httpx_mock) -> None:
         """Test get_rpm_by_unsigned_checksums with 25+ items triggers chunking and merges results."""
         httpx_mock.post("https://sso.redhat.com/auth/realms/redhat-external/protocol/openid-connect/token").mock(
@@ -592,3 +660,16 @@ class TestSignedByLabelFilterHelpers:
         out = _filter_rpm_results_by_signed_by_labels(rows, ["keep,this"])
         assert len(out) == 1
         assert out[0]["pulp_href"] == "/3/"
+
+    def test_filter_matches_row_when_wanted_is_normalized_form(self) -> None:
+        from pulp_tool.api.pulp_client.content_query import _filter_rpm_results_by_signed_by_labels
+
+        rows = [{"pulp_href": "/k/", "pulp_labels": {"signed_by": "keep,this"}}]
+        out = _filter_rpm_results_by_signed_by_labels(rows, ["keep:this"])
+        assert len(out) == 1
+        assert out[0]["pulp_href"] == "/k/"
+
+    def test_require_client_filter_skips_none_entries(self) -> None:
+        from pulp_tool.api.pulp_client.content_query import _signed_by_values_require_client_label_filter
+
+        assert _signed_by_values_require_client_label_filter([None]) is False

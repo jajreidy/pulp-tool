@@ -96,8 +96,8 @@ def _extract_build_id_namespace_from_results_json(results_json_path: Path) -> Tu
 @click.option(
     "--signed-by",
     help=(
-        "Add pulp_label signed_by and upload to separate signed repos/distributions "
-        "(value may include commas; quote the argument in the shell if needed)"
+        "Add pulp_label signed_by and upload to separate signed repos/distributions. "
+        "Commas become ':' and '(' / ')' become '[' / ']' so Pulp accepts the label."
     ),
 )
 @click.option(

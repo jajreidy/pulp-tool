@@ -89,6 +89,27 @@ class TestUploadRpmContext:
         assert context.artifact_results is None
         assert context.sbom_results is None
 
+    def test_upload_rpm_context_signed_by_gpg_user_id_normalized(self) -> None:
+        """Pulp rejects commas/parens in labels; substitute for storage."""
+        raw = "Red Hat Test (release,) <sec@example.com>"
+        expected = "Red Hat Test [release:] <sec@example.com>"
+        context = UploadRpmContext(
+            build_id="b",
+            date_str="2024-01-15",
+            namespace="ns",
+            signed_by=raw,
+        )
+        assert context.signed_by == expected
+
+    def test_upload_rpm_context_signed_by_whitespace_only_becomes_none(self) -> None:
+        context = UploadRpmContext(
+            build_id="b",
+            date_str="2024-01-15",
+            namespace="ns",
+            signed_by="  \t  ",
+        )
+        assert context.signed_by is None
+
     def test_create_upload_rpm_context_full(self) -> None:
         """Test creating UploadRpmContext with all fields."""
         context = UploadRpmContext(

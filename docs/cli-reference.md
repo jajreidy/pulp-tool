@@ -15,7 +15,7 @@ Upload RPM packages, logs, and SBOM files.
 | `--sbom-path` | No | Path to SBOM file |
 | `--results-json` | No | Path to `pulp_results.json`; upload artifacts from this file (files resolved from its directory or `--files-base-path`). When used, `--build-id` and `--namespace` are optional (extracted from artifact labels in the JSON) |
 | `--files-base-path` | No | Base path for resolving artifact keys to file paths (default: directory of `--results-json`; requires `--results-json`) |
-| `--signed-by` | No | Add `signed_by` pulp_label and upload to separate signed repos/distributions. The label value may contain commas; quote the argument in the shell if needed (e.g. `--signed-by 'org, key-id'`) |
+| `--signed-by` | No | Add `signed_by` pulp_label and upload to separate signed repos/distributions. Pulp rejects `,`, `(`, and `)` in label values; the tool replaces `,` with `:` and `(` / `)` with `[` / `]`. Pass the same raw `--signed-by` string when using `search-by`. |
 | `--overwrite` | No | RPM only: before upload, find packages in the target RPM repo by each local RPM’s NVRA filename (and `signed_by` when set) and remove them via `remove_content_units` |
 | `--target-arch-repo` | No | RPM only: use each architecture as the RPM repo/distribution base path (e.g. `…/pulp-content/{namespace}/x86_64/`) instead of `{build}/rpms`; logs, SBOM, and generic artifacts stay `{build}/…`. With `--signed-by`, paths stay `{arch}/` only (`signed_by` is a label). Repos are created per arch at upload time. Works with `--results-json` |
 | `--artifact-results` | No | Comma-separated paths or folder for local `pulp_results.json` |
@@ -24,7 +24,7 @@ Upload RPM packages, logs, and SBOM files.
 
 **Upload from results JSON:** When `--results-json` is used, artifact keys from the JSON are resolved to file paths (default: same directory as the JSON; override with `--files-base-path`). Files are classified by extension (`.rpm` → rpms, `.log` → logs, SBOM extensions → sbom, else → artifacts) and uploaded to the appropriate repository. `--rpm-path` and `--sbom-path` are ignored in this mode.
 
-**Signed-by:** When `--signed-by` is set, a `signed_by` label is added to RPMs only, and RPMs are stored in a separate `rpms-signed` repository with its own distribution. Logs and SBOMs are never signed and always go to the standard repositories. The value is stored as a single label string; if it includes commas, quote the flag value so the shell does not split it.
+**Signed-by:** When `--signed-by` is set, a `signed_by` label is added to RPMs only, and RPMs are stored in a separate `rpms-signed` repository with its own distribution. Logs and SBOMs are never signed and always go to the standard repositories. For Pulpcore’s label rules, `,` is replaced with `:` and parentheses with `[` / `]` so typical GnuPG-style strings can be stored. Use the same raw string for `search-by --signed-by`. Quote the argument in the shell if it contains spaces.
 
 **Overwrite:** When `--overwrite` is set, for each RPM about to be uploaded the tool searches Pulp by NVRA filename derived from the basename (same basis as `search-by --filenames`), scoped with `signed_by` when `--signed-by` is set. It keeps only matches that exist in the target RPM repository’s latest version, then calls the repository modify API with `remove_content_units` before uploading and adding the new RPMs.
 
@@ -95,9 +95,9 @@ Search RPM content by checksum, filename, or signed_by label. Output is JSON.
 **Constraints:**
 
 - `checksums` and `filenames` are mutually exclusive
-- `--signed-by` takes one argument (one label value). The value may contain commas; quote it in the shell when needed
-- When `signed_by` is combined with checksums or filenames, a **comma inside the value** cannot be expressed in Pulp’s comma-split label filter. The client uses chunked or paginated queries and filters results for an exact `pulp_labels.signed_by` match. Values **without** commas still use a single combined server-side query where possible
-- **Signed-by only:** same rule for comma-containing values (pagination plus client-side label match)
+- `--signed-by` takes one argument. The same character substitution as `upload` applies (`:` for `,`, square brackets for parentheses) so the stored label and queries stay aligned.
+- When `signed_by` is combined with checksums or filenames, the client normalizes the value then uses **server-side** `pulp_label_select` in the same request as checksums or NVR filters when Pulp can parse the expression. Client-side label matching applies only in rare fallback cases.
+- **Signed-by only:** server-side `q=` when possible; pagination is a fallback when the filter cannot be expressed safely in one query
 
 **Direct search (JSON output):**
 
@@ -109,9 +109,9 @@ pulp-tool --config ~/.config/pulp/cli.toml search-by --checksums <sha256_1>,<sha
 # By filename (artifact keys, e.g. pkg-1.0-1.x86_64.rpm)
 pulp-tool --config ~/.config/pulp/cli.toml search-by --filenames pkg1.rpm,pkg2.rpm
 
-# By signed_by label (one value; quote if the value contains commas)
+# By signed_by label (substitution: '('/' )' -> '['/']', ',' -> ':'; quote if spaces)
 pulp-tool --config ~/.config/pulp/cli.toml search-by --signed-by key-id-123
-pulp-tool --config ~/.config/pulp/cli.toml search-by --signed-by 'org, key-subject, 12345'
+pulp-tool --config ~/.config/pulp/cli.toml search-by --signed-by 'My Org (release) <keys@example.com>'
 ```
 
 **Filter results.json** (remove RPMs found in Pulp, write filtered file):
@@ -132,7 +132,7 @@ pulp-tool --config ~/.config/pulp/cli.toml search-by \
   --filename --results-json /path/to/pulp_results.json \
   --output-results /path/to/filtered_results.json
 
-# With signed_by filter (server-side when possible; comma-containing values use client-side exact match)
+# With signed_by filter (same substitution as upload; server-side filter when the value is filter-safe)
 pulp-tool --config ~/.config/pulp/cli.toml search-by \
   --results-json /path/to/pulp_results.json \
   --output-results /path/to/filtered_results.json \

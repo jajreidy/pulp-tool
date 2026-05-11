@@ -45,6 +45,7 @@ from pydantic import ValidationError
 
 from ..api import PulpClient
 from ..models.cli import FoundPackages, SearchByRequest, SearchByResultsJson
+from ..models.pulp_label_values import normalize_signed_by_value_for_pulp
 from ..models.pulp_api import RpmPackageResponse
 from ..utils import setup_logging
 from ..utils.rpm_pulp_search import (
@@ -483,7 +484,7 @@ def _run_results_json_mode(
     "signed_by_key",
     help=(
         "Search for RPMs with this signed_by label value (e.g. key-id-123). "
-        "Value may include commas; quote the argument in the shell if needed."
+        "Same substitution as upload: ','→':', parentheses→square brackets."
     ),
 )
 @click.option(
@@ -534,7 +535,9 @@ def search_by(
 
     checksum_list = _collect_checksums_from_csv(checksums)
     filename_list = _collect_filenames_from_csv(filenames)
-    signed_by_list = [signed_by_key.strip()] if signed_by_key and signed_by_key.strip() else []
+    signed_by_list = (
+        [normalize_signed_by_value_for_pulp(signed_by_key.strip())] if signed_by_key and signed_by_key.strip() else []
+    )
 
     if results_json is not None:
         if output_results is None:

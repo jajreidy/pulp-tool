@@ -5,6 +5,7 @@ from typing import Optional, Dict, Callable, List
 from pydantic import Field, ConfigDict, field_validator
 
 from .base import KonfluxBaseModel
+from .pulp_label_values import normalize_signed_by_value_for_pulp
 
 
 class UploadContext(KonfluxBaseModel):
@@ -67,6 +68,17 @@ class UploadRpmContext(UploadContext):
     signed_by: Optional[str] = None
     overwrite: bool = False
     target_arch_repo: bool = False
+
+    @field_validator("signed_by")
+    @classmethod
+    def normalize_signed_by_for_pulp(cls, v: Optional[str]) -> Optional[str]:
+        """Strip and map signed_by to a pulp-safe label value when needed."""
+        if v is None:
+            return None
+        stripped = v.strip()
+        if not stripped:
+            return None
+        return normalize_signed_by_value_for_pulp(stripped)
 
 
 class PullContext(KonfluxBaseModel):

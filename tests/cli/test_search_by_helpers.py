@@ -66,6 +66,22 @@ class TestSearchByChecksumHelpers:
         assert "pkg4.rpm" in filtered["artifacts"]
         assert "log.txt" in filtered["artifacts"]
 
+    def test_remove_found_signed_by_normalizes_artifact_label_for_match(self) -> None:
+        """results.json may store raw signed_by; Pulp returns normalized; removal must still match."""
+        from pulp_tool.models.pulp_label_values import normalize_signed_by_value_for_pulp
+
+        raw_sb = "Acme (QA), builders"
+        normalized = normalize_signed_by_value_for_pulp(raw_sb)
+        assert normalized == "Acme [QA]: builders"
+        results = {
+            "artifacts": {
+                "pkg1.rpm": {"labels": {"signed_by": raw_sb}, "url": "x", "sha256": "a" * 64},
+            }
+        }
+        found = FoundPackages(signed_by={normalized}, checksums={"a" * 64})
+        filtered = SearchByResultsJson(results).remove_found(found)
+        assert "pkg1.rpm" not in filtered["artifacts"]
+
     def test_remove_found_by_filename_basename_match(self) -> None:
         """Test remove_found matches artifact keys by basename when key includes path."""
         results = {

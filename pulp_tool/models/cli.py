@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Any, Dict, Literal, List, Optional, Set, Tuple
 from pydantic import Field, field_validator, model_validator
 
 from .base import KonfluxBaseModel
+from .pulp_label_values import normalize_signed_by_value_for_pulp
 
 if TYPE_CHECKING:
     from .pulp_api import RpmPackageResponse
@@ -78,7 +79,7 @@ class SearchByRequest(KonfluxBaseModel):
         stripped = [s.strip() for s in v if s and s.strip()]
         if len(stripped) > 1:
             raise ValueError("signed_by accepts at most one value")
-        return stripped
+        return [normalize_signed_by_value_for_pulp(stripped[0])]
 
     @model_validator(mode="after")
     def checksums_xor_filenames(self) -> "SearchByRequest":
@@ -205,8 +206,13 @@ class SearchByResultsJson:
                 # Checksum/signed_by mode: sha256 match is sufficient
                 if found.signed_by:
                     labels = info.get("labels") or {}
-                    if isinstance(labels, dict) and (labels.get("signed_by") or "").strip() in found.signed_by:
-                        remove = True
+                    if isinstance(labels, dict):
+                        artifact_sb = (labels.get("signed_by") or "").strip()
+                        if artifact_sb and (
+                            artifact_sb in found.signed_by
+                            or normalize_signed_by_value_for_pulp(artifact_sb) in found.signed_by
+                        ):
+                            remove = True
                 else:
                     remove = True
             if remove and (only_remove_filenames is None or key_basename in only_remove_filenames):

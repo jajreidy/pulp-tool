@@ -127,3 +127,9 @@ class TestSearchByChecksumValidation:
         with pytest.raises(ValidationError) as exc_info:
             SearchByRequest(checksums=[], filenames=[], signed_by=["key-1", "key-2"])
         assert "signed_by accepts at most one value" in str(exc_info.value)
+
+    def test_search_by_request_signed_by_normalized_for_pulp(self) -> None:
+        """Values with ',' or '()' are substituted for Pulp (same as upload)."""
+        raw = "Vendor (release key)"
+        req = SearchByRequest(checksums=[], filenames=[], signed_by=[raw])
+        assert req.signed_by == ["Vendor [release key]"]
