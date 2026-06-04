@@ -1,0 +1,87 @@
+---
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: run-e2e-test-suite
+spec:
+  workspaces:
+    - name: test
+    - name: repository
+  stepTemplate:
+    env:
+      - name: PULP_CLI_CONFIG
+        value: /etc/pulp-access/cli.toml
+      - name: TEST_WORKSPACE
+        value: $(workspaces.test.path)
+      - name: PULP_TOOL_PATH
+        value: $(workspaces.repository.path)/source
+  steps:
+    - name: debug-workspace
+      image: registry.fedoraproject.org/fedora:45@sha256:a7f4aa3c4020b9d369835c386edab22d7a9b3639929bcf5e82cad9df60fb82b3
+      script: |
+        #!/usr/bin/env sh
+        set -x
+        echo "=== Workspace contents ==="
+        ls -la /workspace/
+        echo "=== Repository workspace ==="
+        ls -la /workspace/repository/ || echo "repository directory not found"
+        echo "=== Looking for e2e directory ==="
+        find /workspace -name "e2e" -type d
+        echo "=== Looking for pre-test.py ==="
+        find /workspace -name "pre-test.py"
+    - name: pre-test-setup
+      image: registry.fedoraproject.org/fedora:45@sha256:a7f4aa3c4020b9d369835c386edab22d7a9b3639929bcf5e82cad9df60fb82b3
+      script: |
+        #!/usr/bin/env sh
+        set -euo pipefail
+        dnf install -y python3 python3-pip
+        pip install "rpm-rs<0.25"
+
+        "${PULP_TOOL_PATH}/e2e/pre-test.py" --build-dir "${TEST_WORKSPACE}"
+
+    - name: pulp-tool-test
+      image: registry.fedoraproject.org/fedora:45@sha256:a7f4aa3c4020b9d369835c386edab22d7a9b3639929bcf5e82cad9df60fb82b3
+      env:
+        - name: PULP_RESULTS
+          value: /etc/pulp-results/pulp-results.json
+      script: |
+        #!/usr/bin/env sh
+        set -euo pipefail
+        dnf install -y python3 python3-pip gcc
+        pip install -e  "${PULP_TOOL_PATH}"
+
+        "${PULP_TOOL_PATH}/e2e/test-pulp-tool.py" --real-server --config "${PULP_CLI_CONFIG}" --rpm-dir "${TEST_WORKSPACE}/test_pkgs" --test-dir ./ --pulp-results "${PULP_RESULTS}"
+
+      volumeMounts:
+        - name: cli-toml-volume
+          mountPath: /etc/pulp-access
+          readOnly: true
+        - name: pulp-results-volume
+          mountPath: /etc/pulp-results
+          readOnly: true
+    - name: post-test-validation
+      image: registry.fedoraproject.org/fedora:45@sha256:a7f4aa3c4020b9d369835c386edab22d7a9b3639929bcf5e82cad9df60fb82b3
+      script: |
+        #!/usr/bin/env sh
+        set -euo pipefail
+        dnf install -y python3 pulp-cli
+
+        "${PULP_TOOL_PATH}/e2e/post-test-validation.py" --config "${PULP_CLI_CONFIG}"
+
+      volumeMounts:
+        - name: cli-toml-volume
+          mountPath: /etc/pulp-access
+          readOnly: true
+  volumes:
+    - name: cli-toml-volume
+      secret:
+        secretName: pulp-access
+        items:
+          - key: cli.toml
+            path: cli.toml
+    - name: pulp-results-volume
+      secret:
+        secretName: pulp-results
+        items:
+          - key: pulp-results.json
+            path: pulp-results.json

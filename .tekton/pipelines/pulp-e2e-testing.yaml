@@ -1,0 +1,115 @@
+apiVersion: tekton.dev/v1
+kind: Pipeline
+metadata:
+  name: pulp-e2e-testing
+  labels:
+    appstudio.openshift.io/application: tooling
+    appstudio.openshift.io/component: pulp-e2e-testing
+    pipelines.appstudio.openshift.io/type: build
+spec:
+  params:
+    - name: git-url
+      description: URL of the Git repository to clone
+      type: string
+    - name: revision
+      description: Git revision to checkout
+      type: string
+    - name: output-image
+      description: Fully qualified image name for the output
+      type: string
+    - name: rebuild
+      description: Force rebuild even if image exists
+      type: string
+      default: "false"
+    - name: skip-checks
+      description: Skip checks during pipeline execution
+      type: string
+      default: "false"
+    - name: image-expires-after
+      description: Image expiration time
+      type: string
+      default: 5d
+  workspaces:
+    - name: test
+      description: Workspace for test artifacts
+    - name: repository
+      description: Workspace for cloned repository
+    - name: git-auth
+      description: Git authentication credentials
+      optional: true
+  tasks:
+    - name: init
+      params:
+        - name: image-url
+          value: $(params.output-image)
+        - name: rebuild
+          value: $(params.rebuild)
+        - name: skip-checks
+          value: $(params.skip-checks)
+      taskRef:
+        params:
+          - name: name
+            value: init
+          - name: bundle
+            value: quay.io/konflux-ci/tekton-catalog/task-init:0.2@sha256:66e90d31e1386bf516fb548cd3e3f0082b5d0234b8b90dbf9e0d4684b70dbe1a
+          - name: kind
+            value: task
+        resolver: bundles
+    - name: clone-repository
+      runAfter:
+        - init
+      when:
+        - input: $(tasks.init.results.build)
+          operator: in
+          values:
+            - "true"
+      params:
+        - name: url
+          value: $(params.git-url)
+        - name: revision
+          value: $(params.revision)
+      taskRef:
+        params:
+          - name: name
+            value: git-clone
+          - name: bundle
+            value: quay.io/konflux-ci/tekton-catalog/task-git-clone:0.1@sha256:3ced9a6b9d8520773d3ffbf062190515a362ecda11e72f56e38e4dd980294b57
+          - name: kind
+            value: task
+        resolver: bundles
+      workspaces:
+        - name: output
+          workspace: repository
+        - name: basic-auth
+          workspace: git-auth
+    - name: run-e2e-test-suite
+      runAfter:
+        - clone-repository
+      taskRef:
+        resolver: git
+        params:
+          - name: revision
+            value: $(params.revision)
+          - name: url
+            value: $(params.git-url)
+          - name: pathInRepo
+            value: ".tekton/tasks/run-e2e-test-suite.yaml"
+      workspaces:
+        - name: test
+          workspace: test
+        - name: repository
+          workspace: repository
+  finally:
+    - name: post-test-cleanup
+      taskRef:
+        resolver: git
+        params:
+          - name: revision
+            value: $(params.revision)
+          - name: url
+            value: $(params.git-url)
+          - name: pathInRepo
+            value: ".tekton/tasks/post-test-cleanup.yaml"
+      workspaces:
+        - name: repository
+          workspace: repository
