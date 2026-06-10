@@ -6,7 +6,7 @@ Thank you for your interest in contributing to Pulp Tool! This document provides
 
 ### Prerequisites
 
-- Python 3.12 or higher
+- Python 3.15 recommended (matches CI and the Konflux container image on Fedora 45); `requires-python` is `>=3.12`
 - Git
 - pip
 

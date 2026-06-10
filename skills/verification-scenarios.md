@@ -10,6 +10,15 @@ Baseline failure modes and how each skill addresses them. Re-run when editing sk
 | Duplicate upload logic in CLI layer | Red flag: keep logic in `PulpHelper` / `UploadService` |
 | Assume upstream tasks are frozen | Rationalization row + step 2 re-open GitHub YAML |
 
+## changing-pulp-container
+
+| RED (without skill) | GREEN (with skill) |
+|---------------------|-------------------|
+| Add GitHub Actions `docker build` as merge gate | Skill states Konflux Tekton builds on PR/push; red flag against duplicate GHA |
+| Edit Dockerfile without checking `.tekton/` PipelineRuns | Workflow + reference.md list PipelineRuns and `buildah-oci-ta` task chain |
+| Dockerfile failure only visible in GHA | Debug tip: failures surface in Konflux `build-container` task, not unit-test workflow |
+| Confuse image *build* with Tekton tasks that *run* pulp-tool | Points to changing-pulp-upload for downstream consumers |
+
 ## drafting-pulp-tool-pr
 
 | RED (without skill) | GREEN (with skill) |

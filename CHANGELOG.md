@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **`changing-pulp-container` agent skill:** documents in-repo `.tekton/` PipelineRuns, upstream Konflux `single-arch-build-pipeline` (`buildah-oci-ta` task chain), and [reference.md](skills/changing-pulp-container/reference.md); `make test-container` for optional local Dockerfile smoke-test
 - **`docs/ARCHITECTURE.md`:** living architecture doc (overview, mermaid flow, code map, invariants, external integrations, glossary); complements `AGENTS.md` / `CLAUDE.md`
 - **`AGENTS.md`:** canonical agent entry with § **Bootstrap** (read-first order to reduce context thrash); pointers to `docs/ARCHITECTURE.md`, `CLAUDE.md`, and on-demand skills under `skills/`
 - **Agent skills (`skills/`):** portable on-demand workflows (upload/Konflux, PR drafting, diff-cover, CI troubleshooting); `skills/README.md` and verification scenarios; `.cursor/skills` and `.agents/skills` symlinks for Cursor and other agentskills.io clients
@@ -38,6 +39,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - **Container image:** Dockerfile uses Fedora 45 system Python 3.15; `gcc` is installed only during `pip install` to build `pydantic-core` (no cp315 wheel yet), then removed along with the maturin/Rust build cache
+- **CI:** GitHub Actions unit/lint workflows run on Python 3.15 (with `gcc` when `pydantic-core` must compile); security scan stays on Python 3.12 until `pip-audit` supports 3.15; container image build remains on Konflux Tekton only (no GitHub Actions `docker build`)
 - **Agent skills and Cursor rules:** on-demand workflows extracted to `skills/`; `llm-development-guidelines-deep.mdc` is a skill index (lint quick-ref); `AGENTS.md`, `CLAUDE.md`, and `CONTRIBUTING.md` point at `skills/` as the canonical path
 - **`.cursor/rules/llm-development-guidelines.mdc`:** slim always-on essentials (workflow, diff coverage, PR/CHANGELOG rules); lengthy PR/lint/troubleshooting detail moved to `skills/`
 - **`CLAUDE.md`:** scoped to Konflux/Tekton contracts and regression checklist; system/code-map narrative in `docs/ARCHITECTURE.md`

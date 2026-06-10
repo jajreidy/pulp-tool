@@ -2,8 +2,9 @@
 name: changing-pulp-upload
 description: >-
   Use when changing upload, global CLI flags (--config, --build-id, --namespace),
-  --rpm-path, --parent-package, --sbom-path, --artifact-results, the container
-  image, Tekton workspace paths, or Konflux downstream integration.
+  --rpm-path, --parent-package, --sbom-path, --artifact-results, Tekton
+  workspace paths, or Konflux downstream integration. Container image *build*:
+  changing-pulp-container.
 ---
 
 # Changing pulp upload / Konflux integration
@@ -29,7 +30,7 @@ Before merge, verify (extend tests where applicable):
 - [ ] `upload` / `upload-files` behavior, defaults, required options
 - [ ] Global: `--config`, `--build-id`, `--namespace`
 - [ ] `--rpm-path`, `--parent-package`, `--sbom-path`, `--artifact-results`
-- [ ] Config/TLS/paths assumed in containers; image entrypoint and invocation
+- [ ] Config/TLS/paths assumed in containers; image entrypoint and invocation (image *build*: **changing-pulp-container**)
 - [ ] RPM discovery under `--rpm-path`
 - [ ] Both pipelines still match (config path, flags, workspace `/var/workdir/results`, `oras-staging/` where used)
 

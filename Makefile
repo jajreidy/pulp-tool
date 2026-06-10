@@ -3,7 +3,7 @@
 COMPARE_BRANCH ?= origin/main
 AUDIT_VENV ?= .audit-venv
 
-.PHONY: help install install-dev test test-diff-coverage lint format check clean audit lock
+.PHONY: help install install-dev test test-container test-diff-coverage lint format check clean audit lock
 
 # Default target
 help:
@@ -11,6 +11,7 @@ help:
 	@echo "  make install      - Install package"
 	@echo "  make install-dev  - Install package with dev dependencies"
 	@echo "  make test         - Run tests with coverage"
+	@echo "  make test-container - Optional local Dockerfile smoke-test (Konflux Tekton builds on PR/push)"
 	@echo "  make test-diff-coverage - make test + diff-cover 100% vs COMPARE_BRANCH (same gate as PR CI)"
 	@echo "  make lint         - Run all linters"
 	@echo "  make format       - Format code with Black"
@@ -40,6 +41,14 @@ test:
 
 # Same as GitHub Actions: 100% coverage on lines changed vs merge base (requires coverage.xml from test).
 # Requires diff-cover (included in pip install -e ".[dev]" / make install-dev).
+# Build the Konflux container image locally and verify pulp-tool starts (Python 3.15 / Fedora 45).
+test-container:
+	@command -v podman >/dev/null 2>&1 && ENGINE=podman || ENGINE=docker; \
+	$$ENGINE build -t pulp-tool:test . && \
+	$$ENGINE run --rm pulp-tool:test python3 --version && \
+	$$ENGINE run --rm pulp-tool:test pulp-tool --version && \
+	$$ENGINE run --rm pulp-tool:test pulp-tool --help
+
 test-diff-coverage: test
 	@command -v diff-cover >/dev/null 2>&1 || { echo "diff-cover not found. Run: make install-dev"; exit 1; }
 	@echo "Diff coverage vs $(COMPARE_BRANCH) (fail under 100%)..."

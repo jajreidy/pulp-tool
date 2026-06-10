@@ -5,9 +5,12 @@ set -e
 
 echo "Setting up pulp-tool development environment..."
 
-# Check Python version
+# Check Python version (CI and container image use 3.15)
 python_version=$(python3 --version 2>&1 | awk '{print $2}')
 echo "Python version: $python_version"
+if ! python3 -c 'import sys; raise SystemExit(0 if sys.version_info[:2] >= (3, 15) else 1)'; then
+    echo "Warning: Python 3.15+ is recommended to match CI and the Konflux container image."
+fi
 
 # Install package in development mode
 echo "Installing pulp-tool in development mode..."

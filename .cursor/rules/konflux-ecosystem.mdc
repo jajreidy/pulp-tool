@@ -1,10 +1,11 @@
 ---
-description: Konflux/Tekton pointer for pulp-tool; load changing-pulp-upload skill when touching upload/container
+description: Konflux/Tekton pointer for pulp-tool; load changing-pulp-upload or changing-pulp-container when touching Tekton
 alwaysApply: true
 ---
 
 # Konflux ecosystem (downstream)
 
 - **Platform:** [Konflux documentation](https://konflux-ci.dev/docs/) — Tekton pipelines, tenants, releases.
-- **When changing** `upload`, global CLI, SBOM/artifact paths, config paths, or the container image: load **changing-pulp-upload** skill ([`skills/changing-pulp-upload/`](../../skills/changing-pulp-upload/)) and read **[CLAUDE.md](../../CLAUDE.md)** for Tekton contracts and regression checklist.
+- **When changing** `upload`, global CLI, SBOM/artifact paths, or config paths in Tekton tasks that *run* pulp-tool: load **changing-pulp-upload** ([`skills/changing-pulp-upload/`](../../skills/changing-pulp-upload/)) and **[CLAUDE.md](../../CLAUDE.md)**.
+- **When changing** `Dockerfile` or `.tekton/` container build PipelineRuns: load **changing-pulp-container** ([`skills/changing-pulp-container/`](../../skills/changing-pulp-container/)); Konflux builds the image — do not add GitHub Actions container jobs.
 - **Workflow / code map:** [AGENTS.md](../../AGENTS.md) · [docs/ARCHITECTURE.md](../../docs/ARCHITECTURE.md)

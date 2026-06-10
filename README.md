@@ -104,6 +104,7 @@ make format               # black pulp_tool/ tests/
 make lint                 # black --check, flake8, pylint, mypy
 pre-commit run --all-files   # loop: fix reported issues, re-run until fully green
 make test                 # full suite + coverage (85%+ project threshold)
+make test-container       # optional local Dockerfile smoke-test (Konflux Tekton builds the image on PR/push)
 git fetch origin
 make test-diff-coverage   # PR gate: 100% diff vs COMPARE_BRANCH (default origin/main)
 make check                # lint + test

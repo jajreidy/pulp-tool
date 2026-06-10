@@ -12,15 +12,22 @@ Platform: [Konflux documentation](https://konflux-ci.dev/docs/). Upstream Pulp: 
 
 | Item | Value |
 |------|------|
-| **Python** | >= 3.12 (`pyproject.toml`) |
+| **Python** | >= 3.12 (`pyproject.toml`); CI and container image use **3.15** (Fedora 45) |
 | **Package / CLI** | `pulp_tool` / `pulp-tool` → `pulp_tool.cli:main` |
 | **Konflux image** | `pulp-tool-container` (see `.tekton/pulp-tool-container-build-push.yaml`) |
 | **Agent workflow** | Always-on [.cursor/rules/llm-development-guidelines.mdc](.cursor/rules/llm-development-guidelines.mdc); on-demand [skills/](skills/) ([skill index](.cursor/rules/llm-development-guidelines-deep.mdc)) |
 | **Upload changes** | **changing-pulp-upload** skill ([`skills/changing-pulp-upload/SKILL.md`](skills/changing-pulp-upload/SKILL.md)) + this file |
+| **Container image build** | **changing-pulp-container** skill ([`skills/changing-pulp-container/SKILL.md`](skills/changing-pulp-container/SKILL.md)); Konflux Tekton builds via [`.tekton/`](.tekton/) — not GitHub Actions |
 
 **PR review rule:** Any PR touching **`upload`**, global options, SBOM/artifact paths, TLS/config paths in containers, or the image must still match the **two pipelines** below — open the linked YAML on GitHub; upstream tasks evolve.
 
 **Structure, invariants, glossary:** [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+
+### Container image build (Konflux)
+
+- **In-repo:** [Dockerfile](Dockerfile), [`.tekton/pulp-tool-container-build-push.yaml`](.tekton/pulp-tool-container-build-push.yaml) (main), [`.tekton/pulp-tool-container-build-pull-request.yaml`](.tekton/pulp-tool-container-build-pull-request.yaml) (PR).
+- **Remote pipeline:** [single-arch-build-pipeline.yaml](https://github.com/konflux-ci/olm-operator-konflux-sample/blob/main/.tekton/single-arch-build-pipeline.yaml) — clone → prefetch (no-op) → **`buildah-oci-ta`** builds `Dockerfile` at `.` → image scans → push to `output-image`. Defaults: `dockerfile=Dockerfile`, `hermetic=false`, `path-context=.`.
+- **Agent skill:** [changing-pulp-container](skills/changing-pulp-container/SKILL.md) · task catalog: [reference.md](skills/changing-pulp-container/reference.md). Optional local check: `make test-container`.
 
 ---
 

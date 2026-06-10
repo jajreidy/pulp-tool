@@ -24,7 +24,11 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v6
         with:
-          python-version: '3.12'
+          python-version: '3.15'
+          allow-prereleases: true
+
+      - name: Install build deps (pydantic-core may compile on Python 3.15)
+        run: sudo apt-get update && sudo apt-get install -y gcc
 
       - name: Cache pip packages
         uses: actions/cache@v5

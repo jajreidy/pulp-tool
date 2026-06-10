@@ -9,7 +9,8 @@ Mandatory post-change workflow and merge gates live in the always-on **`llm-deve
 
 | Symptom / task | Skill |
 |----------------|-------|
-| Changing `upload`, CLI flags, SBOM, artifact results, container image, Tekton paths | **changing-pulp-upload** |
+| Changing `upload`, CLI flags, SBOM, artifact results, Tekton paths that run pulp-tool | **changing-pulp-upload** |
+| Changing `Dockerfile`, `.tekton/` container builds, Konflux `pulp-tool-container` image | **changing-pulp-container** |
 | User confirms PR materials (body, commit message, CHANGELOG) | **drafting-pulp-tool-pr** |
 | `make test-diff-coverage` fails or CI diff coverage below 100% | **fixing-diff-cover-failures** |
 | Pre-commit or lint loops failing; local vs CI mismatch | **troubleshooting-pulp-tool-ci** |

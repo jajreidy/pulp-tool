@@ -20,6 +20,8 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v6
 
+      # pip-audit (via pip-api) imports removed sre_constants on Python 3.15+.
+      # Audit dev deps on 3.12 until upstream supports 3.15; unit/lint CI uses 3.15.
       - name: Set up Python
         uses: actions/setup-python@v6
         with:

@@ -5,7 +5,7 @@ alwaysApply: true
 
 # LLM-assisted development (essentials)
 
-**Read order:** [AGENTS.md](../../AGENTS.md) → this file (always on) → **changing-pulp-upload** skill + [CLAUDE.md](../../CLAUDE.md) only for `upload`/Konflux/image → [docs/ARCHITECTURE.md](../../docs/ARCHITECTURE.md) when touching multiple packages. **On-demand skills:** [.cursor/rules/llm-development-guidelines-deep.mdc](llm-development-guidelines-deep.mdc) (skill index).
+**Read order:** [AGENTS.md](../../AGENTS.md) → this file (always on) → **changing-pulp-upload** + [CLAUDE.md](../../CLAUDE.md) for `upload`/Tekton consumers → **changing-pulp-container** for `Dockerfile`/`.tekton/` image build → [docs/ARCHITECTURE.md](../../docs/ARCHITECTURE.md) when touching multiple packages. **On-demand skills:** [.cursor/rules/llm-development-guidelines-deep.mdc](llm-development-guidelines-deep.mdc) (skill index).
 
 ## Domain
 

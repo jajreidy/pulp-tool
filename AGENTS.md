@@ -8,7 +8,7 @@ Do this **in order** when starting work in a **new thread** or with a **new** mo
 
 1. **This file** — commands, conventions, and links below. In Cursor, attach **`@AGENTS.md`** at session start when practical.
 2. **`docs/ARCHITECTURE.md`** — code map, mermaid flow, invariants, glossary (open if you will touch more than one area or are unfamiliar with the layout).
-3. **changing-pulp-upload** skill + **`CLAUDE.md`** — **only** if changing `upload`, global CLI flags, SBOM/artifact results, or the container image ([`skills/changing-pulp-upload/SKILL.md`](skills/changing-pulp-upload/SKILL.md)).
+3. **changing-pulp-upload** + **`CLAUDE.md`** — if changing `upload`, global CLI flags, SBOM/artifact results, or Tekton tasks that *run* pulp-tool ([`skills/changing-pulp-upload/SKILL.md`](skills/changing-pulp-upload/SKILL.md)). **changing-pulp-container** — if changing `Dockerfile` or `.tekton/` image build PipelineRuns ([`skills/changing-pulp-container/SKILL.md`](skills/changing-pulp-container/SKILL.md)).
 4. **On-demand skills** — see [`.cursor/rules/llm-development-guidelines-deep.mdc`](.cursor/rules/llm-development-guidelines-deep.mdc) (skill index) and [`skills/README.md`](skills/README.md): PR drafting, diff-cover failures, lint/CI troubleshooting.
 
 Do **not** read all of [CONTRIBUTING.md](CONTRIBUTING.md) up front unless you are changing process, dependencies, or release workflow.

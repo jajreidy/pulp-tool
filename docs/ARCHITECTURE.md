@@ -65,7 +65,7 @@ flowchart TB
 | Pull | `pulp_tool/pull/` | Download / transfer helpers |
 | Models | `pulp_tool/models/` | Pydantic: context, Pulp DTOs, results |
 | Utils | `pulp_tool/utils/` | Validation, logging, RPM helpers, session retries |
-| Container | `.tekton/pulp-tool-container-build-push.yaml` | Image published for Tekton `pulp-tool-container` |
+| Container | `Dockerfile`, `.tekton/pulp-tool-container-build-*.yaml` | Konflux Tekton → upstream `single-arch-build-pipeline` (`buildah-oci-ta`); **changing-pulp-container** skill + [reference.md](../skills/changing-pulp-container/reference.md) |
 | Tests | `tests/` (see [tests/README.md](../tests/README.md)), `tests/support/` | Fixtures, TLS helpers |
 
 **Invariant:** `UploadService` delegates to **`PulpHelper`**; do not maintain a second upload implementation.
@@ -107,7 +107,7 @@ No application database: state is on Pulp and in generated JSON artifacts.
 
 ## 7. Key design decisions
 
-Formal records: [ADR 0000 — how we record decisions](adr/0000-record-architecture-decisions.md); other ADRs live under [docs/adr/](adr/). Examples in-repo: Python 3.12, httpx. High level:
+Formal records: [ADR 0000 — how we record decisions](adr/0000-record-architecture-decisions.md); other ADRs live under [docs/adr/](adr/). Examples in-repo: Python 3.12 minimum / 3.15 in CI and container image, httpx. High level:
 
 - **httpx** for HTTP (async-capable client, retries for transient errors in session layer).
 - **Click** for CLI; optional plugin entry points for command discovery.
