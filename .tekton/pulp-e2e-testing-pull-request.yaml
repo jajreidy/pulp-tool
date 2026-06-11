@@ -1,0 +1,63 @@
+apiVersion: tekton.dev/v1
+kind: PipelineRun
+metadata:
+  annotations:
+    build.appstudio.openshift.io/repo: https://github.com/konflux-ci/pulp-tool?rev={{revision}}
+    build.appstudio.redhat.com/commit_sha: "{{revision}}"
+    build.appstudio.redhat.com/pull_request_number: "{{pull_request_number}}"
+    build.appstudio.redhat.com/target_branch: "{{target_branch}}"
+    pipelinesascode.tekton.dev/cancel-in-progress: "true"
+    pipelinesascode.tekton.dev/max-keep-runs: "3"
+    pipelinesascode.tekton.dev/on-cel-expression:
+      event == "pull_request" && target_branch
+      == "main"
+  creationTimestamp: null
+  labels:
+    appstudio.openshift.io/application: tooling
+    appstudio.openshift.io/component: pulp-e2e-testing
+    pipelines.appstudio.openshift.io/type: build
+  name: pulp-e2e-testing-on-pull-request
+  namespace: artifact-storage-tenant
+spec:
+  taskRunTemplate:
+    serviceAccountName: build-pipeline-pulp-e2e-testing
+  params:
+    - name: git-url
+      value: "{{source_url}}"
+    - name: revision
+      value: "{{revision}}"
+    - name: output-image
+      value: quay.io/redhat-user-workloads/artifact-storage-tenant/tooling/pulp-e2e-testing:on-pr-{{revision}}
+    - name: image-expires-after
+      value: 5d
+    - name: rebuild
+      value: false
+    - name: skip-checks
+      value: false
+  workspaces:
+    - name: git-auth
+      secret:
+        secretName: "{{ git_auth_secret }}"
+    - name: test
+      emptyDir: {}
+    - name: repository
+      volumeClaimTemplate:
+        metadata:
+          creationTimestamp: null
+        spec:
+          accessModes:
+            - ReadWriteOnce
+          resources:
+            requests:
+              storage: 5Gi
+        status: {}
+  pipelineRef:
+    resolver: git
+    params:
+      - name: revision
+        value: "{{revision}}"
+      - name: url
+        value: "{{source_url}}"
+      - name: pathInRepo
+        value: ".tekton/pipelines/pulp-e2e-testing.yaml"
+  concurrency_limit: 1
