@@ -701,7 +701,8 @@ class RepositoryManager:
             repository_prn, repository_href = self._create_new_repository(methods, new_repository, repo_type)
             is_new_repository = True
 
-        # Create distribution (always create new distribution for new repositories)
+        # Create distribution when the repository is new, or when the repository exists but
+        # the distribution is missing (e.g. partial setup from a prior run).
         new_distribution.repository = repository_prn
         # Validate base_path is still valid after setting repository
         if not new_distribution.base_path or not new_distribution.base_path.strip():
@@ -809,16 +810,23 @@ class RepositoryManager:
             methods: Dictionary of repository methods
             new_distribution: DistributionRequest model for the distribution to create
             repo_type: Type of repository ('rpms', 'logs', 'sbom', 'artifacts', 'rpm', 'file')
-            is_new_repository: If True, always create distribution without checking existence
+            is_new_repository: If True, always create distribution without checking existence.
+                If False (repository already exists), create only when the distribution is missing.
             build_id: Base name for the repository (may include namespace prefix)
 
         Returns:
-            Task ID if distribution was created, empty string if it already exists
+            Task ID if distribution was created, empty string if distribution already exists
         """
-        # For new repositories, always create a distribution without checking
-        # For existing repositories, check if distribution already exists
         if not is_new_repository and self._check_existing_distribution(methods, new_distribution.name, repo_type):
-            return ""  # Return empty string instead of None to match return type
+            if build_id:
+                cache_key = (build_id, distribution_cache_type or repo_type)
+                self._distribution_cache[cache_key] = new_distribution.base_path
+            logging.warning(
+                "Skipping distribution create for existing distribution %s: %s",
+                _resource_log_label(str(new_distribution.name)),
+                new_distribution.name,
+            )
+            return ""
 
         # Validate base_path before creating distribution
         base_path_value = getattr(new_distribution, "base_path", None)

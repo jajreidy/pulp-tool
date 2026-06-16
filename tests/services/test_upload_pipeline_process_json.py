@@ -36,9 +36,9 @@ class TestProcessUploadsFromResultsJson:
             rpms_prn="rprn",
             logs_href="",
             logs_prn="",
-            sbom_href="",
+            sbom_href="/sbom-href",
             sbom_prn="sbom-prn",
-            artifacts_href="",
+            artifacts_href="/artifacts-href",
             artifacts_prn="artifacts-prn",
         )
         with pytest.raises(ValueError, match="logs repository was not created"):
@@ -61,11 +61,11 @@ class TestProcessUploadsFromResultsJson:
         repositories = RepositoryRefs(
             rpms_href="/rpm",
             rpms_prn="rprn",
-            logs_href="",
+            logs_href="/logs-href",
             logs_prn="logs-prn",
             sbom_href="",
             sbom_prn="",
-            artifacts_href="",
+            artifacts_href="/artifacts-href",
             artifacts_prn="artifacts-prn",
         )
         with pytest.raises(ValueError, match="SBOM repository was not created"):
@@ -90,15 +90,15 @@ class TestProcessUploadsFromResultsJson:
         repositories = RepositoryRefs(
             rpms_href="/test/rpm-href",
             rpms_prn="",
-            logs_href="",
+            logs_href="/logs-href",
             logs_prn="logs-prn",
-            sbom_href="",
+            sbom_href="/sbom-href",
             sbom_prn="sbom-prn",
-            artifacts_href="",
+            artifacts_href="/artifacts-href",
             artifacts_prn="artifacts-prn",
         )
         with (
-            patch("pulp_tool.utils.uploads.upload_rpms", return_value=["/rpm/resource/1"]),
+            patch("pulp_tool.services.upload_service.upload_rpms", return_value=["/rpm/resource/1"]),
             patch("pulp_tool.services.upload_service.collect_results", return_value="https://example.com/results.json"),
         ):
             result = process_uploads_from_results_json(mock_pulp_client, context, repositories)
@@ -124,11 +124,11 @@ class TestProcessUploadsFromResultsJson:
         repositories = RepositoryRefs(
             rpms_href="/test/rpm-href",
             rpms_prn="",
-            logs_href="",
+            logs_href="/logs-href",
             logs_prn="logs-prn",
-            sbom_href="",
+            sbom_href="/sbom-href",
             sbom_prn="sbom-prn",
-            artifacts_href="",
+            artifacts_href="/artifacts-href",
             artifacts_prn="artifacts-prn",
             rpms_signed_href="/test/rpm-signed-href",
             rpms_signed_prn="rpms-signed-prn",
@@ -137,7 +137,9 @@ class TestProcessUploadsFromResultsJson:
             artifacts_signed_prn="artifacts-signed-prn",
         )
         with (
-            patch("pulp_tool.utils.uploads.upload_rpms", return_value=["/rpm/resource/1"]) as mock_upload_rpms,
+            patch(
+                "pulp_tool.services.upload_service.upload_rpms", return_value=["/rpm/resource/1"]
+            ) as mock_upload_rpms,
             patch("pulp_tool.services.upload_service.collect_results", return_value="https://example.com/results.json"),
         ):
             result = process_uploads_from_results_json(mock_pulp_client, context, repositories)
@@ -168,18 +170,18 @@ class TestProcessUploadsFromResultsJson:
         repositories = RepositoryRefs(
             rpms_href="",
             rpms_prn="",
-            logs_href="",
+            logs_href="/logs-href",
             logs_prn="logs-prn",
-            sbom_href="",
+            sbom_href="/sbom-href",
             sbom_prn="sbom-prn",
-            artifacts_href="",
+            artifacts_href="/artifacts-href",
             artifacts_prn="artifacts-prn",
         )
         mock_ph_instance = Mock()
         mock_ph_instance.ensure_rpm_repository_for_arch.return_value = "/per-arch/rpm"
         with (
             patch("pulp_tool.services.upload_service.PulpHelper", return_value=mock_ph_instance),
-            patch("pulp_tool.utils.uploads.upload_rpms", return_value=["/r/1"]) as mock_upload_rpms,
+            patch("pulp_tool.services.upload_service.upload_rpms", return_value=["/r/1"]) as mock_upload_rpms,
             patch("pulp_tool.services.upload_service.collect_results", return_value="https://example.com/r.json"),
         ):
             result = process_uploads_from_results_json(
@@ -211,15 +213,15 @@ class TestProcessUploadsFromResultsJson:
         repositories = RepositoryRefs(
             rpms_href="/test/rpm-href",
             rpms_prn="",
-            logs_href="",
+            logs_href="/logs-href",
             logs_prn="logs-prn",
-            sbom_href="",
+            sbom_href="/sbom-href",
             sbom_prn="sbom-prn",
-            artifacts_href="",
+            artifacts_href="/artifacts-href",
             artifacts_prn="artifacts-prn",
         )
         with (
-            patch("pulp_tool.utils.uploads.upload_rpms", return_value=["/rpm/resource/1"]),
+            patch("pulp_tool.services.upload_service.upload_rpms", return_value=["/rpm/resource/1"]),
             patch("pulp_tool.services.upload_service.collect_results", return_value="https://example.com/results.json"),
         ):
             result = process_uploads_from_results_json(mock_pulp_client, context, repositories)
@@ -241,15 +243,15 @@ class TestProcessUploadsFromResultsJson:
         repositories = RepositoryRefs(
             rpms_href="/test/rpm-href",
             rpms_prn="",
-            logs_href="",
+            logs_href="/logs-href",
             logs_prn="logs-prn",
-            sbom_href="",
+            sbom_href="/sbom-href",
             sbom_prn="sbom-prn",
-            artifacts_href="",
+            artifacts_href="/artifacts-href",
             artifacts_prn="artifacts-prn",
         )
         with (
-            patch("pulp_tool.utils.uploads.upload_rpms", return_value=[]),
+            patch("pulp_tool.services.upload_service.upload_rpms", return_value=[]),
             patch("pulp_tool.services.upload_service.collect_results", return_value="https://example.com/results.json"),
             caplog.at_level(logging.WARNING),
         ):
@@ -273,11 +275,11 @@ class TestProcessUploadsFromResultsJson:
         repositories = RepositoryRefs(
             rpms_href="/test/rpm-href",
             rpms_prn="",
-            logs_href="",
+            logs_href="/logs-href",
             logs_prn="logs-prn",
-            sbom_href="",
+            sbom_href="/sbom-href",
             sbom_prn="sbom-prn",
-            artifacts_href="",
+            artifacts_href="/artifacts-href",
             artifacts_prn="artifacts-prn",
         )
         with patch(
@@ -299,11 +301,11 @@ class TestProcessUploadsFromResultsJson:
         repositories = RepositoryRefs(
             rpms_href="/test/rpm-href",
             rpms_prn="",
-            logs_href="",
+            logs_href="/logs-href",
             logs_prn="logs-prn",
-            sbom_href="",
+            sbom_href="/sbom-href",
             sbom_prn="sbom-prn",
-            artifacts_href="",
+            artifacts_href="/artifacts-href",
             artifacts_prn="artifacts-prn",
         )
         result = process_uploads_from_results_json(mock_pulp_client, context, repositories)
@@ -324,11 +326,11 @@ class TestProcessUploadsFromResultsJson:
         repositories = RepositoryRefs(
             rpms_href="/test/rpm-href",
             rpms_prn="",
-            logs_href="",
+            logs_href="/logs-href",
             logs_prn="logs-prn",
-            sbom_href="",
+            sbom_href="/sbom-href",
             sbom_prn="sbom-prn",
-            artifacts_href="",
+            artifacts_href="/artifacts-href",
             artifacts_prn="artifacts-prn",
         )
         with patch("builtins.open", side_effect=OSError("Permission denied")):
@@ -354,11 +356,11 @@ class TestProcessUploadsFromResultsJson:
         repositories = RepositoryRefs(
             rpms_href="/test/rpm-href",
             rpms_prn="",
-            logs_href="",
+            logs_href="/logs-href",
             logs_prn="logs-prn",
-            sbom_href="",
+            sbom_href="/sbom-href",
             sbom_prn="sbom-prn",
-            artifacts_href="",
+            artifacts_href="/artifacts-href",
             artifacts_prn="artifacts-prn",
             rpms_signed_href="",
             rpms_signed_prn="",
@@ -385,15 +387,15 @@ class TestProcessUploadsFromResultsJson:
         repositories = RepositoryRefs(
             rpms_href="/test/rpm-href",
             rpms_prn="",
-            logs_href="",
+            logs_href="/logs-href",
             logs_prn="logs-prn",
-            sbom_href="",
+            sbom_href="/sbom-href",
             sbom_prn="sbom-prn",
-            artifacts_href="",
+            artifacts_href="/artifacts-href",
             artifacts_prn="artifacts-prn",
         )
         with (
-            patch("pulp_tool.utils.uploads.upload_rpms", return_value=["/rpm/1"]),
+            patch("pulp_tool.services.upload_service.upload_rpms", return_value=["/rpm/1"]),
             patch("pulp_tool.services.upload_service.collect_results", return_value="https://example.com/results.json"),
             caplog.at_level(logging.WARNING),
         ):
@@ -433,22 +435,17 @@ class TestProcessUploadsFromResultsJson:
         repositories = RepositoryRefs(
             rpms_href="/test/rpm-href",
             rpms_prn="",
-            logs_href="",
+            logs_href="/logs-href",
             logs_prn="logs-prn",
-            sbom_href="",
+            sbom_href="/sbom-href",
             sbom_prn="sbom-prn",
-            artifacts_href="",
+            artifacts_href="/artifacts-href",
             artifacts_prn="artifacts-prn",
         )
-        mock_resp = Mock()
-        mock_resp.json.return_value = {"task": "/tasks/1/"}
-        mock_task = Mock()
-        mock_task.created_resources = ["/content/1/"]
-        mock_pulp_client.create_file_content = Mock(return_value=mock_resp)
-        mock_pulp_client.wait_for_finished_task = Mock(return_value=mock_task)
-        mock_pulp_client.check_response = Mock()
         with (
-            patch("pulp_tool.utils.uploads.upload_log", return_value=["/log/1"]),
+            patch("pulp_tool.services.upload_service.upload_logs_parallel", return_value=1),
+            patch("pulp_tool.services.upload_service.upload_sbom"),
+            patch("pulp_tool.services.upload_service.upload_artifact_phase1"),
             patch("pulp_tool.services.upload_service.collect_results", return_value="https://example.com/results.json"),
         ):
             result = process_uploads_from_results_json(mock_pulp_client, context, repositories)
@@ -472,15 +469,15 @@ class TestProcessUploadsFromResultsJson:
         repositories = RepositoryRefs(
             rpms_href="/test/rpm-href",
             rpms_prn="",
-            logs_href="",
+            logs_href="/logs-href",
             logs_prn="logs-prn",
-            sbom_href="",
+            sbom_href="/sbom-href",
             sbom_prn="sbom-prn",
-            artifacts_href="",
+            artifacts_href="/artifacts-href",
             artifacts_prn="artifacts-prn",
         )
         with (
-            patch("pulp_tool.utils.uploads.upload_rpms", return_value=["/rpm/1"]) as mock_upload_rpms,
+            patch("pulp_tool.services.upload_service.upload_rpms", return_value=["/rpm/1"]) as mock_upload_rpms,
             patch("pulp_tool.services.upload_service.collect_results", return_value="https://example.com/results.json"),
         ):
             result = process_uploads_from_results_json(mock_pulp_client, context, repositories)
@@ -506,21 +503,21 @@ class TestProcessUploadsFromResultsJson:
         repositories = RepositoryRefs(
             rpms_href="/test/rpm-href",
             rpms_prn="",
-            logs_href="",
+            logs_href="/logs-href",
             logs_prn="logs-prn",
-            sbom_href="",
+            sbom_href="/sbom-href",
             sbom_prn="sbom-prn",
-            artifacts_href="",
+            artifacts_href="/artifacts-href",
             artifacts_prn="artifacts-prn",
         )
         with (
-            patch("pulp_tool.utils.uploads.upload_log", return_value=["/log/1"]) as mock_upload_log,
+            patch("pulp_tool.services.upload_service.upload_logs_parallel", return_value=1) as mock_upload_logs,
             patch("pulp_tool.services.upload_service.collect_results", return_value="https://example.com/results.json"),
         ):
             result = process_uploads_from_results_json(mock_pulp_client, context, repositories)
         assert result == "https://example.com/results.json"
-        mock_upload_log.assert_called_once()
-        assert mock_upload_log.call_args[1]["arch"] == "s390x"
+        mock_upload_logs.assert_called_once()
+        assert mock_upload_logs.call_args[1]["arch"] == "s390x"
 
     def test_upload_from_results_json_arch_inference_noarch(self, tmp_path, mock_pulp_client) -> None:
         """Test process_uploads_from_results_json infers noarch when no arch in path (lines 283, 287-293)."""
@@ -543,16 +540,16 @@ class TestProcessUploadsFromResultsJson:
         repositories = RepositoryRefs(
             rpms_href="/test/rpm-href",
             rpms_prn="",
-            logs_href="",
+            logs_href="/logs-href",
             logs_prn="logs-prn",
-            sbom_href="",
+            sbom_href="/sbom-href",
             sbom_prn="sbom-prn",
-            artifacts_href="",
+            artifacts_href="/artifacts-href",
             artifacts_prn="artifacts-prn",
         )
         with (
-            patch("pulp_tool.utils.uploads.upload_rpms", return_value=["/rpm/1"]) as mock_upload_rpms,
-            patch("pulp_tool.utils.uploads.upload_log", return_value=["/log/1"]),
+            patch("pulp_tool.services.upload_service.upload_rpms", return_value=["/rpm/1"]) as mock_upload_rpms,
+            patch("pulp_tool.services.upload_service.upload_logs_parallel", return_value=1),
             patch("pulp_tool.services.upload_service.collect_results", return_value="https://example.com/results.json"),
         ):
             result = process_uploads_from_results_json(mock_pulp_client, context, repositories)
@@ -579,22 +576,21 @@ class TestProcessUploadsFromResultsJson:
         repositories = RepositoryRefs(
             rpms_href="/test/rpm-href",
             rpms_prn="",
-            logs_href="",
+            logs_href="/logs-href",
             logs_prn="logs-prn",
-            sbom_href="",
+            sbom_href="/sbom-href",
             sbom_prn="sbom-prn",
-            artifacts_href="",
+            artifacts_href="/artifacts-href",
             artifacts_prn="artifacts-prn",
             rpms_signed_href="/test/rpm-signed-href",
             rpms_signed_prn="rpms-signed-prn",
         )
         with (
-            patch("pulp_tool.utils.uploads.upload_log", return_value=["/log/1"]) as mock_upload_log,
+            patch("pulp_tool.services.upload_service.upload_logs_parallel", return_value=1) as mock_upload_logs,
             patch("pulp_tool.services.upload_service.collect_results", return_value="https://example.com/results.json"),
         ):
             result = process_uploads_from_results_json(mock_pulp_client, context, repositories)
         assert result == "https://example.com/results.json"
-        mock_upload_log.assert_called_once()
-        call_kw = mock_upload_log.call_args[1]
+        mock_upload_logs.assert_called_once()
+        call_kw = mock_upload_logs.call_args[1]
         assert "signed_by" not in call_kw["labels"]
-        assert mock_upload_log.call_args[0][1] == "logs-prn"

@@ -5,12 +5,12 @@ import re
 from unittest.mock import Mock, patch
 import httpx
 import pytest
-from pulp_tool.models.pulp_api import TaskResponse
 from pulp_tool.services.upload_service import (
     _extract_results_url,
     _serialize_results_to_json,
     _upload_and_get_results_url,
 )
+from pulp_tool.utils.file_operations import FileRepositoryBatch
 
 
 class TestSerializeResultsToJson:
@@ -49,7 +49,14 @@ class TestUploadAndGetResultsUrl:
         args.parent_package = "test-package"
         with patch("pulp_tool.utils.create_labels", return_value={"build_id": "test-build"}):
             with pytest.raises(Exception):
-                _upload_and_get_results_url(mock_pulp_client, args, "test-repo", "test json content", "2024-01-01")
+                _upload_and_get_results_url(
+                    mock_pulp_client,
+                    args,
+                    "test json content",
+                    "2024-01-01",
+                    FileRepositoryBatch(),
+                    "/artifacts-href",
+                )
 
 
 class TestExtractResultsUrl:
@@ -59,15 +66,12 @@ class TestExtractResultsUrl:
         """Test successful results URL extraction."""
         args = Mock()
         args.build_id = "test-build"
-        task_response = TaskResponse(
-            pulp_href="/api/v3/tasks/123/", state="completed", result={"relative_path": "pulp_results.json"}
-        )
         with patch("pulp_tool.services.upload_collect.PulpHelper") as MockPulpHelper:
             mock_helper = Mock()
             mock_helper.get_distribution_urls.return_value = {
                 "artifacts": "https://pulp-content.example.com/test-domain/test-build/artifacts/"
             }
             MockPulpHelper.return_value = mock_helper
-            result = _extract_results_url(mock_pulp_client, args, task_response)
+            result = _extract_results_url(mock_pulp_client, args, "pulp_results.json")
             assert result == "https://pulp-content.example.com/test-domain/test-build/artifacts/pulp_results.json"
             mock_helper.get_distribution_urls.assert_called_once_with("test-build")

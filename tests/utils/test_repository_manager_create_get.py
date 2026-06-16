@@ -447,3 +447,41 @@ class TestRepositoryManagerCreateOrGetRepository:
         ):
             manager._create_distribution_task(methods, new_distro, "rpms", True, "test-build")
             mock_logging.error.assert_called()
+
+    def test_create_distribution_task_skips_when_distribution_exists(self) -> None:
+        """Existing repositories skip distribution create only when the distribution exists."""
+        mock_client = Mock()
+        manager = RepositoryManager(mock_client)
+        from pulp_tool.models.pulp_api import DistributionRequest
+
+        new_distro = DistributionRequest(name="test-build/rpms", base_path="test-build/rpms")
+        methods = cast(RepositoryApiOps, SimpleNamespace(distro=Mock()))
+        with (
+            patch.object(manager, "_check_existing_distribution", return_value=True),
+            patch("pulp_tool.utils.repository_manager.logging") as mock_logging,
+        ):
+            task_id = manager._create_distribution_task(
+                methods, new_distro, "rpms", is_new_repository=False, build_id="test-build"
+            )
+        assert task_id == ""
+        methods.distro.assert_not_called()
+        assert manager._distribution_cache[("test-build", "rpms")] == "test-build/rpms"
+        mock_logging.warning.assert_called()
+
+    def test_create_distribution_task_creates_when_repo_exists_but_distribution_missing(self) -> None:
+        """Existing repositories still create a distribution when the GET returns not found."""
+        mock_client = Mock()
+        manager = RepositoryManager(mock_client)
+        from pulp_tool.models.pulp_api import DistributionRequest
+
+        new_distro = DistributionRequest(name="test-build/rpms", base_path="test-build/rpms")
+        methods = cast(RepositoryApiOps, SimpleNamespace(distro=Mock()))
+        with (
+            patch.object(manager, "_check_existing_distribution", return_value=False),
+            patch.object(manager, "_new_distribution_task", return_value="task-456") as mock_new,
+        ):
+            task_id = manager._create_distribution_task(
+                methods, new_distro, "rpms", is_new_repository=False, build_id="test-build"
+            )
+        assert task_id == "task-456"
+        mock_new.assert_called_once()

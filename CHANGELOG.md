@@ -30,17 +30,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `codecov.yml` configuration file with `unit-tests` flag and carryforward enabled
 - packages.redhat.com configuration section in README with OAuth2 setup
 - Username/password (Basic Auth) support for packages.redhat.com
-- **`create_file_content_and_wait`** in `pulp_tool.utils.pulp_tasks`: single helper for file content POST, response check, task wait, and optional URL extraction; used from upload orchestration, `upload_collect`, `uploads`, and pull re-upload paths
+- **`pulp_tool.utils.file_operations`:** `FileUploadSpec`, `FileRepositoryBatch`, `upload_files_parallel`, `add_file_content_to_repository` for two-phase file uploads
 - **Upload gather split:** `pulp_tool.services.upload_collect` and `pulp_tool.services.upload_common` hold results JSON / Konflux helpers; `upload_service` re-exports the same public names for stable imports
 - **`RepositoryApiOps`** (`pulp_tool.utils.repository_manager`): frozen dataclass binding `get` / `create` / `distro` / `get_distro` / `update_distro` / `wait_for_finished_task` to `PulpClient` for a given API type (replaces a dict of lambdas)
 - **Pulp client package:** `pulp_tool/api/pulp_client/` (`cache`, `chunked_get`, `repository`, `content_query`, `results`, `helpers`, `client`); `PulpClient` delegates without changing mixin order or Tekton-visible behavior
 
 ### Fixed
+- **File upload latency:** file content create tasks use a **3-minute** timeout (`FILE_CONTENT_CREATE_TASK_TIMEOUT`) instead of the 30-minute default; parallel uploads submit all creates first then resolve tasks together; incomplete tasks are skipped with a warning instead of blocking each file for half an hour
+- **Repository setup:** when a repository already exists, check whether its distribution exists before creating one; skip only when the distribution is found (avoids redundant tasks on re-upload while still repairing missing distributions)
 - **`upload` / `search-by` / Pulp RPM queries — `signed_by`:** Pulpcore rejects label values with comma or parentheses (400 on upload). The tool substitutes `,`→`:` and `(`/`)`→`[`/`]` via `pulp_tool.models.pulp_label_values` on `UploadRpmContext`, `SearchByRequest`, and at `PulpClient` query time so storage and lookups stay aligned. `search-by` applies the same mapping when building requests and when removing RPMs from `pulp_results.json` (artifact labels may still be pre-substitution). `pulp_label_select` is included in the primary GET `q=` with checksum or NVR constraints when possible; paginated list + client label filtering remains a forced fallback only when a query cannot be expressed safely.
 - **Upload stalls during repository setup:** Creating new distributions no longer blocks `setup_repositories` on long-running Pulp tasks; pending distribution tasks are tracked and awaited (with verification) before results collection so RPM/log/SBOM uploads can proceed in parallel
 - **Container certification:** Address ecosystem-cert-preflight failures (`BasedOnUbi`, `HasLicense`, `HasRequiredLabel`, `RunAsNonRoot`) by migrating the Konflux image from Fedora 45 to UBI 10 minimal with required labels, `/licenses/LICENSE`, and non-root `USER 1001`
 
 ### Changed
+- **File uploads (two-phase):** logs, SBOMs, generic artifacts, and in-memory `pulp_results.json` now match the RPM pattern—parallel content creation without associating a repository, then a single `add_content_units` modify per target file repository per upload run (`logs_href`, `sbom_href`, `artifacts_href`); `FileRepositoryBatch` in `pulp_tool.utils.file_operations` batches pending hrefs; artifacts modify is deferred to `collect_results` after results JSON phase-1 upload
+- **`create_file_content`:** `repository` is optional; omitted from POST when unset (phase-1 file content create)
+- **`upload_file_content`** replaces **`create_file_content_and_wait`** for phase-1 file uploads; repository association happens via batched modify helpers
 - **Pulp task polling:** `wait_for_finished_task` uses a global **30-minute** timeout (`DEFAULT_TASK_TIMEOUT`); tasks that do not finish in time log a **warning** and return the last known state so upload and related flows continue instead of raising `TimeoutError` (distribution setup, RPM overwrite remove, and other callers tolerate incomplete tasks)
 - **Log upload logging:** Per-file log lines include architecture (e.g. `Uploading log for x86_64: …`) so parallel per-arch uploads are easier to follow in Tekton logs
 - **Container image:** Dockerfile uses UBI 10 minimal with Python 3.12; adds OpenShift preflight labels, `/licenses/LICENSE`, and non-root `USER 1001`; `gcc` no longer required (`pydantic-core` cp312 wheels)

@@ -17,8 +17,17 @@ from .validation.build_id import (
 )
 from .validation.file import validate_file_path
 from .validation.repository import validate_repository_setup
-from .uploads import create_labels, upload_artifacts_to_repository, upload_rpms_logs, upload_log, upload_rpms
-from .pulp_tasks import create_file_content_and_wait
+from .uploads import (
+    create_labels,
+    upload_artifact_phase1,
+    upload_artifacts_to_repository,
+    upload_log_phase1,
+    upload_logs_parallel,
+    upload_rpms_logs,
+    upload_rpms,
+)
+from .pulp_tasks import upload_file_content, FileContentUploadResult
+from .file_operations import FileRepositoryBatch, FileUploadSpec, add_file_content_to_repository, upload_files_parallel
 from .url import get_pulp_content_base_url
 from ..models.repository import RepositoryRefs
 
@@ -54,8 +63,15 @@ __all__ = [
     "upload_artifacts_to_repository",
     "upload_rpms",
     "upload_rpms_logs",
-    "upload_log",
-    "create_file_content_and_wait",
+    "upload_log_phase1",
+    "upload_logs_parallel",
+    "upload_artifact_phase1",
+    "upload_file_content",
+    "FileContentUploadResult",
+    "FileRepositoryBatch",
+    "FileUploadSpec",
+    "add_file_content_to_repository",
+    "upload_files_parallel",
     "get_pulp_content_base_url",
     "RepositoryRefs",
     # New utility modules

@@ -76,29 +76,43 @@ class TestPulpHelperDistributionOperations:
         assert task_id == "/pulp/api/v3/tasks/12345/"
 
     def test_create_distribution_task(self, mock_pulp_client) -> None:
-        """Test PulpHelper _create_distribution_task."""
+        """Test PulpHelper _create_distribution_task for a new repository."""
+        helper = PulpHelper(mock_pulp_client)
+        methods = cast(RepositoryApiOps, SimpleNamespace())
+        new_distro = RpmDistributionRequest(name="test-distro", base_path="test-distro", repository="test-repo")
+        with patch.object(
+            helper._repository_manager, "_new_distribution_task", return_value="/pulp/api/v3/tasks/12345/"
+        ):
+            task_id = helper._repository_manager._create_distribution_task(
+                methods, new_distro, "rpms", is_new_repository=True, build_id="test-build"
+            )
+        assert task_id == "/pulp/api/v3/tasks/12345/"
+
+    def test_create_distribution_task_skips_when_distribution_exists(self, mock_pulp_client) -> None:
+        """Test _create_distribution_task skips when distribution already exists."""
         helper = PulpHelper(mock_pulp_client)
         methods = cast(RepositoryApiOps, SimpleNamespace())
         new_distro = RpmDistributionRequest(name="test-distro", base_path="test-distro", repository="test-repo")
         with (
-            patch.object(helper._repository_manager, "_check_existing_distribution", return_value=False),
-            patch.object(
-                helper._repository_manager, "_new_distribution_task", return_value="/pulp/api/v3/tasks/12345/"
-            ),
+            patch.object(helper._repository_manager, "_check_existing_distribution", return_value=True),
+            patch.object(helper._repository_manager, "_new_distribution_task") as mock_new,
         ):
             task_id = helper._repository_manager._create_distribution_task(
-                methods, new_distro, "rpms", build_id="test-build"
+                methods, new_distro, "rpms", is_new_repository=False, build_id="test-build"
             )
-        assert task_id == "/pulp/api/v3/tasks/12345/"
+        assert task_id == ""
+        mock_new.assert_not_called()
+        assert helper._repository_manager._distribution_cache[("test-build", "rpms")] == "test-distro"
 
     def test_create_distribution_task_already_exists(self, mock_pulp_client) -> None:
-        """Test PulpHelper _create_distribution_task when already exists."""
+        """_check_existing_distribution reports when a distribution is present."""
         helper = PulpHelper(mock_pulp_client)
-        methods = cast(RepositoryApiOps, SimpleNamespace())
-        new_distro = RpmDistributionRequest(name="test-distro", base_path="test-distro", repository="test-repo")
-        with patch.object(helper._repository_manager, "_check_existing_distribution", return_value=True):
-            task_id = helper._repository_manager._create_distribution_task(methods, new_distro, "rpms")
-        assert task_id == ""
+        mock_response = Mock()
+        mock_response.status_code = 200
+        methods = cast(RepositoryApiOps, SimpleNamespace(get_distro=Mock(return_value=mock_response)))
+        mock_pulp_client.check_response = Mock()
+        with patch.object(helper._repository_manager, "_parse_repository_response", return_value={"results": [{}]}):
+            assert helper._repository_manager._check_existing_distribution(methods, "test-distro", "rpms") is True
 
     def test_get_single_distribution_url(self, mock_pulp_client) -> None:
         """Test PulpHelper _get_single_distribution_url."""
@@ -201,7 +215,9 @@ class TestPulpHelperRepositoryImplementation:
             patch.object(
                 helper._repository_manager, "_get_existing_repository", return_value=("test-prn", "test-href")
             ),
-            patch.object(helper._repository_manager, "_create_distribution_task", return_value="task-123"),
+            patch.object(
+                helper._repository_manager, "_create_distribution_task", return_value=""
+            ) as mock_create_distro,
             patch.object(helper._repository_manager, "_wait_for_distribution_task") as mock_wait,
         ):
             mock_get_methods.return_value = RepositoryApiOps(mock_pulp_client, "file")
@@ -214,6 +230,8 @@ class TestPulpHelperRepositoryImplementation:
         assert prn == "test-prn"
         assert href == "test-href"
         mock_wait.assert_not_called()
+        mock_create_distro.assert_called_once()
+        assert mock_create_distro.call_args.args[3] is False  # is_new_repository
 
     def test_create_or_get_repository_impl_no_task(self, mock_pulp_client) -> None:
         """Test PulpHelper _create_or_get_repository_impl with no distribution task."""

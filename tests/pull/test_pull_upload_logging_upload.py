@@ -13,6 +13,8 @@ from pulp_tool.models.results import PulpResultsModel
 from pulp_tool.pull import upload_downloaded_files_to_pulp
 from pulp_tool.pull.upload import _upload_rpms_to_repository, _upload_sboms_and_logs
 from pulp_tool.utils import RepositoryRefs
+from pulp_tool.utils.file_operations import FileRepositoryBatch
+from pulp_tool.utils.pulp_tasks import FileContentUploadResult
 
 
 class TestUploadFunctionality:
@@ -89,28 +91,30 @@ class TestUploadFunctionality:
         repositories = RepositoryRefs(
             rpms_href="",
             rpms_prn="",
-            logs_href="",
+            logs_href="/pulp/api/v3/repositories/file/file/logs/",
             logs_prn="/pulp/api/v3/repositories/logs/12345/",
-            sbom_href="",
+            sbom_href="/pulp/api/v3/repositories/file/file/sbom/",
             sbom_prn="/pulp/api/v3/repositories/sbom/12345/",
             artifacts_href="",
             artifacts_prn="",
         )
         upload_info = PulpResultsModel(build_id="test", repositories=repositories)
-        httpx_mock.post(re.compile(".*/content/file/files/")).mock(
-            return_value=httpx.Response(202, json={"task": "/pulp/api/v3/tasks/12345/"})
-        )
-        httpx_mock.get(re.compile(".*/tasks/12345/")).mock(
-            return_value=httpx.Response(200, json={"pulp_href": "/pulp/api/v3/tasks/12345/", "state": "completed"})
-        )
-        with patch("pulp_tool.utils.uploads.upload_artifacts_to_repository") as mock_upload:
-            mock_upload.return_value = (1, [])
+        with (
+            patch(
+                "pulp_tool.pull.upload.upload_files_parallel",
+                return_value=[
+                    ("test.sbom", FileContentUploadResult(content_href="/content/file/sbom/")),
+                    ("test.log", FileContentUploadResult(content_href="/content/file/log/")),
+                ],
+            ),
+            patch("pulp_tool.pull.upload.add_file_content_to_repository", return_value=[]),
+        ):
             _upload_sboms_and_logs(mock_pulp_client, pulled_artifacts, repositories, upload_info)
-            assert upload_info.uploaded_counts.sboms == 1
-            assert upload_info.uploaded_counts.logs == 1
+        assert upload_info.uploaded_counts.sboms == 1
+        assert upload_info.uploaded_counts.logs == 1
 
     def test_upload_sboms_exception(self, mock_pulp_client, httpx_mock) -> None:
-        """Test SBOM upload with exception handling (lines 53-55)."""
+        """Test SBOM upload with exception handling."""
         pulled_artifacts = PulledArtifacts()
         pulled_artifacts.add_sbom("test.sbom", "/tmp/test.sbom", {"build_id": "test"})
         repositories = RepositoryRefs(
@@ -118,29 +122,36 @@ class TestUploadFunctionality:
             rpms_prn="",
             logs_href="",
             logs_prn="",
-            sbom_href="",
+            sbom_href="/pulp/api/v3/repositories/file/file/sbom/",
             sbom_prn="/pulp/api/v3/repositories/sbom/12345/",
             artifacts_href="",
             artifacts_prn="",
         )
         upload_info = PulpResultsModel(build_id="test", repositories=repositories)
         with (
-            patch.object(mock_pulp_client, "create_file_content", side_effect=ValueError("SBOM upload failed")),
+            patch(
+                "pulp_tool.pull.upload.upload_files_parallel",
+                return_value=[("test.sbom", FileContentUploadResult(content_href="/content/file/sbom/"))],
+            ),
+            patch(
+                "pulp_tool.pull.upload.add_file_content_to_repository",
+                side_effect=ValueError("SBOM repository modify failed"),
+            ),
             patch("pulp_tool.pull.upload.logging") as mock_logging,
         ):
             _upload_sboms_and_logs(mock_pulp_client, pulled_artifacts, repositories, upload_info)
-            mock_logging.error.assert_called()
-            assert len(upload_info.upload_errors) > 0
-            assert upload_info.uploaded_counts.sboms == 0
+        mock_logging.error.assert_called()
+        assert len(upload_info.upload_errors) > 0
+        assert upload_info.uploaded_counts.sboms == 1
 
-    def test_upload_logs_exception(self, mock_pulp_client, httpx_mock) -> None:
-        """Test log upload with exception handling (lines 81-83)."""
+    def test_upload_logs_modify_exception(self, mock_pulp_client, httpx_mock) -> None:
+        """Test log repository modify failure is recorded."""
         pulled_artifacts = PulledArtifacts()
         pulled_artifacts.add_log("test.log", "/tmp/test.log", {"build_id": "test", "arch": "x86_64"})
         repositories = RepositoryRefs(
             rpms_href="",
             rpms_prn="",
-            logs_href="",
+            logs_href="/pulp/api/v3/repositories/file/file/logs/",
             logs_prn="/pulp/api/v3/repositories/logs/12345/",
             sbom_href="",
             sbom_prn="",
@@ -149,13 +160,70 @@ class TestUploadFunctionality:
         )
         upload_info = PulpResultsModel(build_id="test", repositories=repositories)
         with (
-            patch.object(mock_pulp_client, "create_file_content", side_effect=ValueError("Log upload failed")),
+            patch(
+                "pulp_tool.pull.upload.upload_files_parallel",
+                return_value=[("test.log", FileContentUploadResult(content_href="/content/file/log/"))],
+            ),
+            patch(
+                "pulp_tool.pull.upload.add_file_content_to_repository",
+                side_effect=ValueError("logs repository modify failed"),
+            ),
             patch("pulp_tool.pull.upload.logging") as mock_logging,
         ):
             _upload_sboms_and_logs(mock_pulp_client, pulled_artifacts, repositories, upload_info)
-            mock_logging.error.assert_called()
-            assert len(upload_info.upload_errors) > 0
-            assert upload_info.uploaded_counts.logs == 0
+        mock_logging.error.assert_called()
+        assert any("logs repository modify" in err for err in upload_info.upload_errors)
+        assert upload_info.uploaded_counts.logs == 1
+
+    def test_upload_record_uploaded_file_exception(self, mock_pulp_client, httpx_mock) -> None:
+        """Test exception while recording parallel upload results."""
+        pulled_artifacts = PulledArtifacts()
+        pulled_artifacts.add_log("test.log", "/tmp/test.log", {"build_id": "test", "arch": "x86_64"})
+        repositories = RepositoryRefs(
+            rpms_href="",
+            rpms_prn="",
+            logs_href="/pulp/api/v3/repositories/file/file/logs/",
+            logs_prn="/pulp/api/v3/repositories/logs/12345/",
+            sbom_href="",
+            sbom_prn="",
+            artifacts_href="",
+            artifacts_prn="",
+        )
+        upload_info = PulpResultsModel(build_id="test", repositories=repositories)
+        with (
+            patch(
+                "pulp_tool.pull.upload.upload_files_parallel",
+                return_value=[("test.log", FileContentUploadResult(content_href="/content/file/log/"))],
+            ),
+            patch.object(FileRepositoryBatch, "add_log", side_effect=RuntimeError("batch failed")),
+            patch("pulp_tool.pull.upload.add_file_content_to_repository", return_value=[]),
+            patch("pulp_tool.pull.upload.logging") as mock_logging,
+        ):
+            _upload_sboms_and_logs(mock_pulp_client, pulled_artifacts, repositories, upload_info)
+        mock_logging.error.assert_called()
+        assert any("batch failed" in err for err in upload_info.upload_errors)
+
+    def test_upload_logs_exception(self, mock_pulp_client, httpx_mock) -> None:
+        """Test log upload with exception handling."""
+        pulled_artifacts = PulledArtifacts()
+        pulled_artifacts.add_log("test.log", "/tmp/test.log", {"build_id": "test", "arch": "x86_64"})
+        repositories = RepositoryRefs(
+            rpms_href="",
+            rpms_prn="",
+            logs_href="/pulp/api/v3/repositories/file/file/logs/",
+            logs_prn="/pulp/api/v3/repositories/logs/12345/",
+            sbom_href="",
+            sbom_prn="",
+            artifacts_href="",
+            artifacts_prn="",
+        )
+        upload_info = PulpResultsModel(build_id="test", repositories=repositories)
+        with (
+            patch("pulp_tool.pull.upload.upload_files_parallel", return_value=[]),
+            patch("pulp_tool.pull.upload.logging"),
+        ):
+            _upload_sboms_and_logs(mock_pulp_client, pulled_artifacts, repositories, upload_info)
+        assert upload_info.uploaded_counts.logs == 0
 
     def test_upload_rpms_repository_addition_exception(self, mock_pulp_client, httpx_mock) -> None:
         """Test RPM upload with repository addition exception (lines 124-127)."""

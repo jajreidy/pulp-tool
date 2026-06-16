@@ -8,6 +8,7 @@ import pytest
 from pulp_tool.models.context import UploadRpmContext
 from pulp_tool.models.repository import RepositoryRefs
 from pulp_tool.models.results import PulpResultsModel, RpmUploadResult
+from pulp_tool.utils.file_operations import FileRepositoryBatch
 from pulp_tool.utils.upload_orchestrator import UploadOrchestrator
 
 
@@ -58,6 +59,54 @@ class TestUploadOrchestratorProcessUploads:
             mock_ph_cls.return_value.wait_for_pending_distribution_tasks.assert_called_once()
             assert mock_logging.info.call_count >= 2
             assert mock_logging.debug.call_count >= 1
+
+    def test_process_uploads_one_modify_per_file_repository(self) -> None:
+        """process_uploads flushes logs and sbom with a single modify per repository."""
+        orchestrator = UploadOrchestrator()
+        args = UploadRpmContext(
+            build_id="test-build",
+            date_str="2024-01-01 00:00:00",
+            namespace="test-ns",
+            parent_package="test-pkg",
+            rpm_path="/test/rpms",
+            sbom_path="/test/sbom.json",
+        )
+        mock_client = Mock()
+        repositories = RepositoryRefs(
+            rpms_href="/test/rpm-href",
+            rpms_prn="",
+            logs_href="/logs-href",
+            logs_prn="logs-prn",
+            sbom_href="/sbom-href",
+            sbom_prn="sbom-prn",
+            artifacts_href="/artifacts-href",
+            artifacts_prn="artifacts-prn",
+        )
+        mock_processed_uploads = {
+            "x86_64": RpmUploadResult(created_resources=["/resource/1"]),
+            "aarch64": RpmUploadResult(created_resources=["/resource/2"]),
+        }
+        with (
+            patch("pulp_tool.utils.pulp_helper.PulpHelper") as mock_ph_cls,
+            patch.object(orchestrator, "process_architecture_uploads", return_value=mock_processed_uploads),
+            patch("pulp_tool.services.upload_service.upload_sbom"),
+            patch("pulp_tool.services.upload_service.collect_results", return_value="https://example.com/results.json"),
+            patch(
+                "pulp_tool.utils.file_operations.add_file_content_to_repository",
+                return_value=["/version/1/"],
+            ) as mock_modify,
+        ):
+            mock_ph_cls.return_value.get_distribution_urls_for_upload_context.return_value = {
+                "rpms": "https://example.com/rpms/",
+                "logs": "https://example.com/logs/",
+                "sbom": "https://example.com/sbom/",
+                "artifacts": "https://example.com/artifacts/",
+            }
+            result = orchestrator.process_uploads(mock_client, args, repositories)
+        assert result == "https://example.com/results.json"
+        assert mock_modify.call_count == 2
+        modify_repos = [call.args[1] for call in mock_modify.call_args_list]
+        assert modify_repos == ["/logs-href", "/sbom-href"]
 
     def test_process_uploads_missing_rpm_href(self) -> None:
         """Test process_uploads raises ValueError when rpms_href is missing (lines 213-214)."""
@@ -305,6 +354,7 @@ class TestUploadOrchestratorProcessUploads:
                     rpm_href="",
                     results_model=results_model,
                     distribution_urls={},
+                    file_batch=FileRepositoryBatch(),
                     pulp_helper=None,
                 )
 

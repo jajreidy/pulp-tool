@@ -110,6 +110,22 @@ class TestPulpClient:
         assert result.status_code == 202
         assert result.json()["task"] == "/pulp/api/v3/tasks/12345/"
 
+    def test_create_file_content_omits_repository_when_none(self, mock_pulp_client, temp_file, httpx_mock) -> None:
+        """Test create_file_content omits repository field when not provided."""
+        posted: dict = {}
+
+        def capture(request: httpx.Request) -> httpx.Response:
+            posted["body"] = request.read().decode()
+            return httpx.Response(202, json={"pulp_href": "/content/file/1/"})
+
+        httpx_mock.post("https://pulp.example.com/pulp/api/v3/test-domain/api/v3/content/file/files/").mock(
+            side_effect=capture
+        )
+        labels = {"build_id": "test-build"}
+        result = mock_pulp_client.create_file_content(None, temp_file, build_id="test-build", pulp_label=labels)
+        assert result.status_code == 202
+        assert "repository" not in posted["body"]
+
     def test_create_file_content_from_string(self, mock_pulp_client, httpx_mock) -> None:
         """Test create_file_content method with string content."""
         httpx_mock.post("https://pulp.example.com/pulp/api/v3/test-domain/api/v3/content/file/files/").mock(

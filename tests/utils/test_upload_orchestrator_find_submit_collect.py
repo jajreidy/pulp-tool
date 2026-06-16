@@ -9,6 +9,7 @@ import pytest
 from pulp_tool.models.context import UploadRpmContext
 from pulp_tool.models.repository import RepositoryRefs
 from pulp_tool.models.results import PulpResultsModel, RpmUploadResult
+from pulp_tool.utils.file_operations import FileRepositoryBatch
 from pulp_tool.utils.upload_orchestrator import UploadOrchestrator
 
 
@@ -66,7 +67,6 @@ class TestUploadOrchestratorSubmitArchitectureTasks:
         )
         mock_client = Mock()
         rpm_href = "/test/rpm-href"
-        logs_prn = "logs-prn"
         date_str = "2024-01-01"
         results_model = PulpResultsModel(
             build_id="test-build",
@@ -81,6 +81,7 @@ class TestUploadOrchestratorSubmitArchitectureTasks:
                 artifacts_prn="",
             ),
         )
+        file_batch = FileRepositoryBatch()
         with patch("pulp_tool.utils.upload_orchestrator.upload_rpms_logs"):
             future_to_arch = orchestrator._submit_architecture_tasks(
                 mock_executor,
@@ -89,7 +90,7 @@ class TestUploadOrchestratorSubmitArchitectureTasks:
                 args,
                 mock_client,
                 rpm_href,
-                logs_prn,
+                file_batch,
                 date_str,
                 results_model,
                 {},

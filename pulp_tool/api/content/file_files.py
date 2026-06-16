@@ -35,7 +35,7 @@ class FileContentMixin(BaseResourceMixin):
 
     def create_file_content(
         self,
-        repository: str,
+        repository: Optional[str],
         content_or_path: Union[str, Path],
         *,
         build_id: str,
@@ -49,7 +49,8 @@ class FileContentMixin(BaseResourceMixin):
         API Endpoint: POST /api/v3/content/file/files/
 
         Args:
-            repository: Repository PRN
+            repository: Optional repository PRN; omit from the request when None or empty so
+                content is created without associating a repository (add via modify later).
             content_or_path: Either a file path (str/Path) or in-memory content (str)
             build_id: Build identifier for relative path
             pulp_label: Labels to attach to the content
@@ -63,7 +64,9 @@ class FileContentMixin(BaseResourceMixin):
             https://docs.pulpproject.org/pulp_file/restapi.html#operation/content_file_files_create
         """
         url = self._url("api/v3/content/file/files/")
-        data = {"repository": repository, "pulp_labels": json.dumps(pulp_label)}
+        data: Dict[str, str] = {"pulp_labels": json.dumps(pulp_label)}
+        if repository and str(repository).strip():
+            data["repository"] = repository
 
         # Determine if content_or_path is a file path or in-memory content
         if isinstance(content_or_path, (str, Path)) and os.path.exists(str(content_or_path)):

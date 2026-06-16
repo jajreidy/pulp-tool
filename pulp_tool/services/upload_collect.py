@@ -26,7 +26,8 @@ from ..utils.constants import (
     SUPPORTED_ARCHITECTURES,
     results_json_rpm_arch_distribution_key,
 )
-from ..utils.pulp_tasks import create_file_content_and_wait
+from ..utils.file_operations import FileRepositoryBatch
+from ..utils.pulp_tasks import upload_file_content
 from ..utils.response_utils import content_find_results_from_response
 
 from .upload_common import _distribution_urls_for_context
@@ -86,27 +87,37 @@ def _save_results_to_folder(folder_path: str, json_content: str, context: Upload
 
 
 def _upload_and_get_results_url(
-    client: "PulpClient", context: UploadContext, artifact_repository_prn: str, json_content: str, date: str
+    client: "PulpClient",
+    context: UploadContext,
+    json_content: str,
+    date: str,
+    file_batch: FileRepositoryBatch,
+    artifacts_href: str,
 ) -> Optional[str]:
-    """Upload results JSON and return the distribution URL."""
+    """Upload results JSON (phase 1), flush artifacts batch, and return the distribution URL."""
     labels = create_labels(context.build_id, "", context.namespace, context.parent_package, date)
 
     try:
-        task_response = create_file_content_and_wait(
+        upload_result = upload_file_content(
             client,
-            artifact_repository_prn,
             json_content,
             build_id=context.build_id,
             pulp_label=labels,
             filename=RESULTS_JSON_FILENAME,
             operation="upload results JSON",
         )
+        file_batch.add_artifact(upload_result.content_href)
+        relative_path = upload_result.relative_path or RESULTS_JSON_FILENAME
+        file_batch.results_json_relative_path = relative_path
         logging.info("Results JSON uploaded successfully")
 
-        results_json_url = _extract_results_url(client, context, task_response)
+        created_resources = file_batch.flush_artifacts(client, artifacts_href)
+        logging.debug("Artifacts repository modify created %d resource(s)", len(created_resources))
+
+        results_json_url = _extract_results_url(client, context, relative_path)
 
         if context.artifact_results:
-            _handle_artifact_results(client, context, task_response)
+            _handle_artifact_results(client, context, relative_path)
         else:
             logging.info("Results JSON available at: %s", results_json_url)
 
@@ -121,9 +132,9 @@ def _upload_and_get_results_url(
         raise
 
 
-def _extract_results_url(client: "PulpClient", context: UploadContext, task_response: TaskResponse) -> str:
-    """Extract results JSON URL from task response."""
-    logging.debug("Task response for results JSON: state=%s", task_response.state)
+def _extract_results_url(client: "PulpClient", context: UploadContext, relative_path: str) -> str:
+    """Extract results JSON URL from the known relative path."""
+    logging.debug("Results JSON relative_path: %s", relative_path)
 
     repository_helper = PulpHelper(client, parent_package=context.parent_package)
     distribution_urls = repository_helper.get_distribution_urls(context.build_id)
@@ -137,11 +148,6 @@ def _extract_results_url(client: "PulpClient", context: UploadContext, task_resp
 
     artifacts_dist_url = distribution_urls["artifacts"]
     logging.info("Using artifacts distribution URL: %s", artifacts_dist_url)
-
-    relative_path = task_response.result.get("relative_path") if task_response.result else None
-    if not relative_path:
-        raise ValueError("Task response does not contain relative_path in result")
-
     logging.info("Task response relative_path: %s", relative_path)
 
     final_url = f"{artifacts_dist_url}{relative_path}"
@@ -258,6 +264,8 @@ def collect_results(
     date: str,
     results_model: PulpResultsModel,
     extra_artifacts: Optional[List[ExtraArtifactRef]] = None,
+    *,
+    file_batch: Optional[FileRepositoryBatch] = None,
 ) -> Optional[str]:
     """
     Collect results and upload JSON directly from memory.
@@ -265,6 +273,7 @@ def collect_results(
     This function orchestrates gathering content, building results structure,
     and uploading the results JSON to the artifacts repository.
     """
+    batch = file_batch or FileRepositoryBatch()
     content_data = _gather_and_validate_content(client, context, extra_artifacts)
 
     if context.artifact_results and "," not in context.artifact_results.strip():
@@ -282,7 +291,7 @@ def collect_results(
             _add_distributions_to_results(client, context, results_model)
             json_content = _serialize_results_to_json(results_model.to_json_dict())
             return _upload_and_get_results_url(
-                client, context, results_model.repositories.artifacts_prn, json_content, date
+                client, context, json_content, date, batch, results_model.repositories.artifacts_href
             )
         return None
 
@@ -291,7 +300,9 @@ def collect_results(
     _add_distributions_to_results(client, context, results_model)
     json_content = _serialize_results_to_json(results_model.to_json_dict())
 
-    return _upload_and_get_results_url(client, context, results_model.repositories.artifacts_prn, json_content, date)
+    return _upload_and_get_results_url(
+        client, context, json_content, date, batch, results_model.repositories.artifacts_href
+    )
 
 
 def _find_artifact_content(client: "PulpClient", task_response: TaskResponse) -> Optional[Tuple[str, str]]:
@@ -360,7 +371,7 @@ def _write_konflux_results(image_url: str, digest: str, url_path: str, digest_pa
     logging.debug("Image digest: %s", digest)
 
 
-def _handle_artifact_results(client: "PulpClient", context: UploadContext, task_response: TaskResponse) -> None:
+def _handle_artifact_results(client: "PulpClient", context: UploadContext, relative_path: str) -> None:
     """Handle artifact results for Konflux integration."""
     repository_helper = PulpHelper(client, parent_package=context.parent_package)
     distribution_urls = repository_helper.get_distribution_urls(context.build_id)
@@ -370,10 +381,8 @@ def _handle_artifact_results(client: "PulpClient", context: UploadContext, task_
         return
 
     artifacts_dist_url = distribution_urls["artifacts"]
-
-    relative_path = task_response.result.get("relative_path") if task_response.result else None
     if not relative_path:
-        logging.error("Task response does not contain relative_path in result")
+        logging.error("Results JSON relative_path is empty")
         return
 
     distribution_file_url = f"{artifacts_dist_url}{relative_path}"

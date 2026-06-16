@@ -29,6 +29,7 @@ Rules:
 - Keep all three `- [ ]` checklist lines **unchanged**.
 - Do not rename sections or substitute a different outline unless the user explicitly overrides.
 - Write Summary / How to test / Notes in complete sentences.
+- **Deliverable:** write the finished body to **`pr-description.md`** at the repo root (listed in `.gitignore`). Close every fenced code block before the next section. Optional: `gh pr create --body-file pr-description.md`.
 
 ## Suggested commit message
 

@@ -23,42 +23,40 @@ class TestUploadOrchestratorProcessFileUploads:
             file_files=["/path/to/file.txt"],
             log_files=["/path/to/build.log"],
             sbom_files=["/path/to/sbom.json"],
+            arch="x86_64",
         )
         mock_client = Mock()
         repositories = RepositoryRefs(
             rpms_href="/test/rpm-href",
             rpms_prn="",
-            logs_href="",
+            logs_href="/logs-href",
             logs_prn="logs-prn",
-            sbom_href="",
+            sbom_href="/sbom-href",
             sbom_prn="sbom-prn",
-            artifacts_href="",
+            artifacts_href="/artifacts-href",
             artifacts_prn="artifacts-prn",
         )
         with (
             patch("pulp_tool.utils.pulp_helper.PulpHelper") as mock_ph_cls,
             patch("pulp_tool.utils.upload_orchestrator.upload_rpms", return_value=["/rpm/resource/1"]),
-            patch("pulp_tool.utils.upload_orchestrator.upload_log", return_value=["/log/resource/1"]),
-            patch("pulp_tool.services.upload_service.upload_sbom", return_value=["/sbom/resource/1"]),
+            patch("pulp_tool.utils.upload_orchestrator.upload_logs_parallel", return_value=1) as mock_upload_logs,
+            patch("pulp_tool.services.upload_service.upload_sbom"),
+            patch("pulp_tool.utils.upload_orchestrator.upload_artifact_phase1") as mock_upload_artifact,
+            patch(
+                "pulp_tool.utils.file_operations.add_file_content_to_repository",
+                return_value=["/version/1/"],
+            ) as mock_modify,
             patch("pulp_tool.services.upload_service.collect_results", return_value="https://example.com/results.json"),
             patch("pulp_tool.utils.upload_orchestrator.create_labels"),
-            patch("pulp_tool.utils.upload_orchestrator.validate_file_path"),
-            patch.object(mock_client, "create_file_content") as mock_create,
-            patch.object(mock_client, "check_response"),
-            patch.object(mock_client, "wait_for_finished_task") as mock_wait,
         ):
             mock_ph_cls.return_value.get_distribution_urls_for_upload_context.return_value = (
                 _PROCESS_FILE_UPLOAD_DIST_URLS
             )
-            mock_response = Mock()
-            mock_response.json.return_value = {"task": "/api/v3/tasks/123/"}
-            mock_create.return_value = mock_response
-            mock_task_response = Mock()
-            mock_task_response.created_resources = ["/file/resource/1"]
-            mock_wait.return_value = mock_task_response
             result = orchestrator.process_file_uploads(mock_client, context, repositories)
             assert result == "https://example.com/results.json"
-            assert mock_create.called
+            mock_upload_logs.assert_called_once()
+            mock_upload_artifact.assert_called_once()
+            assert mock_modify.call_count == 2
 
     def test_process_file_uploads_rpms_with_arch_detection(self) -> None:
         """Test process_file_uploads with RPMs requiring architecture detection."""
@@ -186,7 +184,7 @@ class TestUploadOrchestratorProcessFileUploads:
         repositories = RepositoryRefs(
             rpms_href="/test/rpm-href",
             rpms_prn="",
-            logs_href="",
+            logs_href="/logs-href",
             logs_prn="logs-prn",
             sbom_href="",
             sbom_prn="",
@@ -196,20 +194,22 @@ class TestUploadOrchestratorProcessFileUploads:
         with (
             patch("pulp_tool.utils.pulp_helper.PulpHelper") as mock_ph_cls,
             patch("pulp_tool.utils.artifact_detection.detect_arch_from_filepath", return_value="x86_64"),
-            patch(
-                "pulp_tool.utils.upload_orchestrator.upload_log", return_value=["/log/resource/1"]
-            ) as mock_upload_log,
+            patch("pulp_tool.utils.upload_orchestrator.upload_logs_parallel", return_value=1) as mock_upload_logs,
             patch("pulp_tool.services.upload_service.collect_results", return_value="https://example.com/results.json"),
             patch("pulp_tool.utils.upload_orchestrator.create_labels"),
+            patch(
+                "pulp_tool.utils.file_operations.add_file_content_to_repository",
+                return_value=[],
+            ),
         ):
             mock_ph_cls.return_value.get_distribution_urls_for_upload_context.return_value = (
                 _PROCESS_FILE_UPLOAD_DIST_URLS
             )
             result = orchestrator.process_file_uploads(mock_client, context, repositories)
             assert result == "https://example.com/results.json"
-            mock_upload_log.assert_called_once()
-            call_args = mock_upload_log.call_args
-            assert call_args[1]["arch"] == "x86_64"
+            mock_upload_logs.assert_called_once()
+            call_kwargs = mock_upload_logs.call_args[1]
+            assert call_kwargs["arch"] == "x86_64"
 
     def test_process_file_uploads_logs_skip_undetected_arch(self) -> None:
         """Test process_file_uploads skips logs with undetected architecture."""
@@ -235,7 +235,7 @@ class TestUploadOrchestratorProcessFileUploads:
         with (
             patch("pulp_tool.utils.pulp_helper.PulpHelper") as mock_ph_cls,
             patch("pulp_tool.utils.artifact_detection.detect_arch_from_filepath", return_value=None),
-            patch("pulp_tool.utils.upload_orchestrator.upload_log") as mock_upload_log,
+            patch("pulp_tool.utils.upload_orchestrator.upload_logs_parallel") as mock_upload_logs,
             patch("pulp_tool.services.upload_service.collect_results", return_value="https://example.com/results.json"),
             patch("pulp_tool.utils.upload_orchestrator.logging") as mock_logging,
         ):
@@ -244,7 +244,7 @@ class TestUploadOrchestratorProcessFileUploads:
             )
             result = orchestrator.process_file_uploads(mock_client, context, repositories)
             assert result == "https://example.com/results.json"
-            mock_upload_log.assert_not_called()
+            mock_upload_logs.assert_not_called()
             mock_logging.warning.assert_called()
             warning_calls = [call for call in mock_logging.warning.call_args_list if "Skipping" in str(call)]
             assert len(warning_calls) > 0
@@ -273,20 +273,22 @@ class TestUploadOrchestratorProcessFileUploads:
         )
         with (
             patch("pulp_tool.utils.pulp_helper.PulpHelper") as mock_ph_cls,
-            patch(
-                "pulp_tool.utils.upload_orchestrator.upload_log", return_value=["/log/resource/1"]
-            ) as mock_upload_log,
+            patch("pulp_tool.utils.upload_orchestrator.upload_logs_parallel", return_value=1) as mock_upload_logs,
             patch("pulp_tool.services.upload_service.collect_results", return_value="https://example.com/results.json"),
             patch("pulp_tool.utils.upload_orchestrator.create_labels"),
+            patch(
+                "pulp_tool.utils.file_operations.add_file_content_to_repository",
+                return_value=[],
+            ),
         ):
             mock_ph_cls.return_value.get_distribution_urls_for_upload_context.return_value = (
                 _PROCESS_FILE_UPLOAD_DIST_URLS
             )
             result = orchestrator.process_file_uploads(mock_client, context, repositories)
             assert result == "https://example.com/results.json"
-            mock_upload_log.assert_called_once()
-            call_args = mock_upload_log.call_args
-            assert call_args[1]["arch"] == "x86_64"
+            mock_upload_logs.assert_called_once()
+            call_kwargs = mock_upload_logs.call_args[1]
+            assert call_kwargs["arch"] == "x86_64"
 
     def test_process_file_uploads_multiple_architectures(self) -> None:
         """Test process_file_uploads with RPMs from multiple architectures."""

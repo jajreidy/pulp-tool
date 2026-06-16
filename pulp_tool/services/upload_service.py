@@ -32,8 +32,10 @@ if TYPE_CHECKING:
     from ..api.pulp_client import PulpClient
 
 from ..utils import PulpHelper, validate_file_path, create_labels
-from ..utils.pulp_tasks import create_file_content_and_wait
+from ..utils.file_operations import FileRepositoryBatch
+from ..utils.pulp_tasks import upload_file_content
 from ..utils.constants import SBOM_EXTENSIONS, SUPPORTED_ARCHITECTURES
+from ..utils.uploads import upload_artifact_phase1, upload_logs_parallel, upload_rpms
 
 from .upload_common import _distribution_urls_for_context
 from .upload_collect import (
@@ -140,35 +142,26 @@ class UploadService:
 def upload_sbom(
     client: "PulpClient",
     context: UploadContext,
-    sbom_repository_prn: str,
     date: str,
     results_model: PulpResultsModel,
     sbom_path: str,
+    file_batch: FileRepositoryBatch,
     *,
     distribution_urls: Optional[Dict[str, str]] = None,
     target_arch_repo: bool = False,
-) -> List[str]:
+) -> None:
     """
-    Upload SBOM file to repository.
+    Upload SBOM file content (phase 1) and append href to the SBOM batch.
 
-    Args:
-        client: PulpClient instance for API interactions
-        context: Upload context containing metadata
-        sbom_repository_prn: SBOM repository PRN
-        date: Build date string
-        results_model: PulpResultsModel to update with upload counts
-        sbom_path: Path to the SBOM file to upload
-
-    Returns:
-        List of created resource hrefs from the upload task
+    Repository association happens later via ``FileRepositoryBatch.flush_sbom``.
     """
     if not os.path.exists(sbom_path):
         logging.error("SBOM file not found: %s", sbom_path)
-        return []
+        return
 
-    if not sbom_repository_prn or not str(sbom_repository_prn).strip():
+    if not (results_model.repositories.sbom_href or "").strip():
         raise ValueError(
-            "Cannot upload SBOM: SBOM repository PRN is empty. "
+            "Cannot upload SBOM: SBOM repository href is empty. "
             "Ensure the SBOM repository is created when uploading SBOM files."
         )
 
@@ -176,25 +169,19 @@ def upload_sbom(
     labels = create_labels(context.build_id, "", context.namespace, context.parent_package, date)
     validate_file_path(sbom_path, "SBOM")
 
-    task_response = create_file_content_and_wait(
+    upload_result = upload_file_content(
         client,
-        sbom_repository_prn,
         sbom_path,
         build_id=context.build_id,
         pulp_label=labels,
         operation=f"upload SBOM {sbom_path}",
     )
+    file_batch.add_sbom(upload_result.content_href)
     logging.debug("SBOM uploaded successfully: %s", sbom_path)
-
-    # Update upload counts
     results_model.uploaded_counts.sboms += 1
 
     if distribution_urls is not None:
-        rel_path: Optional[str] = None
-        if task_response.result and isinstance(task_response.result, dict):
-            rel_path = task_response.result.get("relative_path")
-        if not rel_path:
-            rel_path = os.path.basename(sbom_path)
+        rel_path = upload_result.relative_path or os.path.basename(sbom_path)
         client.add_uploaded_artifact_to_results_model(
             results_model,
             local_path=sbom_path,
@@ -204,9 +191,6 @@ def upload_sbom(
             target_arch_repo=target_arch_repo,
             file_relative_path=rel_path,
         )
-
-    # Return the created resources from the task
-    return task_response.created_resources
 
 
 def _classify_artifact_from_key(key: str) -> str:
@@ -278,8 +262,6 @@ def process_uploads_from_results_json(
     Returns:
         URL of the uploaded results JSON, or None if upload failed
     """
-    from ..utils.uploads import upload_rpms, upload_log
-
     helper = pulp_helper or PulpHelper(client, parent_package=context.parent_package)
     distribution_urls = helper.get_distribution_urls_for_upload_context(context.build_id, context)
 
@@ -298,24 +280,24 @@ def process_uploads_from_results_json(
         logging.info("No artifacts in results JSON, creating minimal results")
         results_model = PulpResultsModel(build_id=context.build_id, repositories=repositories)
         helper.wait_for_pending_distribution_tasks()
-        return collect_results(client, context, context.date_str, results_model, extra_artifacts=None)
+        file_batch = FileRepositoryBatch()
+        return collect_results(
+            client, context, context.date_str, results_model, extra_artifacts=None, file_batch=file_batch
+        )
 
     base_path = Path(context.files_base_path or os.path.dirname(context.results_json)).resolve()
     use_signed = bool(context.signed_by and context.signed_by.strip())
 
-    # Only RPMs use signed aggregate repo; with target_arch_repo, signed_by is label-only on arch repos
     rpm_href = (
         "" if context.target_arch_repo else (repositories.rpms_signed_href if use_signed else repositories.rpms_href)
     )
-    logs_prn = repositories.logs_prn
-    sbom_prn = repositories.sbom_prn
-    artifacts_prn = repositories.artifacts_prn
 
     if use_signed and not context.target_arch_repo and not rpm_href and not repositories.rpms_signed_prn:
         logging.error("signed_by set but signed repositories not available")
         raise ValueError("signed_by requires signed repositories")
 
     results_model = PulpResultsModel(build_id=context.build_id, repositories=repositories)
+    file_batch = FileRepositoryBatch()
     created_resources: List[str] = []
     date_str = context.date_str
 
@@ -374,12 +356,12 @@ def process_uploads_from_results_json(
         else:
             artifacts_to_upload.append((str(file_path), labels))
 
-    if logs_to_upload and not (repositories.logs_prn or "").strip():
+    if logs_to_upload and not (repositories.logs_href or "").strip():
         raise ValueError(
             "Cannot upload log artifacts: logs repository was not created. "
             "Use a run that creates the logs repository when results include log files."
         )
-    if sboms_to_upload and not (repositories.sbom_prn or "").strip():
+    if sboms_to_upload and not (repositories.sbom_href or "").strip():
         raise ValueError(
             "Cannot upload SBOM artifacts: SBOM repository was not created. "
             "Use a run that creates the SBOM repository when results include SBOM files."
@@ -404,70 +386,59 @@ def process_uploads_from_results_json(
             )
         )
 
-    # Upload logs (never signed)
+    # Upload logs (phase 1; batched modify after all arches)
+    logs_by_arch: Dict[str, List[str]] = {}
     for log_path, arch in logs_to_upload:
-        logging.warning("Uploading log for %s: %s", arch, os.path.basename(log_path))
+        logs_by_arch.setdefault(arch, []).append(log_path)
+    for arch, paths in logs_by_arch.items():
         log_labels = create_labels(context.build_id, arch, context.namespace, context.parent_package, date_str)
-        log_resources = upload_log(
+        uploaded = upload_logs_parallel(
             client,
-            logs_prn,
-            log_path,
+            paths,
             build_id=context.build_id,
             labels=log_labels,
             arch=arch,
+            file_batch=file_batch,
             results_model=results_model,
             distribution_urls=distribution_urls,
             target_arch_repo=context.target_arch_repo,
         )
-        created_resources.extend(log_resources)
-        results_model.uploaded_counts.logs += 1
+        results_model.uploaded_counts.logs += uploaded
 
-    # Upload SBOMs
+    created_resources.extend(file_batch.flush_logs(client, repositories.logs_href))
+
+    # Upload SBOMs (phase 1)
     for sbom_path in sboms_to_upload:
-        sbom_resources = upload_sbom(
+        upload_sbom(
             client,
             context,
-            sbom_prn,
             date_str,
             results_model,
             sbom_path,
+            file_batch,
             distribution_urls=distribution_urls,
             target_arch_repo=context.target_arch_repo,
         )
-        created_resources.extend(sbom_resources)
+    created_resources.extend(file_batch.flush_sbom(client, repositories.sbom_href))
 
-    # Upload generic artifacts
+    # Upload generic artifacts (phase 1; artifacts modify deferred to collect_results)
     for file_path, labels in artifacts_to_upload:
         logging.warning("Uploading artifact: %s", os.path.basename(file_path))
-        validate_file_path(file_path, "File")
-        task_response = create_file_content_and_wait(
+        upload_artifact_phase1(
             client,
-            artifacts_prn,
             file_path,
             build_id=context.build_id,
-            pulp_label=labels,
-            operation=f"upload file {file_path}",
+            labels=labels,
+            file_batch=file_batch,
+            results_model=results_model,
+            distribution_urls=distribution_urls,
+            target_arch_repo=context.target_arch_repo,
         )
-        if task_response.created_resources:
-            created_resources.extend(task_response.created_resources)
         results_model.uploaded_counts.files += 1
-        if distribution_urls is not None:
-            fn = os.path.basename(file_path)
-            arch_part = labels.get("arch") or None
-            rel_path = f"{arch_part}/{fn}" if arch_part else fn
-            client.add_uploaded_artifact_to_results_model(
-                results_model,
-                local_path=file_path,
-                labels=labels,
-                is_rpm=False,
-                distribution_urls=distribution_urls,
-                target_arch_repo=context.target_arch_repo,
-                file_relative_path=rel_path,
-            )
 
     extra_artifacts = [ExtraArtifactRef(pulp_href=href) for href in created_resources]
     helper.wait_for_pending_distribution_tasks()
-    return collect_results(client, context, date_str, results_model, extra_artifacts)
+    return collect_results(client, context, date_str, results_model, extra_artifacts, file_batch=file_batch)
 
 
 __all__ = [

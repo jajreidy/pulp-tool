@@ -18,6 +18,7 @@ if TYPE_CHECKING:
     from ..api.pulp_client import PulpClient
 
 from .distribution_manager import DistributionManager
+from .file_operations import FileRepositoryBatch
 from .repository_manager import RepositoryManager
 from .upload_orchestrator import UploadOrchestrator
 
@@ -202,6 +203,7 @@ class PulpHelper:
         date_str: str,
         rpm_href: str,
         results_model: PulpResultsModel,
+        file_batch: FileRepositoryBatch,
     ) -> dict[str, RpmUploadResult]:
         """
         Process uploads for all supported architectures.
@@ -228,6 +230,7 @@ class PulpHelper:
             rpm_href=rpm_href,
             results_model=results_model,
             distribution_urls=distribution_urls,
+            file_batch=file_batch,
             pulp_helper=self,
             target_arch_repo=args.target_arch_repo,
         )

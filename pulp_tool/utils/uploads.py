@@ -19,7 +19,8 @@ from .validation import validate_file_path
 from .constants import SUPPORTED_ARCHITECTURES
 from .rpm_operations import upload_rpms_parallel
 from .rpm_overwrite import remove_rpms_matching_local_files_from_repository
-from .pulp_tasks import create_file_content_and_wait
+from .file_operations import FileRepositoryBatch, FileUploadSpec, upload_files_parallel
+from .pulp_tasks import upload_file_content
 
 if TYPE_CHECKING:
     from ..api.pulp_client import PulpClient
@@ -54,123 +55,168 @@ def create_labels(build_id: str, arch: str, namespace: str, parent_package: Opti
     return labels
 
 
-def upload_log(
+def _record_file_in_results_model(
     client: "PulpClient",
-    file_repository_prn: str,
+    *,
+    results_model: Optional[PulpResultsModel],
+    distribution_urls: Optional[Dict[str, str]],
+    local_path: str,
+    labels: Dict[str, str],
+    relative_path: Optional[str],
+    arch: str,
+    target_arch_repo: bool,
+) -> None:
+    if results_model is None or distribution_urls is None:
+        return
+    rel_path = relative_path
+    if not rel_path:
+        fn = os.path.basename(local_path)
+        rel_path = f"{arch}/{fn}" if arch else fn
+    client.add_uploaded_artifact_to_results_model(
+        results_model,
+        local_path=local_path,
+        labels=labels,
+        is_rpm=False,
+        distribution_urls=distribution_urls,
+        target_arch_repo=target_arch_repo,
+        file_relative_path=rel_path,
+    )
+
+
+def upload_log_phase1(
+    client: "PulpClient",
     log_path: str,
     *,
     build_id: str,
     labels: Dict[str, str],
     arch: str,
+    file_batch: FileRepositoryBatch,
     results_model: Optional[PulpResultsModel] = None,
     distribution_urls: Optional[Dict[str, str]] = None,
     target_arch_repo: bool = False,
-) -> List[str]:
+) -> Optional[str]:
     """
-    Upload a log file to the specified file repository.
-
-    Args:
-        client: PulpClient instance for API interactions
-        file_repository_prn: File repository PRN for log uploads
-        log_path: Path to the log file to upload
-        build_id: Build identifier for the log
-        labels: Labels to attach to the log content
-        arch: Architecture for the log content
+    Phase 1: upload a log file without associating a repository.
 
     Returns:
-        List of created resource hrefs from the upload task
+        Content href when upload succeeds, otherwise None.
     """
     validate_file_path(log_path, "Log")
 
-    if not file_repository_prn or not str(file_repository_prn).strip():
-        raise ValueError(
-            "Log upload requires a logs repository PRN. Create the logs repository or unset skip_logs_repo."
-        )
-
-    task_response = create_file_content_and_wait(
+    upload_result = upload_file_content(
         client,
-        file_repository_prn,
         log_path,
         build_id=build_id,
         pulp_label=labels,
         arch=arch,
         operation=f"upload log {log_path}",
     )
-
-    if results_model is not None and distribution_urls is not None:
-        rel_path: Optional[str] = None
-        if task_response.result and isinstance(task_response.result, dict):
-            rel_path = task_response.result.get("relative_path")
-        if not rel_path:
-            fn = os.path.basename(log_path)
-            rel_path = f"{arch}/{fn}" if arch else fn
-        client.add_uploaded_artifact_to_results_model(
-            results_model,
-            local_path=log_path,
-            labels=labels,
-            is_rpm=False,
-            distribution_urls=distribution_urls,
-            target_arch_repo=target_arch_repo,
-            file_relative_path=rel_path,
-        )
-
-    # Return the created resources from the task
-    return task_response.created_resources if task_response.created_resources else []
+    file_batch.add_log(upload_result.content_href)
+    _record_file_in_results_model(
+        client,
+        results_model=results_model,
+        distribution_urls=distribution_urls,
+        local_path=log_path,
+        labels=labels,
+        relative_path=upload_result.relative_path,
+        arch=arch,
+        target_arch_repo=target_arch_repo,
+    )
+    return upload_result.content_href
 
 
-def _upload_logs_sequential(
+def upload_logs_parallel(
     client: "PulpClient",
     logs: List[str],
     *,
-    file_repository_prn: str,
     build_id: str,
     labels: Dict[str, str],
     arch: str,
+    file_batch: FileRepositoryBatch,
     results_model: Optional[PulpResultsModel] = None,
     distribution_urls: Optional[Dict[str, str]] = None,
     target_arch_repo: bool = False,
-) -> None:
-    """
-    Upload logs sequentially.
+) -> int:
+    """Upload log files in parallel (phase 1 only) and append hrefs to the batch."""
+    if not logs:
+        return 0
 
-    This function uploads log files one by one to avoid overwhelming the server
-    with concurrent file uploads.
-
-    Args:
-        client: PulpClient instance for API interactions
-        logs: List of log file paths to upload
-        file_repository_prn: File repository PRN for log uploads
-        build_id: Build identifier for the logs
-        labels: Labels to attach to the uploaded content
-        arch: Architecture for the uploaded logs
-    """
     logging.warning("Uploading %d log file(s) for %s", len(logs), arch)
-    for log in logs:
-        logging.warning("Uploading log for %s: %s", arch, os.path.basename(log))
-        upload_log(
-            client,
-            file_repository_prn,
-            log,
-            build_id=build_id,
+    specs = [
+        FileUploadSpec(
+            content_or_path=log_path,
             labels=labels,
+            local_key=log_path,
+            build_id=build_id,
             arch=arch,
+            operation=f"upload log {log_path}",
+        )
+        for log_path in logs
+    ]
+    for log_path in logs:
+        logging.warning("Uploading log for %s: %s", arch, os.path.basename(log_path))
+
+    uploaded = 0
+    for local_key, upload_result in upload_files_parallel(client, specs):
+        file_batch.add_log(upload_result.content_href)
+        _record_file_in_results_model(
+            client,
             results_model=results_model,
             distribution_urls=distribution_urls,
+            local_path=local_key,
+            labels=labels,
+            relative_path=upload_result.relative_path,
+            arch=arch,
             target_arch_repo=target_arch_repo,
         )
+        uploaded += 1
+    return uploaded
+
+
+def upload_artifact_phase1(
+    client: "PulpClient",
+    file_path: str,
+    *,
+    build_id: str,
+    labels: Dict[str, str],
+    file_batch: FileRepositoryBatch,
+    results_model: Optional[PulpResultsModel] = None,
+    distribution_urls: Optional[Dict[str, str]] = None,
+    target_arch_repo: bool = False,
+) -> Optional[str]:
+    """Phase 1: upload a generic artifact file without associating a repository."""
+    validate_file_path(file_path, "File")
+    arch = labels.get("arch") or ""
+    upload_result = upload_file_content(
+        client,
+        file_path,
+        build_id=build_id,
+        pulp_label=labels,
+        arch=arch or None,
+        operation=f"upload file {file_path}",
+    )
+    file_batch.add_artifact(upload_result.content_href)
+    _record_file_in_results_model(
+        client,
+        results_model=results_model,
+        distribution_urls=distribution_urls,
+        local_path=file_path,
+        labels=labels,
+        relative_path=upload_result.relative_path,
+        arch=arch,
+        target_arch_repo=target_arch_repo,
+    )
+    return upload_result.content_href
 
 
 def upload_artifacts_to_repository(
-    client: "PulpClient", artifacts: Dict[str, Any], repository_prn: str, file_type: str
+    client: "PulpClient",
+    artifacts: Dict[str, Any],
+    file_batch: FileRepositoryBatch,
+    file_type: str,
 ) -> Tuple[int, List[str]]:
     """
-    Upload artifacts to a specific repository.
-
-    Args:
-        client: PulpClient instance for API interactions
-        artifacts: Dictionary of artifacts to upload (either Dict[str, Dict] or Dict[str, ArtifactFile])
-        repository_prn: Repository PRN to upload to
-        file_type: Type of file being uploaded (for logging)
+    Upload artifacts (phase 1 only) and append content hrefs to the artifacts batch.
 
     Returns:
         Tuple of (upload_count, error_list)
@@ -182,33 +228,23 @@ def upload_artifacts_to_repository(
         try:
             logging.warning("Uploading %s: %s", file_type, artifact_name)
 
-            # Support both dict and ArtifactFile objects
             if isinstance(artifact_info, dict):
                 file_path = artifact_info["file"]
                 labels = artifact_info["labels"]
-            else:  # ArtifactFile model
+            else:
                 file_path = artifact_info.file
                 labels = artifact_info.labels
 
-            # Upload the file content
-            content_response = client.create_file_content(
-                repository_prn,
+            upload_result = upload_file_content(
+                client,
                 file_path,
                 build_id=labels.get("build_id", "unknown"),
                 pulp_label=labels,
                 filename=os.path.basename(file_path),
-                arch=labels.get("arch", "unknown"),
+                arch=labels.get("arch") or None,
+                operation=f"upload {file_type} {artifact_name}",
             )
-
-            # Check if response contains a task or if it's already complete
-            response_data = content_response.json()
-            if "task" in response_data:
-                # Wait for upload to complete
-                task_href = response_data["task"]
-                client.wait_for_finished_task(task_href)
-            else:
-                # Response might be immediate success, log it
-                logging.debug("File upload completed immediately: %s", artifact_name)
+            file_batch.add_artifact(upload_result.content_href)
             upload_count += 1
             logging.debug("Successfully uploaded %s: %s", file_type, artifact_name)
 
@@ -261,7 +297,6 @@ def upload_rpms(
     if signed_by_val and isinstance(signed_by_val, str) and signed_by_val.strip():
         labels["signed_by"] = signed_by_val.strip()
 
-    # Use `is True` so unittest.Mock without overwrite does not enable (getattr returns MagicMock).
     if getattr(context, "overwrite", False) is True:
         sb_for_search = (
             signed_by_val.strip()
@@ -270,7 +305,6 @@ def upload_rpms(
         )
         remove_rpms_matching_local_files_from_repository(client, rpms, rpm_repository_href, sb_for_search)
 
-    # Upload RPMs in parallel
     rpm_path_href_pairs = upload_rpms_parallel(client, rpms, labels, arch)
     rpm_results_artifacts = [href for _path, href in rpm_path_href_pairs]
 
@@ -285,18 +319,13 @@ def upload_rpms(
                 target_arch_repo=target_arch_repo,
             )
 
-    # Update upload counts
     results_model.uploaded_counts.rpms += len(rpms)
+    created_resources: List[str] = []
 
-    # Store created resources from add_content operations
-    created_resources = []
-
-    # Add uploaded RPMs to the repository
     if rpm_results_artifacts:
         logging.debug("Adding %s RPM artifacts to repository", len(rpm_results_artifacts))
         rpm_repo_task = client.add_content(rpm_repository_href, rpm_results_artifacts)
         final_task = client.wait_for_finished_task(rpm_repo_task.pulp_href)
-        # Capture created resources from the task
         if final_task.created_resources:
             created_resources.extend(final_task.created_resources)
             logging.debug("Captured %d created resources from RPM add_content", len(final_task.created_resources))
@@ -311,7 +340,7 @@ def upload_rpms_logs(
     arch: str,
     *,
     rpm_repository_href: str,
-    file_repository_prn: str,
+    file_batch: FileRepositoryBatch,
     date: str,
     results_model: PulpResultsModel,
     distribution_urls: Optional[Dict[str, str]] = None,
@@ -320,23 +349,8 @@ def upload_rpms_logs(
     """
     Upload RPMs and logs for a specific architecture.
 
-    This function handles the complete upload process for a single architecture,
-    including checking existing RPMs on Pulp, uploading new RPMs, and uploading logs.
-
-    Args:
-        rpm_path: Path to directory containing RPM and log files
-        context: Upload context containing build metadata
-        client: PulpClient instance for API interactions
-        arch: Architecture being processed
-        rpm_repository_href: RPM repository href for adding content
-        file_repository_prn: File repository PRN for log uploads
-        date: Build date string
-        results_model: PulpResultsModel to update with upload counts
-
-    Returns:
-        RpmUploadResult containing uploaded RPMs, existing artifacts, and created resources
+    Logs are uploaded in parallel (phase 1) and batched into a shared FileRepositoryBatch.
     """
-    # Find RPM and log files
     rpms = glob.glob(os.path.join(rpm_path, RPM_FILE_PATTERN))
     logs = glob.glob(os.path.join(rpm_path, LOG_FILE_PATTERN))
 
@@ -344,20 +358,16 @@ def upload_rpms_logs(
         logging.debug("No RPMs or logs found in %s", rpm_path)
         return RpmUploadResult()
 
-    if logs:
-        if not file_repository_prn or not str(file_repository_prn).strip():
-            raise ValueError(
-                "Log files are present but logs repository PRN is empty. "
-                "Create the logs repository when uploading logs (do not set skip_logs_repo)."
-            )
+    if logs and not (results_model.repositories.logs_href or "").strip():
+        raise ValueError(
+            "Log files are present but logs repository href is empty. "
+            "Create the logs repository when uploading logs (do not set skip_logs_repo)."
+        )
 
     logging.warning("Processing %s: %d RPMs, %d logs", arch, len(rpms), len(logs))
     labels = create_labels(context.build_id, arch, context.namespace, context.parent_package, date)
+    created_resources: List[str] = []
 
-    # Store created resources from add_content operations
-    created_resources = []
-
-    # Upload RPMs in parallel
     if rpms:
         created_resources = upload_rpms(
             rpms,
@@ -371,22 +381,19 @@ def upload_rpms_logs(
             target_arch_repo=target_arch_repo,
         )
 
-    # Upload logs sequentially
     if logs:
-        logging.warning("Uploading %d logs for %s", len(logs), arch)
-        _upload_logs_sequential(
+        uploaded_count = upload_logs_parallel(
             client,
             logs,
-            file_repository_prn=file_repository_prn,
             build_id=context.build_id,
             labels=labels,
             arch=arch,
+            file_batch=file_batch,
             results_model=results_model,
             distribution_urls=distribution_urls,
             target_arch_repo=target_arch_repo,
         )
-        # Update upload counts
-        results_model.uploaded_counts.logs += len(logs)
+        results_model.uploaded_counts.logs += uploaded_count
     else:
         logging.debug("No logs to upload for %s", arch)
 
@@ -412,7 +419,9 @@ def rpm_directory_has_log_files(rpm_path: str) -> bool:
 
 __all__ = [
     "create_labels",
-    "upload_log",
+    "upload_log_phase1",
+    "upload_logs_parallel",
+    "upload_artifact_phase1",
     "upload_artifacts_to_repository",
     "upload_rpms",
     "upload_rpms_logs",

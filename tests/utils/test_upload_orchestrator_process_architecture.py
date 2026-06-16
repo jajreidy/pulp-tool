@@ -7,6 +7,7 @@ from unittest.mock import Mock, patch
 from pulp_tool.models.context import UploadRpmContext
 from pulp_tool.models.repository import RepositoryRefs
 from pulp_tool.models.results import PulpResultsModel, RpmUploadResult
+from pulp_tool.utils.file_operations import FileRepositoryBatch
 from pulp_tool.utils.upload_orchestrator import UploadOrchestrator
 
 
@@ -56,6 +57,7 @@ class TestUploadOrchestratorProcessArchitectureUploads:
                     rpm_href="/test/",
                     results_model=results_model,
                     distribution_urls={"rpms": "https://example.com/rpms/"},
+                    file_batch=FileRepositoryBatch(),
                 )
                 assert set(result.keys()) == {"x86_64", "aarch64"}
                 assert all((isinstance(v, RpmUploadResult) for v in result.values()))
@@ -101,7 +103,7 @@ class TestUploadOrchestratorProcessArchitectureUploads:
                         args,
                         mock_client,
                         "/bulk-ignored",
-                        repositories.logs_prn,
+                        FileRepositoryBatch(),
                         "2024-01-01",
                         results_model,
                         {"logs": "https://example.com/logs/"},
@@ -147,6 +149,7 @@ class TestUploadOrchestratorProcessArchitectureUploads:
                     rpm_href="/test/",
                     results_model=results_model,
                     distribution_urls={},
+                    file_batch=FileRepositoryBatch(),
                 )
                 assert result == {}
                 mock_logging.warning.assert_called_once()
@@ -183,6 +186,7 @@ class TestUploadOrchestratorProcessArchitectureUploads:
                 rpm_href="/test/",
                 results_model=results_model,
                 distribution_urls={},
+                file_batch=FileRepositoryBatch(),
             )
             assert result == {}
             mock_logging.warning.assert_called_once_with("rpm_path is not set, cannot process architecture uploads")

@@ -6,10 +6,11 @@ log uploads, and artifact uploads to repositories.
 """
 
 import os
-from unittest.mock import Mock, patch
-import pytest
+from unittest.mock import patch
 from httpx import HTTPError
-from pulp_tool.utils import create_labels, upload_log, upload_artifacts_to_repository
+from pulp_tool.utils import create_labels, upload_log_phase1, upload_artifacts_to_repository
+from pulp_tool.utils.file_operations import FileRepositoryBatch
+from pulp_tool.utils.pulp_tasks import FileContentUploadResult
 
 
 class TestLabelUtilities:
@@ -55,43 +56,30 @@ class TestLabelUtilities:
 class TestUploadUtilities:
     """Test upload utility functions."""
 
-    def test_upload_log(self, mock_pulp_client, temp_file) -> None:
-        """Test upload_log function."""
-        mock_response = Mock()
-        mock_response.json.return_value = {"task": "/pulp/api/v3/tasks/12345/"}
-        mock_task_response = Mock()
-        mock_task_response.created_resources = ["/content/file/1/"]
-        mock_pulp_client.create_file_content = Mock()
-        mock_pulp_client.create_file_content.return_value = mock_response
-        mock_pulp_client.wait_for_finished_task = Mock()
-        mock_pulp_client.wait_for_finished_task.return_value = mock_task_response
+    def test_upload_log_phase1(self, mock_pulp_client, temp_file) -> None:
+        """Test upload_log_phase1 appends href to batch."""
+        file_batch = FileRepositoryBatch()
         labels = {"build_id": "test-build", "arch": "x86_64"}
-        created_resources = upload_log(
-            mock_pulp_client, "test-repo", temp_file, build_id="test-build", labels=labels, arch="x86_64"
-        )
-        mock_pulp_client.create_file_content.assert_called_once()
-        mock_pulp_client.wait_for_finished_task.assert_called_once()
-        assert created_resources == ["/content/file/1/"]
-
-    def test_upload_log_empty_repository_prn_raises(self, mock_pulp_client, temp_file) -> None:
-        """upload_log requires a non-empty file repository PRN."""
-        with pytest.raises(ValueError, match="logs repository PRN"):
-            upload_log(
-                mock_pulp_client, "", temp_file, build_id="test-build", labels={"build_id": "test-build"}, arch="x86_64"
+        with patch(
+            "pulp_tool.utils.uploads.upload_file_content",
+            return_value=FileContentUploadResult(content_href="/content/file/1/", relative_path="x86_64/log"),
+        ):
+            href = upload_log_phase1(
+                mock_pulp_client,
+                temp_file,
+                build_id="test-build",
+                labels=labels,
+                arch="x86_64",
+                file_batch=file_batch,
             )
+        assert href == "/content/file/1/"
+        assert file_batch.logs == ["/content/file/1/"]
 
-    def test_upload_log_incremental_uses_task_relative_path(self, mock_pulp_client, temp_file) -> None:
-        """results_model + distribution_urls: relative_path from task.result when dict."""
+    def test_upload_log_incremental_uses_relative_path(self, mock_pulp_client, temp_file) -> None:
+        """results_model + distribution_urls: relative_path from upload result."""
         from pulp_tool.models.results import PulpResultsModel, RepositoryRefs
 
-        mock_response = Mock()
-        mock_response.json.return_value = {"task": "/pulp/api/v3/tasks/1/"}
-        mock_task = Mock()
-        mock_task.created_resources = ["/content/file/2/"]
-        mock_task.result = {"relative_path": "logs/x86_64/out/build.log"}
-        mock_pulp_client.create_file_content = Mock(return_value=mock_response)
-        mock_pulp_client.wait_for_finished_task = Mock(return_value=mock_task)
-        mock_pulp_client.check_response = Mock()
+        file_batch = FileRepositoryBatch()
         repos = RepositoryRefs(
             rpms_href="/r",
             rpms_prn="",
@@ -104,14 +92,20 @@ class TestUploadUtilities:
         )
         results_model = PulpResultsModel(build_id="test-build", repositories=repos)
         labels = {"build_id": "test-build", "arch": "x86_64"}
-        with patch.object(mock_pulp_client, "add_uploaded_artifact_to_results_model") as mock_add:
-            upload_log(
+        with (
+            patch(
+                "pulp_tool.utils.uploads.upload_file_content",
+                return_value=FileContentUploadResult(content_href="/c/2/", relative_path="logs/x86_64/out/build.log"),
+            ),
+            patch.object(mock_pulp_client, "add_uploaded_artifact_to_results_model") as mock_add,
+        ):
+            upload_log_phase1(
                 mock_pulp_client,
-                "logs-prn",
                 temp_file,
                 build_id="test-build",
                 labels=labels,
                 arch="x86_64",
+                file_batch=file_batch,
                 results_model=results_model,
                 distribution_urls={"logs": "https://example.com/logs/"},
             )
@@ -119,17 +113,10 @@ class TestUploadUtilities:
         assert mock_add.call_args.kwargs["file_relative_path"] == "logs/x86_64/out/build.log"
 
     def test_upload_log_incremental_falls_back_arch_basename(self, mock_pulp_client, temp_file) -> None:
-        """When task.result has no relative_path, use arch/basename."""
+        """When upload result has no relative_path, use arch/basename."""
         from pulp_tool.models.results import PulpResultsModel, RepositoryRefs
 
-        mock_response = Mock()
-        mock_response.json.return_value = {"task": "/pulp/api/v3/tasks/1/"}
-        mock_task = Mock()
-        mock_task.created_resources = []
-        mock_task.result = None
-        mock_pulp_client.create_file_content = Mock(return_value=mock_response)
-        mock_pulp_client.wait_for_finished_task = Mock(return_value=mock_task)
-        mock_pulp_client.check_response = Mock()
+        file_batch = FileRepositoryBatch()
         repos = RepositoryRefs(
             rpms_href="/r",
             rpms_prn="",
@@ -142,52 +129,111 @@ class TestUploadUtilities:
         )
         results_model = PulpResultsModel(build_id="test-build", repositories=repos)
         labels = {"build_id": "test-build", "arch": "s390x"}
-        with patch.object(mock_pulp_client, "add_uploaded_artifact_to_results_model") as mock_add:
-            upload_log(
+        with (
+            patch(
+                "pulp_tool.utils.uploads.upload_file_content",
+                return_value=FileContentUploadResult(content_href="/c/3/", relative_path=None),
+            ),
+            patch.object(mock_pulp_client, "add_uploaded_artifact_to_results_model") as mock_add,
+        ):
+            upload_log_phase1(
                 mock_pulp_client,
-                "logs-prn",
                 temp_file,
                 build_id="test-build",
                 labels=labels,
                 arch="s390x",
+                file_batch=file_batch,
                 results_model=results_model,
                 distribution_urls={"logs": "https://example.com/logs/"},
             )
         mock_add.assert_called_once()
         assert mock_add.call_args.kwargs["file_relative_path"] == f"s390x/{os.path.basename(temp_file)}"
 
-    def test_upload_artifacts_to_repository(self, mock_pulp_client, mock_pulled_artifacts) -> None:
-        """Test upload_artifacts_to_repository function."""
-        mock_response = Mock()
-        mock_response.json.return_value = {"task": "/pulp/api/v3/tasks/12345/"}
-        mock_pulp_client.create_file_content = Mock()
-        mock_pulp_client.create_file_content.return_value = mock_response
-        mock_pulp_client.wait_for_finished_task = Mock()
-        mock_pulp_client.wait_for_finished_task.return_value = mock_response
-        upload_count, errors = upload_artifacts_to_repository(
-            mock_pulp_client, mock_pulled_artifacts.rpms, "test-repo", "RPM"
+    def test_upload_logs_parallel_empty(self, mock_pulp_client) -> None:
+        from pulp_tool.utils.uploads import upload_logs_parallel
+
+        file_batch = FileRepositoryBatch()
+        assert (
+            upload_logs_parallel(mock_pulp_client, [], build_id="b", labels={}, arch="x86_64", file_batch=file_batch)
+            == 0
         )
+
+    def test_upload_logs_parallel_success(self, mock_pulp_client, temp_file) -> None:
+        from pulp_tool.models.results import PulpResultsModel, RepositoryRefs
+        from pulp_tool.utils.uploads import upload_logs_parallel
+
+        file_batch = FileRepositoryBatch()
+        repos = RepositoryRefs(
+            rpms_href="/r",
+            rpms_prn="",
+            logs_href="/l",
+            logs_prn="",
+            sbom_href="/s",
+            sbom_prn="",
+            artifacts_href="/a",
+            artifacts_prn="",
+        )
+        results_model = PulpResultsModel(build_id="test-build", repositories=repos)
+        labels = {"build_id": "test-build", "arch": "x86_64"}
+        with (
+            patch(
+                "pulp_tool.utils.uploads.upload_files_parallel",
+                return_value=[(temp_file, FileContentUploadResult(content_href="/c/1/", relative_path="x86_64/log"))],
+            ),
+            patch.object(mock_pulp_client, "add_uploaded_artifact_to_results_model"),
+        ):
+            count = upload_logs_parallel(
+                mock_pulp_client,
+                [temp_file],
+                build_id="test-build",
+                labels=labels,
+                arch="x86_64",
+                file_batch=file_batch,
+                results_model=results_model,
+                distribution_urls={"logs": "https://example.com/logs/"},
+            )
+        assert count == 1
+        assert file_batch.logs == ["/c/1/"]
+
+    def test_upload_artifact_phase1(self, mock_pulp_client, temp_file) -> None:
+        from pulp_tool.utils.uploads import upload_artifact_phase1
+
+        file_batch = FileRepositoryBatch()
+        labels = {"build_id": "test-build", "arch": "x86_64"}
+        with patch(
+            "pulp_tool.utils.uploads.upload_file_content",
+            return_value=FileContentUploadResult(content_href="/content/file/9/", relative_path="x86_64/artifact"),
+        ):
+            href = upload_artifact_phase1(
+                mock_pulp_client,
+                temp_file,
+                build_id="test-build",
+                labels=labels,
+                file_batch=file_batch,
+            )
+        assert href == "/content/file/9/"
+        assert file_batch.artifacts == ["/content/file/9/"]
+
+    def test_upload_artifacts_to_repository(self, mock_pulp_client, mock_pulled_artifacts) -> None:
+        """Test upload_artifacts_to_repository phase 1 only."""
+        file_batch = FileRepositoryBatch()
+        with patch(
+            "pulp_tool.utils.uploads.upload_file_content",
+            return_value=FileContentUploadResult(content_href="/content/file/1/"),
+        ):
+            upload_count, errors = upload_artifacts_to_repository(
+                mock_pulp_client, mock_pulled_artifacts.rpms, file_batch, "RPM"
+            )
         assert upload_count == 1
         assert len(errors) == 0
-        mock_pulp_client.create_file_content.assert_called_once()
+        assert file_batch.artifacts == ["/content/file/1/"]
 
     def test_upload_artifacts_to_repository_error(self, mock_pulp_client) -> None:
         """Test upload_artifacts_to_repository function with error."""
-        mock_pulp_client.create_file_content = Mock()
-        mock_pulp_client.create_file_content.side_effect = HTTPError("Upload failed")
-        artifacts = {"test-file": {"file": "/path/to/file", "labels": {"build_id": "test-build"}}}
-        upload_count, errors = upload_artifacts_to_repository(mock_pulp_client, artifacts, "test-repo", "File")
+        file_batch = FileRepositoryBatch()
+        with patch("pulp_tool.utils.uploads.upload_file_content", side_effect=HTTPError("Upload failed")):
+            artifacts = {"test-file": {"file": "/path/to/file", "labels": {"build_id": "test-build"}}}
+            upload_count, errors = upload_artifacts_to_repository(mock_pulp_client, artifacts, file_batch, "File")
         assert upload_count == 0
         assert len(errors) == 1
         assert "Upload failed" in errors[0]
-
-    def test_upload_artifacts_immediate_success(self, mock_pulp_client) -> None:
-        """Test upload_artifacts_to_repository with immediate success."""
-        mock_response = Mock()
-        mock_response.json.return_value = {"status": "success"}
-        mock_pulp_client.create_file_content = Mock()
-        mock_pulp_client.create_file_content.return_value = mock_response
-        artifacts = {"test-file": {"file": "/path/to/file", "labels": {"build_id": "test-build"}}}
-        upload_count, errors = upload_artifacts_to_repository(mock_pulp_client, artifacts, "test-repo", "File")
-        assert upload_count == 1
-        assert len(errors) == 0

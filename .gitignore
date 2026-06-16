@@ -145,6 +145,7 @@ Thumbs.db
 # Temporary files
 *.tmp
 *.temp
+pr-description.md
 
 # AgentReady (https://github.com/ambient-code/agentready) assessment output
 .agentready/

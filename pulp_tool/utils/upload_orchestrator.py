@@ -20,10 +20,16 @@ from ..models.results import PulpResultsModel, RpmUploadResult
 
 from .constants import ARCHITECTURE_THREAD_PREFIX, ARCH_DETECT_WARNING_MSG, SUPPORTED_ARCHITECTURES
 from .error_handling import handle_generic_error
-from .uploads import upload_log, upload_rpms, upload_rpms_logs, create_labels, RPM_FILE_PATTERN
-from .validation import validate_file_path
+from .file_operations import FileRepositoryBatch
+from .uploads import (
+    upload_artifact_phase1,
+    upload_logs_parallel,
+    upload_rpms,
+    upload_rpms_logs,
+    create_labels,
+    RPM_FILE_PATTERN,
+)
 from .artifact_detection import detect_arch_from_filepath, group_rpm_paths_by_arch
-from .pulp_tasks import create_file_content_and_wait
 
 if TYPE_CHECKING:
     from ..api.pulp_client import PulpClient
@@ -68,7 +74,7 @@ class UploadOrchestrator:
         args: UploadRpmContext,
         client: "PulpClient",
         rpm_href: str,
-        logs_prn: str,
+        file_batch: FileRepositoryBatch,
         date_str: str,
         results_model: PulpResultsModel,
         distribution_urls: Dict[str, str],
@@ -86,7 +92,7 @@ class UploadOrchestrator:
             args: Upload context with command arguments
             client: PulpClient instance for API interactions
             rpm_href: RPM repository href for adding content
-            logs_prn: Logs repository PRN
+            file_batch: Pending file content hrefs for batched logs repository modify
             date_str: Build date string
             results_model: PulpResultsModel to update with upload counts
 
@@ -109,7 +115,7 @@ class UploadOrchestrator:
                 client,
                 arch,
                 rpm_repository_href=arch_rpm_href,
-                file_repository_prn=logs_prn,
+                file_batch=file_batch,
                 date=date_str,
                 results_model=results_model,
                 distribution_urls=distribution_urls,
@@ -160,6 +166,7 @@ class UploadOrchestrator:
         rpm_href: str,
         results_model: PulpResultsModel,
         distribution_urls: Dict[str, str],
+        file_batch: FileRepositoryBatch,
         pulp_helper: Optional[PulpHelper] = None,
         target_arch_repo: bool = False,
     ) -> Dict[str, RpmUploadResult]:
@@ -204,7 +211,7 @@ class UploadOrchestrator:
                 args,
                 client,
                 rpm_href,
-                repositories.logs_prn,
+                file_batch,
                 date_str,
                 results_model,
                 distribution_urls,
@@ -259,6 +266,7 @@ class UploadOrchestrator:
 
         # Create unified results model at the start
         results_model = PulpResultsModel(build_id=args.build_id, repositories=repositories)
+        file_batch = FileRepositoryBatch()
 
         repo_helper = pulp_helper or PulpHelperCls(client, parent_package=args.parent_package)
         distribution_urls = repo_helper.get_distribution_urls_for_upload_context(args.build_id, args)
@@ -272,14 +280,16 @@ class UploadOrchestrator:
             rpm_href=repositories.rpms_href,
             results_model=results_model,
             distribution_urls=distribution_urls,
+            file_batch=file_batch,
             pulp_helper=pulp_helper,
             target_arch_repo=args.target_arch_repo,
         )
 
-        # Collect all created resources from add_content operations
         created_resources: List[str] = []
         for upload in processed_uploads.values():
             created_resources.extend(upload.created_resources)
+
+        created_resources.extend(file_batch.flush_logs(client, repositories.logs_href))
 
         # Always search the base rpm_path for root-level RPMs (e.g. .src.rpm, .noarch.rpm).
         # OCI/oras layouts often put these in the root while logs live in arch subdirs (e.g. aarch64/).
@@ -317,17 +327,17 @@ class UploadOrchestrator:
         # Upload SBOM and capture its created resources - updates results_model internally
         # Only upload SBOM if sbom_path is provided
         if args.sbom_path:
-            sbom_created_resources = upload_sbom(
+            upload_sbom(
                 client,
                 args,
-                repositories.sbom_prn,
                 date_str,
                 results_model,
                 args.sbom_path,
+                file_batch,
                 distribution_urls=distribution_urls,
                 target_arch_repo=args.target_arch_repo,
             )
-            created_resources.extend(sbom_created_resources)
+            created_resources.extend(file_batch.flush_sbom(client, repositories.sbom_href))
         else:
             logging.debug("Skipping SBOM upload - no sbom_path provided")
 
@@ -340,7 +350,9 @@ class UploadOrchestrator:
         repo_helper.wait_for_pending_distribution_tasks()
 
         # Collect and save results, passing the results_model and all artifacts
-        results_json_url = collect_results(client, args, date_str, results_model, extra_artifacts)
+        results_json_url = collect_results(
+            client, args, date_str, results_model, extra_artifacts, file_batch=file_batch
+        )
 
         # Summary logging
         total_architectures = len(processed_uploads)
@@ -374,34 +386,31 @@ class UploadOrchestrator:
 
         # Create unified results model
         results_model = PulpResultsModel(build_id=context.build_id, repositories=repositories)
+        file_batch = FileRepositoryBatch()
         repo_helper = PulpHelperCls(client, parent_package=context.parent_package)
         distribution_urls = repo_helper.get_distribution_urls_for_upload_context(context.build_id, context)
         target_arch_repo = bool(getattr(context, "target_arch_repo", False))
 
-        # Store created resources from add_content operations
-        created_resources = []
+        created_resources: List[str] = []
 
-        # Upload RPMs
         if context.rpm_files:
             logging.warning("Uploading %d RPM file(s)", len(context.rpm_files))
             rpms_by_arch = group_rpm_paths_by_arch(context.rpm_files, explicit_arch=context.arch)
-
-            # Upload RPMs for each architecture
             for arch, rpm_list in rpms_by_arch.items():
-                arch_created_resources = upload_rpms(
-                    rpm_list,
-                    context,
-                    client,
-                    arch,
-                    rpm_repository_href=repositories.rpms_href,
-                    date=context.date_str,
-                    results_model=results_model,
-                    distribution_urls=distribution_urls,
-                    target_arch_repo=target_arch_repo,
+                created_resources.extend(
+                    upload_rpms(
+                        rpm_list,
+                        context,
+                        client,
+                        arch,
+                        rpm_repository_href=repositories.rpms_href,
+                        date=context.date_str,
+                        results_model=results_model,
+                        distribution_urls=distribution_urls,
+                        target_arch_repo=target_arch_repo,
+                    )
                 )
-                created_resources.extend(arch_created_resources)
 
-        # Upload generic files
         if context.file_files:
             logging.warning("Uploading %d generic file(s)", len(context.file_files))
             for file_path in context.file_files:
@@ -409,86 +418,71 @@ class UploadOrchestrator:
                 labels = create_labels(
                     context.build_id, "", context.namespace, context.parent_package, context.date_str
                 )
-                validate_file_path(file_path, "File")
-
-                task_response = create_file_content_and_wait(
+                upload_artifact_phase1(
                     client,
-                    repositories.artifacts_prn,
                     file_path,
                     build_id=context.build_id,
-                    pulp_label=labels,
-                    operation=f"upload file {file_path}",
-                )
-                if task_response.created_resources:
-                    created_resources.extend(task_response.created_resources)
-                results_model.uploaded_counts.files += 1
-                rel_path = os.path.basename(file_path)
-                client.add_uploaded_artifact_to_results_model(
-                    results_model,
-                    local_path=file_path,
                     labels=labels,
-                    is_rpm=False,
+                    file_batch=file_batch,
+                    results_model=results_model,
                     distribution_urls=distribution_urls,
                     target_arch_repo=target_arch_repo,
-                    file_relative_path=rel_path,
                 )
+                results_model.uploaded_counts.files += 1
 
-        # Upload logs
         if context.log_files:
             logging.warning("Uploading %d log file(s)", len(context.log_files))
+            logs_by_arch: Dict[str, List[str]] = {}
             for log_path in context.log_files:
                 log_arch = context.arch or detect_arch_from_filepath(log_path)
                 if not log_arch:
                     logging.warning(ARCH_DETECT_WARNING_MSG, os.path.basename(log_path))
                     continue
-
-                logging.warning("Uploading log for %s: %s", log_arch, os.path.basename(log_path))
-
+                logs_by_arch.setdefault(log_arch, []).append(log_path)
+            for log_arch, paths in logs_by_arch.items():
                 labels = create_labels(
                     context.build_id, log_arch, context.namespace, context.parent_package, context.date_str
                 )
-
-                log_created_resources = upload_log(
+                uploaded = upload_logs_parallel(
                     client,
-                    repositories.logs_prn,
-                    log_path,
+                    paths,
                     build_id=context.build_id,
                     labels=labels,
                     arch=log_arch,
+                    file_batch=file_batch,
                     results_model=results_model,
                     distribution_urls=distribution_urls,
                     target_arch_repo=target_arch_repo,
                 )
-                created_resources.extend(log_created_resources)
-                results_model.uploaded_counts.logs += 1
+                results_model.uploaded_counts.logs += uploaded
+            created_resources.extend(file_batch.flush_logs(client, repositories.logs_href))
 
-        # Upload SBOMs
         if context.sbom_files:
             logging.warning("Uploading %d SBOM file(s)", len(context.sbom_files))
             for sbom_path in context.sbom_files:
                 logging.warning("Uploading SBOM: %s", os.path.basename(sbom_path))
-                sbom_created_resources = upload_sbom(
+                upload_sbom(
                     client,
                     context,
-                    repositories.sbom_prn,
                     context.date_str,
                     results_model,
                     sbom_path,
+                    file_batch,
                     distribution_urls=distribution_urls,
                     target_arch_repo=target_arch_repo,
                 )
-                created_resources.extend(sbom_created_resources)
+            created_resources.extend(file_batch.flush_sbom(client, repositories.sbom_href))
 
         logging.info("Collected %d created resource hrefs from upload operations", len(created_resources))
 
-        # Convert created_resources hrefs into artifact format for extra_artifacts
         extra_artifacts = [ExtraArtifactRef(pulp_href=href) for href in created_resources]
         logging.info("Total artifacts to include in results: %d", len(extra_artifacts))
 
         repo_helper.wait_for_pending_distribution_tasks()
 
-        # Collect and save results, passing the results_model and all artifacts
-        results_json_url = collect_results(client, context, context.date_str, results_model, extra_artifacts)
+        results_json_url = collect_results(
+            client, context, context.date_str, results_model, extra_artifacts, file_batch=file_batch
+        )
 
         return results_json_url
 

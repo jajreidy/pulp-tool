@@ -81,6 +81,13 @@ TASK_BACKOFF_MULTIPLIER = 1.5
 # Default timeout for Pulp async tasks (seconds) - 30 minutes
 DEFAULT_TASK_TIMEOUT = 30 * 60
 
+# File content POST often returns an async task; cap wait so a backed-up Pulp queue
+# does not stall uploads for the full DEFAULT_TASK_TIMEOUT per file.
+FILE_CONTENT_CREATE_TASK_TIMEOUT = 3 * 60
+
+# Batched file-repository modify (single add_content_units per repo per run).
+FILE_REPOSITORY_MODIFY_TASK_TIMEOUT = 10 * 60
+
 # ============================================================================
 # Logging and Display Constants
 # ============================================================================
@@ -206,6 +213,8 @@ __all__ = [
     "TASK_MAX_SLEEP_INTERVAL",
     "TASK_BACKOFF_MULTIPLIER",
     "DEFAULT_TASK_TIMEOUT",
+    "FILE_CONTENT_CREATE_TASK_TIMEOUT",
+    "FILE_REPOSITORY_MODIFY_TASK_TIMEOUT",
     # Logging and Display
     "MAX_LOG_LINE_LENGTH",
     "SEPARATOR_WIDTH",

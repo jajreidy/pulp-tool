@@ -10,6 +10,8 @@ import pytest
 from pulp_tool.models.artifacts import ContentData, FileInfoModel, PulpContentRow
 from pulp_tool.models.context import UploadContext
 from pulp_tool.models.pulp_api import TaskResponse
+from pulp_tool.utils.file_operations import FileRepositoryBatch
+from pulp_tool.utils.pulp_tasks import FileContentUploadResult
 from pulp_tool.models.repository import RepositoryRefs
 from pulp_tool.models.results import PulpResultsModel
 from pulp_tool.services import upload_collect as uc
@@ -41,58 +43,63 @@ def _minimal_refs() -> RepositoryRefs:
 
 class TestUploadAndExtract:
     def test_upload_and_get_results_url_success_paths(self, mock_pulp_client: Mock) -> None:
-        """Happy path: upload, extract URL, log when no Konflux artifact_results, optional sbom (lines 95-116)."""
-        tr = TaskResponse(
-            pulp_href="/tasks/1/",
-            state="completed",
-            result={"relative_path": "pulp_results.json"},
-        )
+        """Happy path: upload, flush artifacts, extract URL."""
+        upload_result = FileContentUploadResult(content_href="/content/file/1/", relative_path="pulp_results.json")
         ctx = _minimal_context(artifact_results=None, sbom_results="/tmp/sbom_out")
+        batch = FileRepositoryBatch()
         with (
-            patch.object(uc, "create_file_content_and_wait", return_value=tr),
+            patch.object(uc, "upload_file_content", return_value=upload_result),
+            patch.object(batch, "flush_artifacts", return_value=[]),
             patch.object(uc, "_extract_results_url", return_value="https://example.com/results.json"),
             patch.object(uc, "_handle_sbom_results") as mock_sbom,
         ):
-            out = uc._upload_and_get_results_url(mock_pulp_client, ctx, "prn", "{}", "2024-01-01")
+            out = uc._upload_and_get_results_url(
+                mock_pulp_client, ctx, "{}", "2024-01-01", batch, _minimal_refs().artifacts_href
+            )
         assert out == "https://example.com/results.json"
         mock_sbom.assert_called_once()
 
     def test_upload_and_get_results_url_calls_handle_artifact_results(self, mock_pulp_client: Mock) -> None:
-        tr = TaskResponse(pulp_href="/t/", state="completed", result={"relative_path": "x.json"})
+        upload_result = FileContentUploadResult(content_href="/c/1/", relative_path="x.json")
         ctx = _minimal_context(artifact_results="/u,/d")
+        batch = FileRepositoryBatch()
         with (
-            patch.object(uc, "create_file_content_and_wait", return_value=tr),
+            patch.object(uc, "upload_file_content", return_value=upload_result),
+            patch.object(batch, "flush_artifacts", return_value=[]),
             patch.object(uc, "_extract_results_url", return_value="https://u/x.json"),
             patch.object(uc, "_handle_artifact_results") as mock_h,
         ):
-            uc._upload_and_get_results_url(mock_pulp_client, ctx, "prn", "{}", "2024-01-01")
-        mock_h.assert_called_once_with(mock_pulp_client, ctx, tr)
+            uc._upload_and_get_results_url(
+                mock_pulp_client, ctx, "{}", "2024-01-01", batch, _minimal_refs().artifacts_href
+            )
+        mock_h.assert_called_once_with(mock_pulp_client, ctx, "x.json")
 
     def test_upload_and_get_results_url_failure_logs_traceback(self, mock_pulp_client: Mock) -> None:
         ctx = _minimal_context()
+        batch = FileRepositoryBatch()
         with (
-            patch.object(uc, "create_file_content_and_wait", side_effect=RuntimeError("boom")),
+            patch.object(uc, "upload_file_content", side_effect=RuntimeError("boom")),
             patch("pulp_tool.services.upload_collect.logging") as log_mock,
             pytest.raises(RuntimeError, match="boom"),
         ):
-            uc._upload_and_get_results_url(mock_pulp_client, ctx, "prn", "{}", "2024-01-01")
+            uc._upload_and_get_results_url(
+                mock_pulp_client, ctx, "{}", "2024-01-01", batch, _minimal_refs().artifacts_href
+            )
         log_mock.error.assert_called()
 
     def test_extract_results_url_raises_without_artifacts_distribution(self, mock_pulp_client: Mock) -> None:
         ctx = _minimal_context()
-        tr = TaskResponse(pulp_href="/t/", state="completed", result={"relative_path": "x"})
         with patch.object(uc, "PulpHelper") as PH:
             PH.return_value.get_distribution_urls.return_value = {"logs": "https://l/"}
             with pytest.raises(ValueError, match="No distribution URL found for artifacts"):
-                uc._extract_results_url(mock_pulp_client, ctx, tr)
+                uc._extract_results_url(mock_pulp_client, ctx, "x.json")
 
-    def test_extract_results_url_raises_without_relative_path(self, mock_pulp_client: Mock) -> None:
+    def test_extract_results_url_builds_final_url(self, mock_pulp_client: Mock) -> None:
         ctx = _minimal_context()
-        tr = TaskResponse(pulp_href="/t/", state="completed", result={})
         with patch.object(uc, "PulpHelper") as PH:
             PH.return_value.get_distribution_urls.return_value = {"artifacts": "https://a/"}
-            with pytest.raises(ValueError, match="relative_path"):
-                uc._extract_results_url(mock_pulp_client, ctx, tr)
+            url = uc._extract_results_url(mock_pulp_client, ctx, "pulp_results.json")
+        assert url == "https://a/pulp_results.json"
 
 
 class TestGatherAndBuildMap:
@@ -186,32 +193,29 @@ class TestFindArtifactContent:
 class TestHandleArtifactResults:
     def test_skips_when_no_artifact_results_config(self, mock_pulp_client: Mock) -> None:
         ctx = _minimal_context(artifact_results=None)
-        tr = TaskResponse(pulp_href="/t/", state="completed", result={"relative_path": "x.json"})
         with patch.object(uc, "PulpHelper") as PH:
             PH.return_value.get_distribution_urls.return_value = {"artifacts": "https://a/"}
             with patch("pulp_tool.services.upload_collect.logging") as log_mock:
-                uc._handle_artifact_results(mock_pulp_client, ctx, tr)
+                uc._handle_artifact_results(mock_pulp_client, ctx, "x.json")
         log_mock.debug.assert_called()
 
     def test_invalid_artifact_results_pair(self, mock_pulp_client: Mock) -> None:
         ctx = _minimal_context(artifact_results="only-one-path")
-        tr = TaskResponse(pulp_href="/t/", state="completed", result={"relative_path": "x.json"})
         with patch.object(uc, "PulpHelper") as PH:
             PH.return_value.get_distribution_urls.return_value = {"artifacts": "https://a/"}
             with patch("pulp_tool.services.upload_collect.logging") as log_mock:
-                uc._handle_artifact_results(mock_pulp_client, ctx, tr)
+                uc._handle_artifact_results(mock_pulp_client, ctx, "x.json")
         log_mock.error.assert_called()
 
     def test_parse_oci_raises(self, mock_pulp_client: Mock) -> None:
         ctx = _minimal_context(artifact_results="/u,/d")
-        tr = TaskResponse(pulp_href="/t/", state="completed", result={"relative_path": "x.json"})
         with (
             patch.object(uc, "PulpHelper") as PH,
             patch.object(uc, "_parse_oci_reference", side_effect=ValueError("bad oci")),
         ):
             PH.return_value.get_distribution_urls.return_value = {"artifacts": "https://a/"}
             with patch("pulp_tool.services.upload_collect.logging") as log_mock:
-                uc._handle_artifact_results(mock_pulp_client, ctx, tr)
+                uc._handle_artifact_results(mock_pulp_client, ctx, "x.json")
         log_mock.error.assert_called()
 
 

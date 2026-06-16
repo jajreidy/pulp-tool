@@ -120,11 +120,8 @@ class TestHandleArtifactResults:
                 parent_package="test-package",
                 artifact_results=f"{url_path},{digest_path}",
             )
-            task_response = TaskResponse(
-                pulp_href="/api/v3/tasks/123/", state="completed", created_resources=["/test/content/"], result={}
-            )
             with patch("pulp_tool.services.upload_collect.logging") as mock_logging:
-                _handle_artifact_results(mock_pulp_client, context, task_response)
+                _handle_artifact_results(mock_pulp_client, context, "")
                 mock_logging.error.assert_called()
 
 

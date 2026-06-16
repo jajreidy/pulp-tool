@@ -9,6 +9,7 @@ from unittest.mock import Mock, patch
 import pytest
 import httpx
 from pulp_tool.utils import upload_rpms_logs
+from pulp_tool.utils.file_operations import FileRepositoryBatch
 from pulp_tool.utils.rpm_operations import (
     calculate_sha256_checksum,
     _create_batches,
@@ -207,8 +208,9 @@ class TestRPMUtilities:
         )
         results_model = PulpResultsModel(build_id="test-build", repositories=repositories)
         with (
-            patch("glob.glob", return_value=[temp_rpm_file]),
+            patch("glob.glob", side_effect=[[temp_rpm_file], []]),
             patch("pulp_tool.utils.uploads.upload_rpms_parallel", return_value=[]),
+            patch("pulp_tool.utils.uploads.logging") as mock_logging,
         ):
             result = upload_rpms_logs(
                 os.path.dirname(temp_rpm_file),
@@ -216,11 +218,12 @@ class TestRPMUtilities:
                 mock_pulp_client,
                 "x86_64",
                 rpm_repository_href="test-repo",
-                file_repository_prn="test-file-repo",
+                file_batch=FileRepositoryBatch(),
                 date="2024-01-01 12:00:00",
                 results_model=results_model,
             )
         assert result.uploaded_rpms == [temp_rpm_file]
+        mock_logging.debug.assert_any_call("No logs to upload for %s", "x86_64")
 
     def test_upload_rpms_logs_no_files(self, mock_pulp_client, temp_dir) -> None:
         """Test upload_rpms_logs with no RPMs or logs."""
@@ -248,14 +251,14 @@ class TestRPMUtilities:
                 mock_pulp_client,
                 "x86_64",
                 rpm_repository_href="test-repo",
-                file_repository_prn="test-file-repo",
+                file_batch=FileRepositoryBatch(),
                 date="2024-01-01 12:00:00",
                 results_model=results_model,
             )
         assert result.uploaded_rpms == []
 
-    def test_upload_rpms_logs_raises_when_logs_present_but_empty_prn(self, mock_pulp_client, temp_dir) -> None:
-        """Log files require a non-empty logs repository PRN."""
+    def test_upload_rpms_logs_with_logs(self, mock_pulp_client, temp_dir) -> None:
+        """Test upload_rpms_logs uploads logs via parallel phase 1."""
         from pulp_tool.models import PulpResultsModel, RepositoryRefs
 
         args = Mock()
@@ -273,17 +276,55 @@ class TestRPMUtilities:
             artifacts_prn="artifacts-prn",
         )
         results_model = PulpResultsModel(build_id="test-build", repositories=repositories)
+        log_path = os.path.join(temp_dir, "build.log")
+        with (
+            patch("glob.glob", side_effect=[[], [log_path]]),
+            patch("pulp_tool.utils.uploads.upload_logs_parallel", return_value=1) as mock_logs,
+        ):
+            result = upload_rpms_logs(
+                temp_dir,
+                args,
+                mock_pulp_client,
+                "x86_64",
+                rpm_repository_href="test-repo",
+                file_batch=FileRepositoryBatch(),
+                date="2024-01-01 12:00:00",
+                results_model=results_model,
+            )
+        assert result.uploaded_rpms == []
+        assert results_model.uploaded_counts.logs == 1
+        mock_logs.assert_called_once()
+
+    def test_upload_rpms_logs_raises_when_logs_present_but_empty_href(self, mock_pulp_client, temp_dir) -> None:
+        """Log files require a non-empty logs repository href."""
+        from pulp_tool.models import PulpResultsModel, RepositoryRefs
+
+        args = Mock()
+        args.build_id = "test-build"
+        args.namespace = "test-namespace"
+        args.parent_package = "test-package"
+        repositories = RepositoryRefs(
+            rpms_href="/rpms/",
+            rpms_prn="rpms-prn",
+            logs_href="",
+            logs_prn="logs-prn",
+            sbom_href="/sbom/",
+            sbom_prn="sbom-prn",
+            artifacts_href="/artifacts/",
+            artifacts_prn="artifacts-prn",
+        )
+        results_model = PulpResultsModel(build_id="test-build", repositories=repositories)
         rpm_path = os.path.join(temp_dir, "pkg.rpm")
         log_path = os.path.join(temp_dir, "x.log")
         with patch("glob.glob", side_effect=[[rpm_path], [log_path]]):
-            with pytest.raises(ValueError, match="logs repository PRN"):
+            with pytest.raises(ValueError, match="logs repository href"):
                 upload_rpms_logs(
                     temp_dir,
                     args,
                     mock_pulp_client,
                     "x86_64",
                     rpm_repository_href="test-repo",
-                    file_repository_prn="",
+                    file_batch=FileRepositoryBatch(),
                     date="2024-01-01 12:00:00",
                     results_model=results_model,
                 )

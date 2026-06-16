@@ -45,6 +45,7 @@ Copy-paste **`make` / pre-commit** flow, **`make lock`** for dependencies, and P
 ## PR and commit
 
 - PR body: use [.github/PULL_REQUEST_TEMPLATE.md](.github/PULL_REQUEST_TEMPLATE.md) **as-is**—same section headings and checklist items; fill in content under each section only.
+- **PR description file:** when drafting paste-ready PR text, write the body to **`pr-description.md`** at the repo root (gitignored). Close all Markdown code fences (e.g. `` ```bash `` … `` ``` ``) so GitHub renders correctly. Tell the user they can copy from that file or run `gh pr create --body-file pr-description.md`. Do not commit `pr-description.md`.
 - AI-assisted commits: [.github/commit-message-template.txt](.github/commit-message-template.txt), `Assisted-By:` + `Signed-off-by:` — details in [CONTRIBUTING.md](CONTRIBUTING.md#ai-assisted-commits).
 - Essentials (always-on): [`.cursor/rules/llm-development-guidelines.mdc`](.cursor/rules/llm-development-guidelines.mdc); on-demand skills: [`skills/`](skills/) ([`skills/README.md`](skills/README.md), [skill index](.cursor/rules/llm-development-guidelines-deep.mdc)); [CONTRIBUTING.md](CONTRIBUTING.md).
 

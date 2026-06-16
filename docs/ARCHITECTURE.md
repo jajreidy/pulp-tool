@@ -49,6 +49,13 @@ flowchart TB
 
 **Upload data path:** CLI → `PulpHelper.setup_repositories` / `process_uploads` → `UploadOrchestrator` + `upload_service` / `upload_collect` → `PulpClient` → Pulp.
 
+**File uploads (logs, SBOMs, generic artifacts, in-memory `pulp_results.json`)** use the same **two-phase** pattern as RPMs:
+
+1. **Phase 1:** `POST` file content **without** a `repository` field (parallel where applicable); collect content `pulp_href`s via `upload_file_content` / `upload_files_parallel`.
+2. **Phase 2:** One `repositories/file/file/{id}/modify/` (`add_content_units`) per target repository per upload run, using repository **href** (`logs_href`, `sbom_href`, `artifacts_href`).
+
+`FileRepositoryBatch` accumulates pending hrefs; flush checkpoints are **logs** after all architecture processing, **sbom** after all SBOM phase-1 uploads, and **artifacts** in `collect_results` after the results JSON phase-1 upload (so generic artifacts and `pulp_results.json` share a single artifacts modify). Helpers live in `pulp_tool/utils/file_operations.py`.
+
 **Konflux:** Tasks invoke the same CLI with mounted config and `/var/workdir/results`; see [CLAUDE.md](../CLAUDE.md) for exact flags and guardrails.
 
 ---
@@ -64,7 +71,7 @@ flowchart TB
 | Services | `pulp_tool/services/upload_service.py`, `upload_collect.py` | Same flows as CLI; Konflux results JSON, SBOM, artifact results |
 | Pull | `pulp_tool/pull/` | Download / transfer helpers |
 | Models | `pulp_tool/models/` | Pydantic: context, Pulp DTOs, results |
-| Utils | `pulp_tool/utils/` | Validation, logging, RPM helpers, session retries |
+| Utils | `pulp_tool/utils/` | Validation, logging, RPM helpers, **`file_operations`** (two-phase file uploads), session retries |
 | Container | `Dockerfile`, `.tekton/pulp-tool-container-build-*.yaml` | Konflux Tekton → upstream `single-arch-build-pipeline` (`buildah-oci-ta`); **changing-pulp-container** skill + [reference.md](../skills/changing-pulp-container/reference.md) |
 | Tests | `tests/` (see [tests/README.md](../tests/README.md)), `tests/support/` | Fixtures, TLS helpers |
 

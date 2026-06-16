@@ -5,6 +5,7 @@ from pulp_tool.utils import PulpHelper
 from pulp_tool.models.context import UploadFilesContext, UploadRpmContext
 from pulp_tool.models.results import PulpResultsModel, RpmUploadResult
 from pulp_tool.models.repository import RepositoryRefs
+from pulp_tool.utils.file_operations import FileRepositoryBatch
 
 
 class TestPulpHelperUploadMethods:
@@ -38,6 +39,7 @@ class TestPulpHelperUploadMethods:
         ):
             rpm_res = RpmUploadResult()
             mock_process.return_value = {"x86_64": rpm_res}
+            file_batch = FileRepositoryBatch()
             result = helper.process_architecture_uploads(
                 mock_pulp_client,
                 args,
@@ -45,6 +47,7 @@ class TestPulpHelperUploadMethods:
                 date_str="2024-01-01",
                 rpm_href="/test/",
                 results_model=results_model,
+                file_batch=file_batch,
             )
             assert result == {"x86_64": rpm_res}
             mock_process.assert_called_once_with(
@@ -55,6 +58,7 @@ class TestPulpHelperUploadMethods:
                 rpm_href="/test/",
                 results_model=results_model,
                 distribution_urls={"rpms": "https://x/"},
+                file_batch=file_batch,
                 pulp_helper=helper,
                 target_arch_repo=False,
             )

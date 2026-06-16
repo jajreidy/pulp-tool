@@ -780,7 +780,7 @@ class PulpClient(
             else:
                 # For non-RPM files, use create_file_content from FileContentMixin
                 response = self.create_file_content(
-                    "", file_path, build_id=labels.get("build_id", ""), pulp_label=labels, arch=arch
+                    None, file_path, build_id=labels.get("build_id", ""), pulp_label=labels, arch=arch
                 )
 
             # Include filename in operation for better error context
