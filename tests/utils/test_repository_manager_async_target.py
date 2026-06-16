@@ -92,6 +92,31 @@ class TestRepositoryManagerWaitForDistributionTask:
             mock_logging.warning.assert_called()
             assert base_path is None
 
+    def test_wait_for_distribution_task_timeout_warns_and_returns_none(self) -> None:
+        """Test _wait_for_distribution_task returns None when task is incomplete after wait."""
+        mock_client = Mock()
+        manager = RepositoryManager(mock_client)
+        mock_task_response = TaskResponse(pulp_href="/api/v3/tasks/123/", state="running")
+        methods = cast(
+            RepositoryApiOps,
+            SimpleNamespace(wait_for_finished_task=Mock(return_value=mock_task_response)),
+        )
+        result = manager._wait_for_distribution_task(methods, "task-123", "rpms", "test-build", timeout=60)
+        assert result is None
+        methods.wait_for_finished_task.assert_called_once_with("task-123", timeout=60)
+
+    def test_wait_for_distribution_task_incomplete_state_warns(self) -> None:
+        """Test _wait_for_distribution_task returns None when task is incomplete after wait window."""
+        mock_client = Mock()
+        manager = RepositoryManager(mock_client)
+        mock_task_response = TaskResponse(pulp_href="/api/v3/tasks/123/", state="running")
+        methods = cast(
+            RepositoryApiOps,
+            SimpleNamespace(wait_for_finished_task=Mock(return_value=mock_task_response)),
+        )
+        base_path = manager._wait_for_distribution_task(methods, "task-123", "rpms", "test-build", timeout=60)
+        assert base_path is None
+
 
 class TestRepositoryManagerSetupRepositoriesAsync:
     """Tests for RepositoryManager._setup_repositories_impl_async() method."""

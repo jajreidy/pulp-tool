@@ -7,7 +7,8 @@ import httpx
 import pytest
 from pulp_tool.models.repository import RepositoryRefs
 from pulp_tool.models.pulp_api import DistributionRequest, RepositoryRequest, TaskResponse
-from pulp_tool.utils.repository_manager import RepositoryApiOps, RepositoryManager
+from pulp_tool.utils.constants import DEFAULT_TASK_TIMEOUT
+from pulp_tool.utils.repository_manager import RepositoryApiOps, RepositoryManager, _PendingDistributionTask
 
 
 class TestRepositoryApiOps:
@@ -37,7 +38,7 @@ class TestRepositoryApiOps:
                 call("update_distro", "rpm", distribution_href="/dist/href", publication="pub"),
             ]
         )
-        mock_client.wait_for_finished_task.assert_called_once_with("/tasks/wait/")
+        mock_client.wait_for_finished_task.assert_called_once_with("/tasks/wait/", timeout=DEFAULT_TASK_TIMEOUT)
 
 
 class TestRepositoryManagerSetupRepositories:
@@ -262,6 +263,142 @@ class TestRepositoryManagerCreateOrGetRepository:
                     await manager._setup_repositories_impl_async("test-build")
 
             asyncio.run(run_test())
+
+    def test_create_or_get_repository_impl_defers_distribution_wait(self) -> None:
+        """_create_or_get_repository_impl queues distribution tasks instead of waiting."""
+        mock_client = Mock()
+        mock_client.namespace = "test-namespace"
+        manager = RepositoryManager(mock_client)
+        methods = RepositoryApiOps(mock_client, "rpm")
+        new_repo = RepositoryRequest(name="test-build/rpms", autopublish=True)
+        new_distro = DistributionRequest(name="test-build/rpms", base_path="test-build/rpms")
+        with (
+            patch.object(manager, "get_repository_methods", return_value=methods),
+            patch.object(manager, "_get_existing_repository", return_value=None),
+            patch.object(manager, "_create_new_repository", return_value=("test-prn", "test-href")),
+            patch.object(manager, "_create_distribution_task", return_value="task-123"),
+            patch.object(manager, "_wait_for_distribution_task") as mock_wait,
+        ):
+            prn, href = manager._create_or_get_repository_impl(new_repo, new_distro, "rpms", build_id="test-build")
+        assert prn == "test-prn"
+        assert href == "test-href"
+        mock_wait.assert_not_called()
+        assert len(manager._pending_distribution_tasks) == 1
+        pending = manager._pending_distribution_tasks[0]
+        assert pending.task_id == "task-123"
+        assert pending.repo_type == "rpms"
+        assert pending.build_id == "test-build"
+
+    def test_wait_for_pending_distribution_tasks_waits_and_clears(self) -> None:
+        """wait_for_pending_distribution_tasks drains the pending queue."""
+        mock_client = Mock()
+        mock_client.namespace = "test-namespace"
+        mock_client.check_response = Mock()
+        manager = RepositoryManager(mock_client)
+        manager._pending_distribution_tasks.append(
+            _PendingDistributionTask(
+                task_id="task-logs",
+                repo_type="logs",
+                build_id="test-build",
+                distribution_name="test-build/logs",
+                api_repo_type="file",
+                cache_key_type="logs",
+            )
+        )
+        distro_response = Mock()
+        distro_response.status_code = 200
+        methods = SimpleNamespace(
+            repo_type="file",
+            get_distro=Mock(return_value=distro_response),
+            wait_for_finished_task=Mock(),
+        )
+        with (
+            patch.object(manager, "get_repository_methods", return_value=methods),
+            patch.object(manager, "_wait_for_distribution_task", return_value="test-build/logs") as mock_wait,
+        ):
+            manager.wait_for_pending_distribution_tasks()
+        mock_wait.assert_called_once()
+        assert mock_wait.call_args.kwargs["timeout"] == DEFAULT_TASK_TIMEOUT
+        mock_client.check_response.assert_called_once()
+        methods.get_distro.assert_called_once_with("test-build/logs")
+        assert manager._pending_distribution_tasks == []
+        assert manager._distribution_cache[("test-build", "logs")] == "test-build/logs"
+
+    def test_verify_distributions_ready_raises_when_missing(self) -> None:
+        """verify_distributions_ready fails when distribution GET returns 404."""
+        mock_client = Mock()
+        manager = RepositoryManager(mock_client)
+        pending = _PendingDistributionTask(
+            task_id="task-1",
+            repo_type="rpms",
+            build_id="test-build",
+            distribution_name="test-build/rpms",
+            api_repo_type="rpm",
+            cache_key_type="rpms",
+        )
+        distro_response = Mock()
+        distro_response.status_code = 404
+        methods = SimpleNamespace(get_distro=Mock(return_value=distro_response))
+        with patch.object(manager, "get_repository_methods", return_value=methods):
+            with pytest.raises(ValueError, match="not found after task wait"):
+                manager.verify_distributions_ready([pending])
+
+    def test_wait_for_pending_distribution_tasks_warns_on_timeout(self) -> None:
+        """Timed-out distribution tasks warn and use warn_only verification."""
+        mock_client = Mock()
+        mock_client.namespace = "test-namespace"
+        mock_client.check_response = Mock()
+        manager = RepositoryManager(mock_client)
+        pending_item = _PendingDistributionTask(
+            task_id="task-rpms",
+            repo_type="rpms",
+            build_id="test-build",
+            distribution_name="test-build/rpms",
+            api_repo_type="rpm",
+            cache_key_type="rpms",
+        )
+        manager._pending_distribution_tasks.append(pending_item)
+        distro_response = Mock()
+        distro_response.status_code = 404
+        methods = SimpleNamespace(get_distro=Mock(return_value=distro_response))
+        with (
+            patch.object(manager, "get_repository_methods", return_value=methods),
+            patch.object(manager, "_wait_for_distribution_task", return_value=None),
+            patch("pulp_tool.utils.repository_manager.logging") as mock_logging,
+        ):
+            manager.wait_for_pending_distribution_tasks()
+        mock_logging.warning.assert_called()
+        mock_client.check_response.assert_not_called()
+        assert manager._pending_distribution_tasks == []
+
+    def test_verify_distributions_ready_warn_only_on_missing(self) -> None:
+        """warn_only logs a warning instead of raising when distribution is missing."""
+        mock_client = Mock()
+        manager = RepositoryManager(mock_client)
+        pending = _PendingDistributionTask(
+            task_id="task-1",
+            repo_type="rpms",
+            build_id="test-build",
+            distribution_name="test-build/rpms",
+            api_repo_type="rpm",
+            cache_key_type="rpms",
+        )
+        distro_response = Mock()
+        distro_response.status_code = 404
+        methods = SimpleNamespace(get_distro=Mock(return_value=distro_response))
+        with (
+            patch.object(manager, "get_repository_methods", return_value=methods),
+            patch("pulp_tool.utils.repository_manager.logging") as mock_logging,
+        ):
+            manager.verify_distributions_ready([pending], warn_only=True)
+        mock_logging.warning.assert_called()
+
+    def test_wait_for_pending_distribution_tasks_noop_when_empty(self) -> None:
+        """wait_for_pending_distribution_tasks is a no-op when nothing is pending."""
+        manager = RepositoryManager(Mock())
+        with patch.object(manager, "_wait_for_distribution_task") as mock_wait:
+            manager.wait_for_pending_distribution_tasks()
+        mock_wait.assert_not_called()
 
     def test_create_or_get_repository_impl_empty_base_path_after_repo_set(self) -> None:
         """Test _create_or_get_repository_impl raises ValueError when base_path is empty."""

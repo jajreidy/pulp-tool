@@ -14,18 +14,12 @@ import time
 from typing import Any, Optional
 
 from ...models.pulp_api import TaskResponse
-
-# Initial interval between task status checks (seconds)
-TASK_INITIAL_SLEEP_INTERVAL = 2
-
-# Maximum interval between task status checks (seconds)
-TASK_MAX_SLEEP_INTERVAL = 30
-
-# Exponential backoff multiplier
-TASK_BACKOFF_MULTIPLIER = 1.5
-
-# Default timeout for Pulp async tasks (seconds) - 24 hours
-DEFAULT_TASK_TIMEOUT = 86400
+from ...utils.constants import (
+    DEFAULT_TASK_TIMEOUT,
+    TASK_BACKOFF_MULTIPLIER,
+    TASK_INITIAL_SLEEP_INTERVAL,
+    TASK_MAX_SLEEP_INTERVAL,
+)
 
 
 class TaskMixin:
@@ -97,13 +91,10 @@ class TaskMixin:
 
         Args:
             task_href: Task href to wait for
-            timeout: Maximum time to wait in seconds (default: 24 hours)
+            timeout: Maximum time to wait in seconds (default: 30 minutes)
 
         Returns:
-            TaskResponse model with final task state
-
-        Raises:
-            TimeoutError: If task doesn't complete within timeout period
+            TaskResponse model with final task state, or the last known state if timed out
 
         Reference:
             https://docs.pulpproject.org/pulpcore/restapi.html#operation/tasks_read
@@ -143,10 +134,19 @@ class TaskMixin:
             # Exponential backoff: increase wait time up to maximum
             wait_time = min(wait_time * TASK_BACKOFF_MULTIPLIER, TASK_MAX_SLEEP_INTERVAL)
 
-        logging.error("Timed out waiting for task %s after %d seconds (%d polls)", task_href, timeout, poll_count)
+        elapsed_total = time.time() - start
+        state = task_response.state if task_response else "unknown"
+        logging.warning(
+            "Task %s did not complete within %d seconds (state: %s, polls: %d, elapsed: %.1fs); continuing",
+            task_href,
+            timeout,
+            state,
+            poll_count,
+            elapsed_total,
+        )
         if task_response:
             return task_response
-        raise TimeoutError(f"Timed out waiting for task {task_href} after {timeout} seconds")
+        return TaskResponse(pulp_href=task_href, state="running")
 
 
 __all__ = ["TaskMixin"]

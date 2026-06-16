@@ -68,10 +68,10 @@ def _upload_sboms_and_logs(
 
         logging.warning("Uploading %d log file(s)", len(log_items))
         for name, artifact in log_items:
-            logging.warning("Uploading log: %s", name)
+            arch = artifact.labels.get("arch", "unknown")
+            logging.warning("Uploading log for %s: %s", arch, name)
             try:
                 # Extract arch from labels for relative path construction
-                arch = artifact.labels.get("arch")
                 create_file_content_and_wait(
                     pulp_client,
                     repositories.logs_prn,

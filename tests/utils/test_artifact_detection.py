@@ -335,6 +335,10 @@ class TestDetectArchFromRpmFilename:
         """Test detecting src 'architecture' from source RPM filename."""
         assert detect_arch_from_rpm_filename("/path/to/package-1.0.0-1.src.rpm") == "src"
 
+    def test_detect_arch_from_filename_i686(self) -> None:
+        """Test detecting i686 architecture from RPM filename."""
+        assert detect_arch_from_rpm_filename("/path/to/fapolicyd-1.6-1.el9.i686.rpm") == "i686"
+
     def test_detect_arch_from_filename_no_match(self) -> None:
         """Test that None is returned when no architecture is found in filename."""
         assert detect_arch_from_rpm_filename("/path/to/package.rpm") is None
@@ -362,6 +366,15 @@ class TestGroupRpmPathsByArch:
         assert result["x86_64"] == ["/path/to/x86_64/package.rpm"]
         assert result["aarch64"] == ["/path/to/package-1.0.0-1.aarch64.rpm"]
         assert result["noarch"] == ["/path/to/noarch/foo.rpm"]
+
+    def test_groups_i686_root_level_rpms(self) -> None:
+        """Test grouping root-level i686 RPMs by filename architecture."""
+        paths = [
+            "/var/workdir/results/fapolicyd-1.6-1.el9.i686.rpm",
+            "/var/workdir/results/fapolicyd-debuginfo-1.6-1.el9.i686.rpm",
+        ]
+        result = group_rpm_paths_by_arch(paths)
+        assert result == {"i686": paths}
 
     def test_explicit_arch_applies_to_all(self) -> None:
         """Test that explicit_arch is used for all paths."""

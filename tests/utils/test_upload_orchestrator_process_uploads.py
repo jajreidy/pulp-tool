@@ -55,6 +55,7 @@ class TestUploadOrchestratorProcessUploads:
             }
             result = orchestrator.process_uploads(mock_client, args, repositories)
             assert result == "https://example.com/results.json"
+            mock_ph_cls.return_value.wait_for_pending_distribution_tasks.assert_called_once()
             assert mock_logging.info.call_count >= 2
             assert mock_logging.debug.call_count >= 1
 
