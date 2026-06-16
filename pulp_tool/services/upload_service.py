@@ -297,6 +297,7 @@ def process_uploads_from_results_json(
     if not artifacts:
         logging.info("No artifacts in results JSON, creating minimal results")
         results_model = PulpResultsModel(build_id=context.build_id, repositories=repositories)
+        helper.wait_for_pending_distribution_tasks()
         return collect_results(client, context, context.date_str, results_model, extra_artifacts=None)
 
     base_path = Path(context.files_base_path or os.path.dirname(context.results_json)).resolve()
@@ -405,7 +406,7 @@ def process_uploads_from_results_json(
 
     # Upload logs (never signed)
     for log_path, arch in logs_to_upload:
-        logging.warning("Uploading log: %s", os.path.basename(log_path))
+        logging.warning("Uploading log for %s: %s", arch, os.path.basename(log_path))
         log_labels = create_labels(context.build_id, arch, context.namespace, context.parent_package, date_str)
         log_resources = upload_log(
             client,
@@ -465,6 +466,7 @@ def process_uploads_from_results_json(
             )
 
     extra_artifacts = [ExtraArtifactRef(pulp_href=href) for href in created_resources]
+    helper.wait_for_pending_distribution_tasks()
     return collect_results(client, context, date_str, results_model, extra_artifacts)
 
 

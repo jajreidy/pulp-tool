@@ -16,7 +16,7 @@ REPOSITORY_TYPES = ["rpms", "logs", "sbom", "artifacts"]
 SIGNED_REPOSITORY_TYPES = ["rpms-signed"]
 
 # Supported CPU architectures (including source RPMs as a logical 'src' arch)
-SUPPORTED_ARCHITECTURES = ["x86_64", "aarch64", "s390x", "ppc64le", "noarch", "src"]
+SUPPORTED_ARCHITECTURES = ["x86_64", "i686", "aarch64", "s390x", "ppc64le", "noarch", "src"]
 
 # Content types for filtering
 CONTENT_TYPES = ["rpm", "log", "sbom"]
@@ -78,8 +78,8 @@ TASK_MAX_SLEEP_INTERVAL = 30
 # Exponential backoff multiplier for task polling
 TASK_BACKOFF_MULTIPLIER = 1.5
 
-# Default timeout for Pulp async tasks (seconds) - 24 hours
-DEFAULT_TASK_TIMEOUT = 86400
+# Default timeout for Pulp async tasks (seconds) - 30 minutes
+DEFAULT_TASK_TIMEOUT = 30 * 60
 
 # ============================================================================
 # Logging and Display Constants

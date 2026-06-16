@@ -179,9 +179,9 @@ class TestPulpHelperRepositoryImplementation:
             patch.object(helper._repository_manager, "_get_existing_repository", return_value=None),
             patch.object(helper._repository_manager, "_create_new_repository", return_value=("test-prn", "test-href")),
             patch.object(helper._repository_manager, "_create_distribution_task", return_value="task-123"),
-            patch.object(helper._repository_manager, "_wait_for_distribution_task"),
+            patch.object(helper._repository_manager, "_wait_for_distribution_task") as mock_wait,
         ):
-            mock_get_methods.return_value = {}
+            mock_get_methods.return_value = RepositoryApiOps(mock_pulp_client, "rpm")
             new_repo_def = RpmRepositoryRequest(name="test-repo")
             new_distro_def = RpmDistributionRequest(name="test-repo", base_path="test-repo")
             prn, href = helper._repository_manager._create_or_get_repository_impl(
@@ -190,6 +190,8 @@ class TestPulpHelperRepositoryImplementation:
         assert new_distro_def.repository == "test-prn"
         assert prn == "test-prn"
         assert href == "test-href"
+        mock_wait.assert_not_called()
+        assert len(helper._repository_manager._pending_distribution_tasks) == 1
 
     def test_create_or_get_repository_impl_existing(self, mock_pulp_client) -> None:
         """Test PulpHelper _create_or_get_repository_impl with existing repository."""
@@ -200,9 +202,9 @@ class TestPulpHelperRepositoryImplementation:
                 helper._repository_manager, "_get_existing_repository", return_value=("test-prn", "test-href")
             ),
             patch.object(helper._repository_manager, "_create_distribution_task", return_value="task-123"),
-            patch.object(helper._repository_manager, "_wait_for_distribution_task"),
+            patch.object(helper._repository_manager, "_wait_for_distribution_task") as mock_wait,
         ):
-            mock_get_methods.return_value = {}
+            mock_get_methods.return_value = RepositoryApiOps(mock_pulp_client, "file")
             new_repo_def = RpmRepositoryRequest(name="test-repo")
             new_distro_def = RpmDistributionRequest(name="test-repo", base_path="test-repo")
             prn, href = helper._repository_manager._create_or_get_repository_impl(
@@ -211,6 +213,7 @@ class TestPulpHelperRepositoryImplementation:
         assert new_distro_def.repository == "test-prn"
         assert prn == "test-prn"
         assert href == "test-href"
+        mock_wait.assert_not_called()
 
     def test_create_or_get_repository_impl_no_task(self, mock_pulp_client) -> None:
         """Test PulpHelper _create_or_get_repository_impl with no distribution task."""

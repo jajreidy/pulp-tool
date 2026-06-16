@@ -10,6 +10,7 @@ from typing import cast
 from unittest.mock import Mock, patch
 import pytest
 from pulp_tool.models.pulp_api import RpmDistributionRequest, RpmRepositoryRequest
+from pulp_tool.utils.constants import DEFAULT_TASK_TIMEOUT
 from pulp_tool.utils import PulpHelper, RepositoryRefs
 from pulp_tool.utils.repository_manager import RepositoryApiOps
 
@@ -246,7 +247,7 @@ class TestPulpHelperInternalMethods:
         mock_pulp_client.session.get = Mock(return_value=mock_distro_response)
         methods = cast(RepositoryApiOps, SimpleNamespace(wait_for_finished_task=Mock(return_value=mock_task_response)))
         result = helper._repository_manager._wait_for_distribution_task(methods, "task-123", "rpms", "test-build")
-        methods.wait_for_finished_task.assert_called_once_with("task-123")
+        methods.wait_for_finished_task.assert_called_once_with("task-123", timeout=DEFAULT_TASK_TIMEOUT)
         assert result == "test-build/rpms"
 
     def test_wait_for_distribution_task_no_resources(self, mock_pulp_client) -> None:
@@ -259,7 +260,7 @@ class TestPulpHelperInternalMethods:
         )
         methods = cast(RepositoryApiOps, SimpleNamespace(wait_for_finished_task=Mock(return_value=mock_task_response)))
         helper._repository_manager._wait_for_distribution_task(methods, "task-123", "rpms", "test-build")
-        methods.wait_for_finished_task.assert_called_once_with("task-123")
+        methods.wait_for_finished_task.assert_called_once_with("task-123", timeout=DEFAULT_TASK_TIMEOUT)
 
     def test_wait_for_distribution_task_json_error(self, mock_pulp_client) -> None:
         """Test PulpHelper _wait_for_distribution_task with failed task."""
