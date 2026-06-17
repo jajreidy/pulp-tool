@@ -202,31 +202,3 @@ class TestRemoveRpmsMatchingLocalFilesFromRepository:
         finally:
             os.unlink(path)
             os.rmdir(os.path.dirname(path))
-
-    def test_continues_when_task_incomplete_after_wait(self, caplog: pytest.LogCaptureFixture) -> None:
-        path = _valid_rpm_path()
-        try:
-            client = MagicMock()
-            pkg = _rpm_pkg("/pulp/api/v3/content/rpm/packages/timeout/")
-            with (
-                patch("pulp_tool.utils.rpm_overwrite.search_rpms_by_filenames_for_overwrite", return_value=[pkg]),
-                patch(
-                    "pulp_tool.utils.rpm_overwrite.filter_rpm_hrefs_in_repository_version", return_value=[pkg.pulp_href]
-                ),
-            ):
-                repo = MagicMock()
-                repo.latest_version_href = "/v/0/"
-                client.fetch_rpm_repository_by_href.return_value = repo
-                client.modify_repository_content.return_value = TaskResponse(
-                    pulp_href="/tasks/t3/", state="pending", created_resources=[]
-                )
-                client.wait_for_finished_task.return_value = TaskResponse(
-                    pulp_href="/tasks/t3/", state="running", created_resources=[]
-                )
-                with caplog.at_level(logging.WARNING):
-                    n = remove_rpms_matching_local_files_from_repository(client, [path], "/repo/", None)
-            assert n == 0
-            assert any("did not complete" in r.message for r in caplog.records)
-        finally:
-            os.unlink(path)
-            os.rmdir(os.path.dirname(path))

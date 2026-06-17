@@ -26,7 +26,6 @@ if TYPE_CHECKING:
 
 from .constants import (
     API_TYPES,
-    DEFAULT_TASK_TIMEOUT,
     REPOSITORY_TYPES,
     SIGNED_REPOSITORY_TYPES,
     SUPPORTED_ARCHITECTURES,
@@ -37,18 +36,6 @@ from .validation import (
     validate_build_id,
     validate_repository_setup,
 )
-
-
-@dataclass(frozen=True)
-class _PendingDistributionTask:
-    """Deferred Pulp distribution create task waited on before results collection."""
-
-    task_id: str
-    repo_type: str
-    build_id: str
-    distribution_name: str
-    api_repo_type: str
-    cache_key_type: str
 
 
 @dataclass(frozen=True)
@@ -82,12 +69,8 @@ class RepositoryApiOps:
             publication=publication,
         )
 
-    def wait_for_finished_task(self, task_id: str, timeout: int | None = None) -> TaskResponse:
-        if timeout is None:
-            from .constants import DEFAULT_TASK_TIMEOUT
-
-            timeout = DEFAULT_TASK_TIMEOUT
-        return self.client.wait_for_finished_task(task_id, timeout=timeout)
+    def wait_for_finished_task(self, task_id: str) -> TaskResponse:
+        return self.client.wait_for_finished_task(task_id)
 
 
 def _resource_log_label(full_name: str) -> str:
@@ -125,7 +108,6 @@ class RepositoryManager:
         self.parent_package = parent_package
         # Cache for distribution base paths: (build_id, repo_type) -> base_path
         self._distribution_cache: Dict[Tuple[str, str], str] = {}
-        self._pending_distribution_tasks: list[_PendingDistributionTask] = []
 
     def _validate_full_name(self, full_name: str, build_name: str, repo_type: str) -> None:
         """
@@ -420,24 +402,15 @@ class RepositoryManager:
             raise ValueError(f"Unexpected response format for {repo_type} repository creation: {new_repository.name}")
 
     def _wait_for_distribution_task(
-        self,
-        methods: RepositoryApiOps,
-        task_id: str,
-        repo_type: str,
-        build_id: str,
-        *,
-        timeout: int = DEFAULT_TASK_TIMEOUT,
+        self, methods: RepositoryApiOps, task_id: str, repo_type: str, build_id: str
     ) -> Optional[str]:
         """
         Wait for distribution creation task to complete and return the base_path.
 
         Returns:
-            The base_path of the created distribution, or None if timed out or not found
+            The base_path of the created distribution, or None if not found
         """
-        task_response = methods.wait_for_finished_task(task_id, timeout=timeout)
-
-        if not task_response.is_complete:
-            return None
+        task_response = methods.wait_for_finished_task(task_id)
 
         # task_response is now a TaskResponse model
         if not task_response.is_successful:
@@ -478,87 +451,6 @@ class RepositoryManager:
             logging.debug("Distribution creation completed for %s %s", repo_type, build_id)
 
         return base_path
-
-    def wait_for_pending_distribution_tasks(self) -> None:
-        """
-        Wait for all deferred distribution create tasks before collecting results.
-
-        Upload uses repository PRNs and can proceed while Pulp workers finish
-        distribution tasks; this ensures distributions exist before results JSON URLs.
-        """
-        if not self._pending_distribution_tasks:
-            return
-
-        pending = list(self._pending_distribution_tasks)
-        logging.warning(
-            "Waiting for %d pending distribution task(s) before collecting results (timeout: %d seconds each)",
-            len(pending),
-            DEFAULT_TASK_TIMEOUT,
-        )
-        completed: list[_PendingDistributionTask] = []
-        timed_out: list[_PendingDistributionTask] = []
-        for item in pending:
-            methods = self.get_repository_methods(item.api_repo_type)
-            logging.warning(
-                "Waiting for distribution task for %s (build_id=%s, task=%s)",
-                _resource_log_label(item.distribution_name),
-                item.build_id,
-                item.task_id,
-            )
-            base_path = self._wait_for_distribution_task(
-                methods,
-                item.task_id,
-                item.repo_type,
-                item.build_id,
-                timeout=DEFAULT_TASK_TIMEOUT,
-            )
-            if base_path is None:
-                timed_out.append(item)
-                continue
-            completed.append(item)
-            if item.build_id and base_path:
-                self._distribution_cache[(item.build_id, item.cache_key_type)] = base_path
-                logging.debug(
-                    "Cached distribution base_path for %s/%s: %s",
-                    item.build_id,
-                    item.cache_key_type,
-                    base_path,
-                )
-
-        if completed:
-            self.verify_distributions_ready(completed)
-        if timed_out:
-            self.verify_distributions_ready(timed_out, warn_only=True)
-        self._pending_distribution_tasks.clear()
-
-    def verify_distributions_ready(
-        self,
-        pending: list[_PendingDistributionTask],
-        *,
-        warn_only: bool = False,
-    ) -> None:
-        """Confirm each deferred distribution is visible via GET after its task completed."""
-        for item in pending:
-            methods = self.get_repository_methods(item.api_repo_type)
-            distro_response = methods.get_distro(item.distribution_name)
-            if distro_response.status_code == 404:
-                message = (
-                    f"Distribution {item.distribution_name} not found after task wait "
-                    f"(repo_type={item.repo_type}, build_id={item.build_id})"
-                )
-                if warn_only:
-                    logging.warning("%s; continuing without verified distribution", message)
-                    continue
-                raise ValueError(message)
-            self.client.check_response(
-                distro_response,
-                f"verify {item.repo_type} distribution {item.distribution_name}",
-            )
-            logging.warning(
-                "Verified distribution %s is ready (build_id=%s)",
-                _resource_log_label(item.distribution_name),
-                item.build_id,
-            )
 
     async def _setup_repositories_impl_async(
         self,
@@ -718,24 +610,14 @@ class RepositoryManager:
             distribution_cache_type=distribution_cache_type,
         )
 
+        # If distribution was created, wait for it to complete and cache the base_path
         cache_key_type = distribution_cache_type or repo_type
         if task_id:
-            api_repo_type = methods.repo_type
-            self._pending_distribution_tasks.append(
-                _PendingDistributionTask(
-                    task_id=task_id,
-                    repo_type=repo_type,
-                    build_id=build_id or new_repository.name,
-                    distribution_name=new_repository.name,
-                    api_repo_type=api_repo_type,
-                    cache_key_type=cache_key_type,
-                )
-            )
-            logging.warning(
-                "Distribution create task submitted for %s (build_id=%s); upload will proceed without waiting",
-                _resource_log_label(str(new_distribution.name)),
-                build_id or new_repository.name,
-            )
+            base_path = self._wait_for_distribution_task(methods, task_id, repo_type, build_id or new_repository.name)
+            if build_id and base_path:
+                # Cache the base_path so we don't need to query it later
+                self._distribution_cache[(build_id, cache_key_type)] = base_path
+                logging.debug("Cached distribution base_path for %s/%s: %s", build_id, cache_key_type, base_path)
 
         return repository_prn, repository_href
 

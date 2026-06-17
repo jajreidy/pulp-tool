@@ -337,8 +337,6 @@ class UploadOrchestrator:
         extra_artifacts = [ExtraArtifactRef(pulp_href=href) for href in created_resources]
         logging.info("Total artifacts to include in results: %d", len(extra_artifacts))
 
-        repo_helper.wait_for_pending_distribution_tasks()
-
         # Collect and save results, passing the results_model and all artifacts
         results_json_url = collect_results(client, args, date_str, results_model, extra_artifacts)
 
@@ -437,12 +435,11 @@ class UploadOrchestrator:
         if context.log_files:
             logging.warning("Uploading %d log file(s)", len(context.log_files))
             for log_path in context.log_files:
+                logging.warning("Uploading log: %s", os.path.basename(log_path))
                 log_arch = context.arch or detect_arch_from_filepath(log_path)
                 if not log_arch:
                     logging.warning(ARCH_DETECT_WARNING_MSG, os.path.basename(log_path))
                     continue
-
-                logging.warning("Uploading log for %s: %s", log_arch, os.path.basename(log_path))
 
                 labels = create_labels(
                     context.build_id, log_arch, context.namespace, context.parent_package, context.date_str
@@ -484,8 +481,6 @@ class UploadOrchestrator:
         # Convert created_resources hrefs into artifact format for extra_artifacts
         extra_artifacts = [ExtraArtifactRef(pulp_href=href) for href in created_resources]
         logging.info("Total artifacts to include in results: %d", len(extra_artifacts))
-
-        repo_helper.wait_for_pending_distribution_tasks()
 
         # Collect and save results, passing the results_model and all artifacts
         results_json_url = collect_results(client, context, context.date_str, results_model, extra_artifacts)

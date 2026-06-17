@@ -6,6 +6,7 @@ This module tests TaskMixin wait_for_finished_task timeout path.
 
 from unittest.mock import Mock, patch
 import httpx
+import pytest
 from pulp_tool.models.pulp_api import TaskResponse
 
 
@@ -37,7 +38,7 @@ class TestTaskMixin:
         ):
             result = mock_pulp_client.wait_for_finished_task("/api/v3/tasks/12345/", timeout=1)
             assert mock_pulp_client.get_task.call_count >= 1
-            mock_logging.warning.assert_called()
+            mock_logging.error.assert_called()
             assert result is not None
 
     def test_wait_for_finished_task_with_metrics(self, mock_pulp_client, httpx_mock) -> None:
@@ -74,7 +75,7 @@ class TestTaskMixin:
         assert count == 1
 
     def test_wait_for_finished_task_timeout_no_task_response(self, mock_pulp_client) -> None:
-        """Test wait_for_finished_task timeout when task_response is None returns running placeholder."""
+        """Test wait_for_finished_task timeout when task_response is None (line 145)."""
 
         def mock_get_task(href) -> None:
             raise Exception("Network error on first call")
@@ -96,6 +97,6 @@ class TestTaskMixin:
             patch("time.time", side_effect=mock_time),
             patch("pulp_tool.api.tasks.operations.logging") as mock_logging,
         ):
-            result = mock_pulp_client.wait_for_finished_task("/api/v3/tasks/12345/", timeout=1)
-            mock_logging.warning.assert_called()
-            assert result.state == "running"
+            with pytest.raises(TimeoutError, match="Timed out waiting for task"):
+                mock_pulp_client.wait_for_finished_task("/api/v3/tasks/12345/", timeout=1)
+            mock_logging.error.assert_called()
