@@ -8,7 +8,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-- **`i686`** in supported upload architectures (`SUPPORTED_ARCHITECTURES`); artifact detection and CLI `--archs` filter docs include i686
 - **`changing-pulp-container` agent skill:** documents in-repo `.tekton/` PipelineRuns, upstream Konflux `single-arch-build-pipeline` (`buildah-oci-ta` task chain), and [reference.md](skills/changing-pulp-container/reference.md); `make test-container` for optional local Dockerfile smoke-test
 - **`docs/ARCHITECTURE.md`:** living architecture doc (overview, mermaid flow, code map, invariants, external integrations, glossary); complements `AGENTS.md` / `CLAUDE.md`
 - **`AGENTS.md`:** canonical agent entry with § **Bootstrap** (read-first order to reduce context thrash); pointers to `docs/ARCHITECTURE.md`, `CLAUDE.md`, and on-demand skills under `skills/`
@@ -37,12 +36,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - **`upload` / `search-by` / Pulp RPM queries — `signed_by`:** Pulpcore rejects label values with comma or parentheses (400 on upload). The tool substitutes `,`→`:` and `(`/`)`→`[`/`]` via `pulp_tool.models.pulp_label_values` on `UploadRpmContext`, `SearchByRequest`, and at `PulpClient` query time so storage and lookups stay aligned. `search-by` applies the same mapping when building requests and when removing RPMs from `pulp_results.json` (artifact labels may still be pre-substitution). `pulp_label_select` is included in the primary GET `q=` with checksum or NVR constraints when possible; paginated list + client label filtering remains a forced fallback only when a query cannot be expressed safely.
-- **Upload stalls during repository setup:** Creating new distributions no longer blocks `setup_repositories` on long-running Pulp tasks; pending distribution tasks are tracked and awaited (with verification) before results collection so RPM/log/SBOM uploads can proceed in parallel
 - **Container certification:** Address ecosystem-cert-preflight failures (`BasedOnUbi`, `HasLicense`, `HasRequiredLabel`, `RunAsNonRoot`) by migrating the Konflux image from Fedora 45 to UBI 10 minimal with required labels, `/licenses/LICENSE`, and non-root `USER 1001`
 
 ### Changed
-- **Pulp task polling:** `wait_for_finished_task` uses a global **30-minute** timeout (`DEFAULT_TASK_TIMEOUT`); tasks that do not finish in time log a **warning** and return the last known state so upload and related flows continue instead of raising `TimeoutError` (distribution setup, RPM overwrite remove, and other callers tolerate incomplete tasks)
-- **Log upload logging:** Per-file log lines include architecture (e.g. `Uploading log for x86_64: …`) so parallel per-arch uploads are easier to follow in Tekton logs
 - **Container image:** Dockerfile uses UBI 10 minimal with Python 3.12; adds OpenShift preflight labels, `/licenses/LICENSE`, and non-root `USER 1001`; `gcc` no longer required (`pydantic-core` cp312 wheels)
 - **CI:** GitHub Actions unit/lint and security workflows run on Python 3.12 (no transient `gcc`); container image build remains on Konflux Tekton only (no GitHub Actions `docker build`)
 - **Agent skills and Cursor rules:** on-demand workflows extracted to `skills/`; `llm-development-guidelines-deep.mdc` is a skill index (lint quick-ref); `AGENTS.md`, `CLAUDE.md`, and `CONTRIBUTING.md` point at `skills/` as the canonical path

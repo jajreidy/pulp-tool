@@ -146,7 +146,7 @@ def _upload_logs_sequential(
     """
     logging.warning("Uploading %d log file(s) for %s", len(logs), arch)
     for log in logs:
-        logging.warning("Uploading log for %s: %s", arch, os.path.basename(log))
+        logging.warning("Uploading log: %s", os.path.basename(log))
         upload_log(
             client,
             file_repository_prn,

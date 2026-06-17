@@ -102,12 +102,6 @@ def remove_rpms_matching_local_files_from_repository(
     )
     task = client.modify_repository_content(rpm_repository_href, remove_content_units=to_remove)
     finished = client.wait_for_finished_task(task.pulp_href)
-    if not finished.is_complete:
-        logging.warning(
-            "Overwrite remove_content_units task did not complete (state: %s); continuing upload",
-            finished.state,
-        )
-        return 0
     if finished.is_failed:
         raise RuntimeError(f"Overwrite remove_content_units task failed: {finished.error}")
     return len(to_remove)

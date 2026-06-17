@@ -55,7 +55,7 @@ Download artifacts from Pulp distributions.
 | `--transfer-dest` | Conditional | Config path for cert/key and upload destination |
 | `--cert-path` / `--key-path` | Conditional | SSL cert/key (or from config) |
 | `--content-types` | No | Filter: rpm, log, sbom (comma-separated) |
-| `--archs` | No | Filter: x86_64, i686, aarch64, etc. |
+| `--archs` | No | Filter: x86_64, aarch64, etc. |
 | `--max-workers` | No | Concurrent downloads (default: 4) |
 
 \* Use `--artifact-location` OR `--build-id` + `--namespace`. For remote URLs, cert/key required.

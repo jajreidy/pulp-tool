@@ -86,10 +86,6 @@ class PulpHelper:
             skip_sbom_repo=skip_sbom_repo,
         )
 
-    def wait_for_pending_distribution_tasks(self) -> None:
-        """Wait for deferred distribution create tasks before collecting upload results."""
-        self._repository_manager.wait_for_pending_distribution_tasks()
-
     def distribution_url_for_base_path(self, base_path: str) -> str:
         """Pulp-content base URL for a distribution ``base_path`` (e.g. architecture name)."""
         return self._distribution_manager.distribution_url_for_base_path(base_path)
