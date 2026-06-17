@@ -110,7 +110,7 @@ class TestSearchByResultsJsonNvrAndExplicit:
         """Test results-json with many packages found shows truncated msg (N packages)."""
         results_input = tmp_path / "input.json"
         results_output = tmp_path / "output.json"
-        arches = ["x86_64", "aarch64", "s390x", "ppc64le", "src", "noarch"] * 2
+        arches = ["x86_64", "i686", "aarch64", "s390x", "ppc64le", "src", "noarch"] * 2
         checksums = ["a" * 63 + hex(i)[-1] for i in range(12)]
         artifacts = {
             f"pkg-1.0-1.{arch}.rpm": {"labels": {}, "url": "x", "sha256": checksums[i]}

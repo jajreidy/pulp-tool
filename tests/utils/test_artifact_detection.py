@@ -327,6 +327,11 @@ class TestDetectArchFromRpmFilename:
         assert detect_arch_from_rpm_filename("/path/to/package-1.0.0-1.x86_64.rpm") == "x86_64"
         assert detect_arch_from_rpm_filename("package-1.0.0-1.x86_64.rpm") == "x86_64"
 
+    def test_detect_arch_from_filename_i686(self) -> None:
+        """Test detecting i686 architecture from RPM filename."""
+        assert detect_arch_from_rpm_filename("/path/to/package-1.0.0-1.i686.rpm") == "i686"
+        assert detect_arch_from_filepath("/path/to/i686/package.rpm") == "i686"
+
     def test_detect_arch_from_filename_noarch(self) -> None:
         """Test detecting noarch architecture from RPM filename."""
         assert detect_arch_from_rpm_filename("/path/to/package-1.0.0-1.noarch.rpm") == "noarch"

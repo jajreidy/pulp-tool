@@ -21,14 +21,15 @@ After substantive code or repo changes that could ship as a PR, end with a short
 ## Workflow (on confirmation — same turn)
 
 1. Draft PR body using [templates.md](templates.md) — skeleton from `.github/PULL_REQUEST_TEMPLATE.md`.
-2. Provide suggested commit message (`Assisted-By:` + `Signed-off-by:` per `.github/commit-message-template.txt`).
-3. Edit `CHANGELOG.md` under `[Unreleased]` when the change is user-facing or notable (see templates.md).
+2. **Write** the PR body to `pr-description.md` at the repo root (gitignored local draft; see templates.md). Overwrite the file each time.
+3. Provide suggested commit message in chat (`Assisted-By:` + `Signed-off-by:` per `.github/commit-message-template.txt`).
+4. Edit `CHANGELOG.md` under `[Unreleased]` when the change is user-facing or notable (see templates.md).
 
-Chat may prefix with `### PR description (GitHub)`; the paste block starts with `## Summary`.
+In chat, prefix with `### PR description (GitHub)` and point to `pr-description.md` for the full paste block (starts with `## Summary`). Do not duplicate the full body in chat when the file was written.
 
 ## Red flags — do not proceed
 
-- Pasting full PR body without user confirmation
+- Pasting full PR body in chat without user confirmation (or without writing `pr-description.md` on confirmation)
 - Renaming template sections or omitting checklist items
 - Editing `CHANGELOG.md` on every debug iteration
 - Inventing a real `Signed-off-by` email
