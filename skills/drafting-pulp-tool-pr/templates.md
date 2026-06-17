@@ -30,6 +30,15 @@ Rules:
 - Do not rename sections or substitute a different outline unless the user explicitly overrides.
 - Write Summary / How to test / Notes in complete sentences.
 
+## Local file: `pr-description.md`
+
+On confirmation, write **only the PR body** (sections above) to `pr-description.md` at the repo root. The file is gitignored — a local paste-ready draft, not committed.
+
+- Include `## Summary`, `## How to test`, `## Checklist`, and `## Notes for reviewers` when there is reviewer context.
+- Use concrete commands under How to test (e.g. `make lint`, `make test`, `pre-commit run --all-files`, `make test-diff-coverage`).
+- Do **not** put the commit message or CHANGELOG entry in this file; those stay in chat / `CHANGELOG.md`.
+- Overwrite the file on each PR-drafting turn.
+
 ## Suggested commit message
 
 ```text

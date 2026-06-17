@@ -85,7 +85,7 @@ def test_sanitize_build_id_for_repository_no_invalid_chars(seg) -> None:
     name=st.text(alphabet=string.ascii_lowercase + string.digits, min_size=1, max_size=16),
     ver=st.from_regex("[0-9]+(\\.[0-9]+)?", fullmatch=True),
     rel=st.from_regex("[0-9]+[a-z0-9.]*", fullmatch=True),
-    arch=st.sampled_from(["x86_64", "noarch", "src", "aarch64"]),
+    arch=st.sampled_from(["x86_64", "i686", "noarch", "src", "aarch64"]),
 )
 def test_parse_rpm_filename_nvra_roundtrip(name, ver, rel, arch) -> None:
     """Synthetic ``name-ver-rel.arch.rpm`` parses to consistent NVR and NVRA."""

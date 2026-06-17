@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **`i686` architecture support:** `SUPPORTED_ARCHITECTURES` includes 32-bit x86; RPM filename and path detection, upload orchestration, and content queries treat `i686` like other supported arches
+- **`drafting-pulp-tool-pr` skill:** writes gitignored local `pr-description.md` at repo root for paste-ready PR body drafts
 - **`changing-pulp-container` agent skill:** documents in-repo `.tekton/` PipelineRuns, upstream Konflux `single-arch-build-pipeline` (`buildah-oci-ta` task chain), and [reference.md](skills/changing-pulp-container/reference.md); `make test-container` for optional local Dockerfile smoke-test
 - **`docs/ARCHITECTURE.md`:** living architecture doc (overview, mermaid flow, code map, invariants, external integrations, glossary); complements `AGENTS.md` / `CLAUDE.md`
 - **`AGENTS.md`:** canonical agent entry with § **Bootstrap** (read-first order to reduce context thrash); pointers to `docs/ARCHITECTURE.md`, `CLAUDE.md`, and on-demand skills under `skills/`

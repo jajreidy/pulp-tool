@@ -26,6 +26,7 @@ Baseline failure modes and how each skill addresses them. Re-run when editing sk
 | Paste full PR body after every code change | Ask-first gate; `disable-model-invocation: true` |
 | Custom PR outline omitting checklist | templates.md reproduces template verbatim |
 | CHANGELOG edit on every debug fix | Red flag + templates.md timing rules |
+| PR body only in chat, lost between sessions | Writes gitignored `pr-description.md` at repo root |
 
 ## fixing-diff-cover-failures
 

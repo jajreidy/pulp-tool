@@ -148,3 +148,6 @@ Thumbs.db
 
 # AgentReady (https://github.com/ambient-code/agentready) assessment output
 .agentready/
+
+# Local paste-ready PR draft (drafting-pulp-tool-pr skill)
+pr-description.md
