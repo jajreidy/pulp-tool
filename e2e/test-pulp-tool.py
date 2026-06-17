@@ -1079,7 +1079,7 @@ Examples:
         config_file=args.config.resolve(),
         rpm_dir=args.rpm_dir.resolve(),
         pulp_results=args.pulp_results.resolve(),
-        test_dir=args.test_dir.resolve(),
+        test_dir=args.test_dir.resolve() if args.test_dir else None,
         skip_setup=args.skip_setup,
         real_server=args.real_server,
         dry_run=dry_run,
