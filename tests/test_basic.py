@@ -13,16 +13,20 @@ def test_package_import() -> None:
 
 
 def test_version() -> None:
-    """Test that version is accessible."""
+    """Test that version is accessible and matches _version module."""
+    from pulp_tool._version import __version__ as version_from_module
+
     assert hasattr(pulp_tool, "__version__")
     assert pulp_tool.__version__ is not None
+    assert pulp_tool.__version__ == version_from_module
 
 
 def test_version_module() -> None:
-    """Test that _version module can be imported and has correct version."""
+    """Test that _version module can be imported and has a non-empty version string."""
     from pulp_tool._version import __version__
 
-    assert __version__ == "1.0.0"
+    assert isinstance(__version__, str)
+    assert __version__
 
 
 def test_main_classes_import() -> None:

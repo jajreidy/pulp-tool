@@ -96,6 +96,6 @@ Security updates will be:
 
 ## Additional Resources
 
-- [GitHub Security Advisories](https://github.com/konflux/pulp-tool/security/advisories)
+- [GitHub Security Advisories](https://github.com/konflux-ci/pulp-tool/security/advisories)
 - [OWASP Top 10](https://owasp.org/www-project-top-ten/)
 - [Python Security Best Practices](https://python.readthedocs.io/en/stable/library/security_warnings.html)

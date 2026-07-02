@@ -14,7 +14,7 @@ LABEL name="pulp-tool-container" \
       distribution-scope="public" \
       release="${RELEASE}" \
       version="${VERSION}" \
-      url="https://github.com/konflux/pulp-tool/" \
+      url="https://github.com/konflux-ci/pulp-tool/" \
       vendor="Red Hat, Inc."
 
 # OpenShift preflight check requires licensing files under /licenses
@@ -33,7 +33,7 @@ WORKDIR /app
 COPY setup.py pyproject.toml README.md MANIFEST.in VERSION ./
 COPY pulp_tool/ ./pulp_tool/
 
-RUN pip3 install --no-cache-dir --root-user-action=ignore . && \
+RUN SETUPTOOLS_SCM_PRETEND_VERSION="${VERSION}" pip3 install --no-cache-dir --root-user-action=ignore . && \
     rm -rf /root/.cache
 
 RUN useradd -lms /bin/bash -u 1001 -g 0 pulp-tool && \

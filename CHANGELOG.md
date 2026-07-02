@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **`tests/utils/test_iteration_utils.py`:** unit tests for `pulp_tool.utils.iteration_utils`
 - **`i686` architecture support:** `SUPPORTED_ARCHITECTURES` includes 32-bit x86; RPM filename and path detection, upload orchestration, and content queries treat `i686` like other supported arches
 - **`drafting-pulp-tool-pr` skill:** writes gitignored local `pr-description.md` at repo root for paste-ready PR body drafts
 - **`changing-pulp-container` agent skill:** documents in-repo `.tekton/` PipelineRuns, upstream Konflux `single-arch-build-pipeline` (`buildah-oci-ta` task chain), and [reference.md](skills/changing-pulp-container/reference.md); `make test-container` for optional local Dockerfile smoke-test
@@ -35,56 +36,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Upload gather split:** `pulp_tool.services.upload_collect` and `pulp_tool.services.upload_common` hold results JSON / Konflux helpers; `upload_service` re-exports the same public names for stable imports
 - **`RepositoryApiOps`** (`pulp_tool.utils.repository_manager`): frozen dataclass binding `get` / `create` / `distro` / `get_distro` / `update_distro` / `wait_for_finished_task` to `PulpClient` for a given API type (replaces a dict of lambdas)
 - **Pulp client package:** `pulp_tool/api/pulp_client/` (`cache`, `chunked_get`, `repository`, `content_query`, `results`, `helpers`, `client`); `PulpClient` delegates without changing mixin order or Tekton-visible behavior
-
-### Fixed
-- **CI security scan:** Run `pip-audit` before installing optional `safety`/`bandit` in `security-scan.yml`; `safety>=3.6` transitively installs `nltk` (PYSEC-2026-597), which is not a pulp-tool dependency and was failing the audit step
-- **E2e Tekton pipeline:** Apply Konflux `task-init` 0.3 migration in `pulp-e2e-testing` — remove stale `build` result `when` on `clone-repository` and obsolete init params (`image-url`, `rebuild`, `skip-checks`) for `task-init:0.4`
-- **`upload` / `search-by` / Pulp RPM queries — `signed_by`:** Pulpcore rejects label values with comma or parentheses (400 on upload). The tool substitutes `,`→`:` and `(`/`)`→`[`/`]` via `pulp_tool.models.pulp_label_values` on `UploadRpmContext`, `SearchByRequest`, and at `PulpClient` query time so storage and lookups stay aligned. `search-by` applies the same mapping when building requests and when removing RPMs from `pulp_results.json` (artifact labels may still be pre-substitution). `pulp_label_select` is included in the primary GET `q=` with checksum or NVR constraints when possible; paginated list + client label filtering remains a forced fallback only when a query cannot be expressed safely.
-- **Container certification:** Address ecosystem-cert-preflight failures (`BasedOnUbi`, `HasLicense`, `HasRequiredLabel`, `RunAsNonRoot`) by migrating the Konflux image from Fedora 45 to UBI 10 minimal with required labels, `/licenses/LICENSE`, and non-root `USER 1001`
-
-### Changed
-- **Container image:** Dockerfile uses UBI 10 minimal with Python 3.12; adds OpenShift preflight labels, `/licenses/LICENSE`, and non-root `USER 1001`; `gcc` no longer required (`pydantic-core` cp312 wheels)
-- **CI:** GitHub Actions unit/lint and security workflows run on Python 3.12 (no transient `gcc`); container image build remains on Konflux Tekton only (no GitHub Actions `docker build`)
-- **Agent skills and Cursor rules:** on-demand workflows extracted to `skills/`; `llm-development-guidelines-deep.mdc` is a skill index (lint quick-ref); `AGENTS.md`, `CLAUDE.md`, and `CONTRIBUTING.md` point at `skills/` as the canonical path
-- **`.cursor/rules/llm-development-guidelines.mdc`:** slim always-on essentials (workflow, diff coverage, PR/CHANGELOG rules); lengthy PR/lint/troubleshooting detail moved to `skills/`
-- **`CLAUDE.md`:** scoped to Konflux/Tekton contracts and regression checklist; system/code-map narrative in `docs/ARCHITECTURE.md`
-- **Agent documentation links:** `README.md`, `CONTRIBUTING.md`, `docs/adr/0000-record-architecture-decisions.md`, `docs/cli-reference.md`, `.cursor/rules/konflux-ecosystem.mdc`, and `docs/ARCHITECTURE.md` updated for the split
-- **`docs/cli-reference.md` / `docs/ARCHITECTURE.md`:** `signed_by` substitution, server-side vs fallback Pulp queries, and `search-by` / `pulp_results.json` filtering; **`upload --signed-by` / `search-by --signed-by`:** help text aligned
-- **Mypy (tests):** `[[tool.mypy.overrides]]` for `tests.*` disables `return-value`, `var-annotated`, `assignment`, `arg-type`, and `call-arg` so pre-commit mypy on the test suite tolerates mocks, fixtures, and intentional invalid inputs; `make lint` still type-checks **`pulp_tool/`** only
-- Removed **`ensure_pulp_capabilities`** (pre-flight `GET …/status/` and minimum pulpcore / `pulp_rpm` version checks) from **`upload`**, **`upload-files`**, **`create-repository`**, **`search-by`**, and pull repository setup; **`versions_from_status_payload`** remains in **`pulp_tool.utils.pulp_capabilities`** for callers that parse status JSON. Upload and search flows no longer fail early when the status endpoint is missing, returns non-JSON, or sits behind routing that does not expose it like a stock Pulp deployment.
-- **Testing docs and examples:** `tests/README.md` adds a directory map (mirrors `pulp_tool/`) and a short Hypothesis section; root `README` links to it; `CONTRIBUTING.md` and `scripts/README.md` pytest examples point at `tests/cli/test_cli_core.py` instead of the former monolithic `tests/test_cli.py`
-- **`RepositoryManager.get_repository_methods`** now returns **`RepositoryApiOps`** instead of a `dict` of callables (call sites use attribute access, e.g. `ops.get(name)`)
-- **Removed** `pulp_tool.api.task_manager` (documentation-only `TaskManagerMixin` Protocol); **`TaskMixin`** in `pulp_tool.api.tasks.operations` is the live implementation (module docstring notes the removal)
-- Pulp HTTP client: validate response status on more code paths before returning or parsing JSON—chunked GET (all branches, including the aggregated-results fallback), repository/distribution GET-by-name (still allows **404** for “not found” lookups), create-resource POST, distribution PATCH (`update_distro`), file content POST, task GET parsing (single `_check_response`), post-task distribution fetch in `RepositoryManager`, and `DistributionClient.pull_artifact` (`raise_for_status` on error status).
-- `pull`: create destination repositories/distributions and re-upload downloaded content only when `--transfer-dest` is set; group-level `--config` alone still supplies auth (and `base_url` for `--build-id` + `--namespace`) but does not create destination repos or upload
-- `pull`: download URLs use only per-artifact `url` fields in artifact results JSON; `distributions` in that file are not used to build download URLs (artifacts without `url` are skipped)
-- `upload` and `upload-files` again exit with code 1 on authentication-related failures (HTTP 401/403, OAuth “failed to obtain access token”, and similar); the previous temporary non-fatal workaround (warning and exit 0) has been removed
-- Raised minimum versions for runtime (`httpx`, `pydantic`, `click`) and dev tooling in `pyproject.toml` / `setup.py`; build-system uses newer `setuptools`/`setuptools-scm`
-- Removed Sphinx and sphinx-rtd-theme from optional `dev` extras (in-tree docs build was removed earlier); Pygments may still be installed transitively (e.g. `pytest`, `diff-cover`)
-- Local `--artifact-results` folder path: `distributions` in `pulp_results.json` no longer includes a synthetic `artifacts` pulp-content URL (artifacts repo was already skipped; URL map now aligns)
-- `upload --target-arch-repo`: `pulp_results.json` `distributions` keys for per-arch RPM bases are `rpm_<arch>` instead of bare architecture names (e.g. `rpm_x86_64` not `x86_64`)
-- `upload` / `upload-files`: infer whether log and SBOM repos are needed before repository setup (directory `*.log` scan or `--results-json` artifact keys; SBOM via `--sbom-path` or SBOM-classified keys); omitted types are excluded from results `distributions`; clear errors if uploads are attempted without the matching repository
-- Upload orchestration uses `RpmUploadResult` per architecture instead of ad-hoc dicts; gather/collect uses `PulpContentRow`, `ExtraArtifactRef`, and `FileInfoMap` for clearer typed data flow
-- Upload flow populates `pulp_results.json` artifact entries incrementally as RPMs, logs, SBOMs, and generic files finish; final gather still reconciles via merge (keeps incremental entries when keys already exist)
-- Repository setup logs use the concrete repo slug (e.g. ``rpms-signed``) instead of a generic ``Rpms`` label; distribution creation logs state that ``name`` and ``base_path`` match the repository name on one line
-- `upload --target-arch-repo` with `--signed-by`: RPM paths remain `{arch}/` only (no `{arch}/rpms-signed`); signing is via `signed_by` label on content
-### Security
-- Added **`pip-audit`** to optional `dev` dependencies, **`make audit`** (isolated **`.audit-venv`** with **`pip-audit -l`**, same **CVE-2026-4539** / **GHSA-5239-wwwm-4pmq** ignores as CI until Pygments **>2.19.2** is on PyPI), and **`pip-audit -l`** in **`security-scan.yml`**; when a fixed Pygments is released, pin **`pygments>=…`** under `dev` in `pyproject.toml` / `setup.py` and drop the workflow/Makefile ignores
-- Optional docs stack (Sphinx) remains removed from `dev` extras; **CVE-2026-4539** still applies to transitive Pygments from **`pytest`** and **`diff-cover`** until a patched wheel is published
-
-### Fixed
-- **Tests (lint):** Removed stray split-artifact string lines left at the top of some `test_all_models_*.py` files; wrapped long mock URLs and trimmed unused imports in split test modules so `flake8` passes
-- **`@cached_get`** cache keys now include the decorated method name plus full positional and keyword arguments, so **`_get_single_resource(endpoint, name)`** cannot return a cached response for a different **`name`** when the endpoint string matches (regression test added)
-- **Synchronous `_chunked_get`:** when an event loop is already running, the method now raises **`RuntimeError`** with a clear message instead of incorrectly treating that case like “no loop” and swallowing the error
-- Content search (`GET /api/v3/content/`, including gather-by-`build_id`): empty or non-JSON bodies no longer surface as a bare `JSONDecodeError`; errors include HTTP status, URL, and a short body preview when JSON is invalid (`content_find_results_from_response`). `find_content` rejects non-success HTTP responses before parsing the body.
-- When `cert`/`key` are set for mTLS but PEM files are missing (wrong path in containers, etc.), `PulpClient` now fails fast with a clear error instead of opening a TLS connection without a client certificate (which often surfaced only as HTTP 403)
-- `create_session_with_retry` logs an error when a `cert` tuple is given but the PEM paths do not exist (defensive; `PulpClient` normally validates paths first)
-- Generic `/api/v3/content/` responses that are a bare JSON array (not `{"results": [...]}`) no longer crash gather-by-href or `_find_artifact_content` with `TypeError: list indices must be integers or slices, not str`
-- Results JSON RPM URLs with `--signed-by`: use the `rpms-signed` distribution base (`distributions.rpms_signed` / correct artifact `url`) instead of the unsigned `rpms` path
-- RPM distribution URLs: ``Packages/<letter>/`` uses the lowercase first character of the RPM **basename** only (correct for paths like ``Packages/W/foo.rpm``, ``arch/pkg.rpm``, or plain ``foo.rpm``)
-- Clear error when no auth credentials provided (client_id/client_secret or username/password)
-
-### Added
 - `--artifact-results` folder mode: pass a folder path to save pulp_results.json locally instead of uploading to Pulp
 - Comprehensive type annotations for all function arguments
 - Pre-commit hooks for code quality checks
@@ -104,6 +55,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Comprehensive test suite with 85%+ coverage
 
 ### Changed
+- **`CHANGELOG.md`:** consolidate duplicate `[Unreleased]` subsections; fix compare URL org
+- **`pyproject.toml`:** Use setuptools package discovery instead of incomplete explicit package list
+- **`setup.py`:** Sync runtime and dev dependencies with `pyproject.toml` (including `python-json-logger`); drop hardcoded version (use `setuptools_scm` via `pyproject.toml`); container builds pass `SETUPTOOLS_SCM_PRETEND_VERSION` from the `VERSION` build-arg; exclude scm-generated `_version.py` from Black
+- **`pulp_tool` package:** `__init__` imports `__version__` from `_version` so CLI and library agree
+- **Container image:** Dockerfile uses UBI 10 minimal with Python 3.12; adds OpenShift preflight labels, `/licenses/LICENSE`, and non-root `USER 1001`; `gcc` no longer required (`pydantic-core` cp312 wheels)
+- **CI:** GitHub Actions unit/lint and security workflows run on Python 3.12 (no transient `gcc`); container image build remains on Konflux Tekton only (no GitHub Actions `docker build`)
+- **Agent skills and Cursor rules:** on-demand workflows extracted to `skills/`; `llm-development-guidelines-deep.mdc` is a skill index (lint quick-ref); `AGENTS.md`, `CLAUDE.md`, and `CONTRIBUTING.md` point at `skills/` as the canonical path
+- **`.cursor/rules/llm-development-guidelines.mdc`:** slim always-on essentials (workflow, diff coverage, PR/CHANGELOG rules); lengthy PR/lint/troubleshooting detail moved to `skills/`
+- **`CLAUDE.md`:** scoped to Konflux/Tekton contracts and regression checklist; system/code-map narrative in `docs/ARCHITECTURE.md`
+- **Agent documentation links:** `README.md`, `CONTRIBUTING.md`, `docs/adr/0000-record-architecture-decisions.md`, `docs/cli-reference.md`, `.cursor/rules/konflux-ecosystem.mdc`, and `docs/ARCHITECTURE.md` updated for the split
+- **`docs/cli-reference.md` / `docs/ARCHITECTURE.md`:** `signed_by` substitution, server-side vs fallback Pulp queries, and `search-by` / `pulp_results.json` filtering; **`upload --signed-by` / `search-by --signed-by`:** help text aligned
+- **Mypy (tests):** `[[tool.mypy.overrides]]` for `tests.*` disables `return-value`, `var-annotated`, `assignment`, `arg-type`, and `call-arg` so mypy tolerates mocks, fixtures, and intentional invalid inputs; `make lint` type-checks both **`pulp_tool/`** and **`tests/`**
+- Removed **`ensure_pulp_capabilities`** (pre-flight `GET …/status/` and minimum pulpcore / `pulp_rpm` version checks) from **`upload`**, **`upload-files`**, **`create-repository`**, **`search-by`**, and pull repository setup; **`versions_from_status_payload`** remains in **`pulp_tool.utils.pulp_capabilities`** for callers that parse status JSON. Upload and search flows no longer fail early when the status endpoint is missing, returns non-JSON, or sits behind routing that does not expose it like a stock Pulp deployment.
+- **Testing docs and examples:** `tests/README.md` adds a directory map (mirrors `pulp_tool/`) and a short Hypothesis section; root `README` links to it; `CONTRIBUTING.md` and `scripts/README.md` pytest examples point at `tests/cli/test_cli_core.py` instead of the former monolithic `tests/test_cli.py`
+- **`RepositoryManager.get_repository_methods`** now returns **`RepositoryApiOps`** instead of a `dict` of callables (call sites use attribute access, e.g. `ops.get(name)`)
+- **Removed** `pulp_tool.api.task_manager` (documentation-only `TaskManagerMixin` Protocol); **`TaskMixin`** in `pulp_tool.api.tasks.operations` is the live implementation (module docstring notes the removal)
+- Pulp HTTP client: validate response status on more code paths before returning or parsing JSON—chunked GET (all branches, including the aggregated-results fallback), repository/distribution GET-by-name (still allows **404** for “not found” lookups), create-resource POST, distribution PATCH (`update_distro`), file content POST, task GET parsing (single `_check_response`), post-task distribution fetch in `RepositoryManager`, and `DistributionClient.pull_artifact` (`raise_for_status` on error status).
+- `pull`: create destination repositories/distributions and re-upload downloaded content only when `--transfer-dest` is set; group-level `--config` alone still supplies auth (and `base_url` for `--build-id` + `--namespace`) but does not create destination repos or upload
+- `pull`: download URLs use only per-artifact `url` fields in artifact results JSON; `distributions` in that file are not used to build download URLs (artifacts without `url` are skipped)
+- `upload` and `upload-files` again exit with code 1 on authentication-related failures (HTTP 401/403, OAuth “failed to obtain access token”, and similar); the previous temporary non-fatal workaround (warning and exit 0) has been removed
+- Raised minimum versions for runtime (`httpx`, `pydantic`, `click`) and dev tooling in `pyproject.toml` / `setup.py`; build-system uses newer `setuptools`/`setuptools-scm`
+- Removed Sphinx and sphinx-rtd-theme from optional `dev` extras (in-tree docs build was removed earlier); Pygments may still be installed transitively (e.g. `pytest`, `diff-cover`)
+- Local `--artifact-results` folder path: `distributions` in `pulp_results.json` no longer includes a synthetic `artifacts` pulp-content URL (artifacts repo was already skipped; URL map now aligns)
+- `upload --target-arch-repo`: `pulp_results.json` `distributions` keys for per-arch RPM bases are `rpm_<arch>` instead of bare architecture names (e.g. `rpm_x86_64` not `x86_64`)
+- `upload` / `upload-files`: infer whether log and SBOM repos are needed before repository setup (directory `*.log` scan or `--results-json` artifact keys; SBOM via `--sbom-path` or SBOM-classified keys); omitted types are excluded from results `distributions`; clear errors if uploads are attempted without the matching repository
+- Upload orchestration uses `RpmUploadResult` per architecture instead of ad-hoc dicts; gather/collect uses `PulpContentRow`, `ExtraArtifactRef`, and `FileInfoMap` for clearer typed data flow
+- Upload flow populates `pulp_results.json` artifact entries incrementally as RPMs, logs, SBOMs, and generic files finish; final gather still reconciles via merge (keeps incremental entries when keys already exist)
+- Repository setup logs use the concrete repo slug (e.g. ``rpms-signed``) instead of a generic ``Rpms`` label; distribution creation logs state that ``name`` and ``base_path`` match the repository name on one line
+- `upload --target-arch-repo` with `--signed-by`: RPM paths remain `{arch}/` only (no `{arch}/rpms-signed`); signing is via `signed_by` label on content
 - Renamed `transfer` command to `pull`; added `--transfer-dest` option for transfer destination. When using `--build-id` + `--namespace`, either `--transfer-dest` or group-level `--config` can be used
 - Renamed file structure from `transfer` to `pull`: `cli/transfer.py` → `cli/pull.py`, `pulp_tool/transfer/` → `pulp_tool/pull/`, `TransferContext` → `PullContext`, `TransferService` → `PullService`, `tests/test_transfer.py` → `tests/test_pull.py`
 - Upload progress messages (e.g. "Uploading SBOM: X", "Uploading RPM: X") now use logging.warning instead of info
@@ -120,8 +100,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Makefile targets: `docs`, `docs-clean`, `docs-serve`
 
 ### Fixed
+- **Repository URLs:** Correct GitHub org links from `konflux/pulp-tool` (404) to `konflux-ci/pulp-tool` across README, package metadata, issue templates, Dockerfile, and SECURITY.md
+- **CI security scan:** Run `pip-audit` before installing optional `safety`/`bandit` in `security-scan.yml`; `safety>=3.6` transitively installs `nltk` (PYSEC-2026-597), which is not a pulp-tool dependency and was failing the audit step
+- **E2e Tekton pipeline:** Apply Konflux `task-init` 0.3 migration in `pulp-e2e-testing` — remove stale `build` result `when` on `clone-repository` and obsolete init params (`image-url`, `rebuild`, `skip-checks`) for `task-init:0.4`
+- **`upload` / `search-by` / Pulp RPM queries — `signed_by`:** Pulpcore rejects label values with comma or parentheses (400 on upload). The tool substitutes `,`→`:` and `(`/`)`→`[`/`]` via `pulp_tool.models.pulp_label_values` on `UploadRpmContext`, `SearchByRequest`, and at `PulpClient` query time so storage and lookups stay aligned. `search-by` applies the same mapping when building requests and when removing RPMs from `pulp_results.json` (artifact labels may still be pre-substitution). `pulp_label_select` is included in the primary GET `q=` with checksum or NVR constraints when possible; paginated list + client label filtering remains a forced fallback only when a query cannot be expressed safely.
+- **Container certification:** Address ecosystem-cert-preflight failures (`BasedOnUbi`, `HasLicense`, `HasRequiredLabel`, `RunAsNonRoot`) by migrating the Konflux image from Fedora 45 to UBI 10 minimal with required labels, `/licenses/LICENSE`, and non-root `USER 1001`
+- **Tests (lint):** Removed stray split-artifact string lines left at the top of some `test_all_models_*.py` files; wrapped long mock URLs and trimmed unused imports in split test modules so `flake8` passes
+- **`@cached_get`** cache keys now include the decorated method name plus full positional and keyword arguments, so **`_get_single_resource(endpoint, name)`** cannot return a cached response for a different **`name`** when the endpoint string matches (regression test added)
+- **Synchronous `_chunked_get`:** when an event loop is already running, the method now raises **`RuntimeError`** with a clear message instead of incorrectly treating that case like “no loop” and swallowing the error
+- Content search (`GET /api/v3/content/`, including gather-by-`build_id`): empty or non-JSON bodies no longer surface as a bare `JSONDecodeError`; errors include HTTP status, URL, and a short body preview when JSON is invalid (`content_find_results_from_response`). `find_content` rejects non-success HTTP responses before parsing the body.
+- When `cert`/`key` are set for mTLS but PEM files are missing (wrong path in containers, etc.), `PulpClient` now fails fast with a clear error instead of opening a TLS connection without a client certificate (which often surfaced only as HTTP 403)
+- `create_session_with_retry` logs an error when a `cert` tuple is given but the PEM paths do not exist (defensive; `PulpClient` normally validates paths first)
+- Generic `/api/v3/content/` responses that are a bare JSON array (not `{"results": [...]}`) no longer crash gather-by-href or `_find_artifact_content` with `TypeError: list indices must be integers or slices, not str`
+- Results JSON RPM URLs with `--signed-by`: use the `rpms-signed` distribution base (`distributions.rpms_signed` / correct artifact `url`) instead of the unsigned `rpms` path
+- RPM distribution URLs: ``Packages/<letter>/`` uses the lowercase first character of the RPM **basename** only (correct for paths like ``Packages/W/foo.rpm``, ``arch/pkg.rpm``, or plain ``foo.rpm``)
+- Clear error when no auth credentials provided (client_id/client_secret or username/password)
 - Fixed type annotation issues in transfer.py
 - Fixed import order issues in cli.py
 - Fixed Optional import missing in content_query.py
 
-[Unreleased]: https://github.com/konflux/pulp-tool/compare/v1.0.0...HEAD
+### Security
+- Added **`pip-audit`** to optional `dev` dependencies, **`make audit`** (isolated **`.audit-venv`** with **`pip-audit -l`**, same **CVE-2026-4539** / **GHSA-5239-wwwm-4pmq** ignores as CI until Pygments **>2.19.2** is on PyPI), and **`pip-audit -l`** in **`security-scan.yml`**; when a fixed Pygments is released, pin **`pygments>=…`** under `dev` in `pyproject.toml` / `setup.py` and drop the workflow/Makefile ignores
+- Optional docs stack (Sphinx) remains removed from `dev` extras; **CVE-2026-4539** still applies to transitive Pygments from **`pytest`** and **`diff-cover`** until a patched wheel is published
+
+[Unreleased]: https://github.com/konflux-ci/pulp-tool/compare/v1.0.0...HEAD
