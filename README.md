@@ -12,7 +12,7 @@ A Python client for Pulp API operations including RPM and file management.
 Clone and install:
 
 ```bash
-git clone https://github.com/konflux/pulp-tool.git
+git clone https://github.com/konflux-ci/pulp-tool.git
 cd pulp-tool
 pip install -e .
 ```

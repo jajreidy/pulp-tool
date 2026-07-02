@@ -5,7 +5,8 @@ This package provides tools for interacting with Pulp API to manage
 RPM repositories, file repositories, and content uploads with OAuth2 authentication.
 """
 
-__version__ = "1.0.0"
+from ._version import __version__
+
 __author__ = "Rok Artifact Storage Team"
 __email__ = "rokartifactstorage@redhat.com"
 
@@ -23,6 +24,7 @@ from .utils import (
 from .cli import main as cli_main, cli as cli_group
 
 __all__ = [
+    "__version__",
     "PulpToolError",
     "PulpToolConfigError",
     "PulpToolHTTPError",

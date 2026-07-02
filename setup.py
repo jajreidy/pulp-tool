@@ -17,18 +17,17 @@ def read_readme():
     return "Pulp Tool - A Python client for Pulp API operations"
 
 
-# Dependencies are managed in pyproject.toml
-# setup.py is provided for pip install compatibility
+# Dependencies and version are managed in pyproject.toml (setuptools_scm).
+# setup.py is provided for pip install compatibility.
 
 setup(
     name="pulp-tool",
-    version="1.0.0",
     author="Rok Artifact Storage Team",
     author_email="rokartifactstorage@redhat.com",
     description="A Python client for Pulp API operations including RPM, log, and SBOM file management",
     long_description=read_readme(),
     long_description_content_type="text/markdown",
-    url="https://github.com/konflux/pulp-tool",
+    url="https://github.com/konflux-ci/pulp-tool",
     packages=find_packages(),
     classifiers=[
         "Development Status :: 4 - Beta",
@@ -41,30 +40,32 @@ setup(
         "Topic :: System :: Archiving :: Packaging",
     ],
     python_requires=">=3.12",
-    # Dependencies are defined in pyproject.toml
-    # Duplicated here for pip install compatibility
     install_requires=[
-        "httpx>=0.27.0",
-        "pydantic>=2.10.0",
-        "click>=8.1.0",
+        "httpx>=0.28.1",
+        "pydantic>=2.13.4",
+        "click>=8.3.2",
+        "python-json-logger>=3.2.1,<5",
     ],
     extras_require={
         "dev": [
-            "pytest>=8.0",
-            "pytest-asyncio>=0.24.0",
-            "pytest-cov>=6.0",
-            "pytest-mock>=3.14.0",
-            "respx>=0.22.0",
-            "diff-cover>=7.0",
-            "black>=25.1.0",
-            "flake8>=7.0",
-            "mypy>=1.11.0",
-            "pylint>=3.3.0",
-            "pre-commit>=4.0.0",
-            "setuptools>=69.0",
-            "wheel",
+            "pytest>=9.0.3",
+            "pytest-asyncio>=1.3.0",
+            "pytest-cov>=7.1.0",
+            "pytest-mock>=3.15.1",
+            "hypothesis>=6.131.0",
+            "respx>=0.23.1",
+            "diff-cover>=10.2.0",
+            "black>=26.3.1",
+            "flake8>=7.3.0",
+            "mypy>=2.0.0",
+            "pylint>=4.0.5",
+            "pre-commit>=4.6.0",
+            "setuptools>=82.0.1",
+            "wheel>=0.47.0",
             "setuptools-scm[toml]>=8.0",
-            "pip-audit>=2.7.0",
+            "pip-audit>=2.10.0",
+            "pip-tools>=7.4.0",
+            "radon>=6.0.1",
         ],
     },
     entry_points={

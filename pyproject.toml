@@ -73,19 +73,23 @@ search_by = "pulp_tool.cli.search_by:search_by"
 create_repository = "pulp_tool.cli.create_repository:create_repository"
 
 [project.urls]
-Homepage = "https://github.com/konflux/pulp-tool"
-Repository = "https://github.com/konflux/pulp-tool"
-Issues = "https://github.com/konflux/pulp-tool/issues"
-Documentation = "https://github.com/konflux/pulp-tool#readme"
+Homepage = "https://github.com/konflux-ci/pulp-tool"
+Repository = "https://github.com/konflux-ci/pulp-tool"
+Issues = "https://github.com/konflux-ci/pulp-tool/issues"
+Documentation = "https://github.com/konflux-ci/pulp-tool#readme"
 
-[tool.setuptools]
-packages = ["pulp_tool", "pulp_tool.api", "pulp_tool.models", "pulp_tool.utils"]
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["pulp_tool*"]
 
 [tool.setuptools.package-data]
 pulp_tool = ["py.typed", "*.toml", "*.cfg"]
 
 [tool.setuptools_scm]
 write_to = "pulp_tool/_version.py"
+# Used when .git is absent (e.g. container build context); Dockerfile also sets
+# SETUPTOOLS_SCM_PRETEND_VERSION from the VERSION build-arg for image labels.
+fallback_version = "1.0.0"
 
 [tool.black]
 line-length = 120
@@ -103,6 +107,7 @@ extend-exclude = '''
   | build
   | dist
 )/
+| _version\.py
 '''
 
 [tool.pylint.messages_control]

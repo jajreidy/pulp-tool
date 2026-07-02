@@ -4,7 +4,7 @@ labels: [bug]
 body:
   - type: markdown
     attributes:
-      value: Thanks for taking the time to file a bug. Search [existing issues](https://github.com/konflux/pulp-tool/issues) first.
+      value: Thanks for taking the time to file a bug. Search [existing issues](https://github.com/konflux-ci/pulp-tool/issues) first.
   - type: textarea
     id: summary
     attributes:
