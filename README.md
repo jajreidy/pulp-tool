@@ -1,7 +1,7 @@
 # Pulp Tool
 
-[![Unit tests](https://github.com/konflux/pulp-tool/actions/workflows/gh-action-testsuite.yaml/badge.svg)](https://github.com/konflux/pulp-tool/actions/workflows/gh-action-testsuite.yaml)
-[![codecov](https://codecov.io/gh/konflux/pulp-tool/branch/main/graph/badge.svg)](https://codecov.io/gh/konflux/pulp-tool)
+[![Unit tests](https://github.com/konflux-ci/pulp-tool/actions/workflows/gh-action-testsuite.yaml/badge.svg)](https://github.com/konflux-ci/pulp-tool/actions/workflows/gh-action-testsuite.yaml)
+[![codecov](https://codecov.io/gh/konflux-ci/pulp-tool/branch/main/graph/badge.svg)](https://codecov.io/gh/konflux-ci/pulp-tool)
 
 A Python client for Pulp API operations including RPM and file management.
 
