@@ -29,10 +29,6 @@ spec:
       value: quay.io/redhat-user-workloads/artifact-storage-tenant/tooling/pulp-e2e-testing:on-pr-{{revision}}
     - name: image-expires-after
       value: 5d
-    - name: rebuild
-      value: false
-    - name: skip-checks
-      value: false
   workspaces:
     - name: git-auth
       secret:

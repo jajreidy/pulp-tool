@@ -37,6 +37,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Pulp client package:** `pulp_tool/api/pulp_client/` (`cache`, `chunked_get`, `repository`, `content_query`, `results`, `helpers`, `client`); `PulpClient` delegates without changing mixin order or Tekton-visible behavior
 
 ### Fixed
+- **CI security scan:** Run `pip-audit` before installing optional `safety`/`bandit` in `security-scan.yml`; `safety>=3.6` transitively installs `nltk` (PYSEC-2026-597), which is not a pulp-tool dependency and was failing the audit step
+- **E2e Tekton pipeline:** Apply Konflux `task-init` 0.3 migration in `pulp-e2e-testing` — remove stale `build` result `when` on `clone-repository` and obsolete init params (`image-url`, `rebuild`, `skip-checks`) for `task-init:0.4`
 - **`upload` / `search-by` / Pulp RPM queries — `signed_by`:** Pulpcore rejects label values with comma or parentheses (400 on upload). The tool substitutes `,`→`:` and `(`/`)`→`[`/`]` via `pulp_tool.models.pulp_label_values` on `UploadRpmContext`, `SearchByRequest`, and at `PulpClient` query time so storage and lookups stay aligned. `search-by` applies the same mapping when building requests and when removing RPMs from `pulp_results.json` (artifact labels may still be pre-substitution). `pulp_label_select` is included in the primary GET `q=` with checksum or NVR constraints when possible; paginated list + client label filtering remains a forced fallback only when a query cannot be expressed safely.
 - **Container certification:** Address ecosystem-cert-preflight failures (`BasedOnUbi`, `HasLicense`, `HasRequiredLabel`, `RunAsNonRoot`) by migrating the Konflux image from Fedora 45 to UBI 10 minimal with required labels, `/licenses/LICENSE`, and non-root `USER 1001`
 

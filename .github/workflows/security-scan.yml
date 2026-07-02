@@ -29,15 +29,18 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -e ".[dev]"
-          pip install safety bandit
 
       # pip-audit: fail on new OSV/PyPI advisories. Pygments CVE-2026-4539 (dev-only via pytest/diff-cover):
       # no release >2.19.2 on PyPI yet — remove these --ignore-vuln flags when pyproject pins pygments>=2.19.3.
+      # Run before optional safety/bandit: safety>=3.6 pulls nltk (PYSEC-2026-597) which is not a pulp-tool dep.
       - name: Run pip-audit
         run: |
           pip-audit -l --desc on \
             --ignore-vuln CVE-2026-4539 \
             --ignore-vuln GHSA-5239-wwwm-4pmq
+
+      - name: Install optional security tools
+        run: pip install safety bandit
 
       - name: Run Safety check
         run: |

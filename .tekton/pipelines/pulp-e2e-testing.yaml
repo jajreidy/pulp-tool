@@ -17,14 +17,6 @@ spec:
     - name: output-image
       description: Fully qualified image name for the output
       type: string
-    - name: rebuild
-      description: Force rebuild even if image exists
-      type: string
-      default: "false"
-    - name: skip-checks
-      description: Skip checks during pipeline execution
-      type: string
-      default: "false"
     - name: image-expires-after
       description: Image expiration time
       type: string
@@ -39,13 +31,6 @@ spec:
       optional: true
   tasks:
     - name: init
-      params:
-        - name: image-url
-          value: $(params.output-image)
-        - name: rebuild
-          value: $(params.rebuild)
-        - name: skip-checks
-          value: $(params.skip-checks)
       taskRef:
         params:
           - name: name
@@ -58,11 +43,6 @@ spec:
     - name: clone-repository
       runAfter:
         - init
-      when:
-        - input: $(tasks.init.results.build)
-          operator: in
-          values:
-            - "true"
       params:
         - name: url
           value: $(params.git-url)
