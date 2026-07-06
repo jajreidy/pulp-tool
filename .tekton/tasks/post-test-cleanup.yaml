@@ -14,7 +14,7 @@ spec:
         value: $(workspaces.repository.path)/source
   steps:
     - name: post-test-cleanup
-      image: registry.fedoraproject.org/fedora:45@sha256:d0e6bea60fa54e903bf4b6cc800981702774dd6aac7d88f0d3e5a8b518c506bc
+      image: registry.fedoraproject.org/fedora:45@sha256:da8a32869f731127e885bf1e47614cd8a6445bc3020c7ab8e88977b15f81513f
       script: |
         #!/usr/bin/env sh
         set -euo pipefail
