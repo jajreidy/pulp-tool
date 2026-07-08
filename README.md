@@ -110,7 +110,7 @@ make test-diff-coverage   # PR gate: 100% diff vs COMPARE_BRANCH (default origin
 make check                # lint + test
 ```
 
-**Dependency lockfile:** `requirements.txt` is generated from `requirements.in`; after changing dependencies in `pyproject.toml`, run `make lock`.
+**Dependency lockfile:** **`uv.lock`** is generated from **`pyproject.toml`**; after changing dependencies, run `make lock`.
 
 Before a PR, ensure `pre-commit` has passed and, after `git fetch origin`, `make test-diff-coverage` is green. For AI-assisted work see **[AGENTS.md](AGENTS.md)** (start with § **Bootstrap**), **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)**, and **[CLAUDE.md](CLAUDE.md)** (Konflux contracts); also [CONTRIBUTING.md](CONTRIBUTING.md) and [tests/README.md](tests/README.md). Optional [AgentReady](https://github.com/ambient-code/agentready): `pip install agentready && agentready assess .` ([.agentready-config.yaml](.agentready-config.yaml); reports under `.agentready/`, gitignored).
 

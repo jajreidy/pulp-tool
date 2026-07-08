@@ -26,15 +26,20 @@ RUN microdnf update -y && \
         python3-pip \
         jq \
         shadow-utils && \
-    microdnf clean all
+    microdnf clean all && \
+    pip3 install --no-cache-dir --root-user-action=ignore uv
 
 WORKDIR /app
 
-COPY setup.py pyproject.toml README.md MANIFEST.in VERSION ./
+# Runtime install from uv.lock (regenerate with: make lock).
+COPY pyproject.toml uv.lock README.md MANIFEST.in VERSION ./
 COPY pulp_tool/ ./pulp_tool/
 
-RUN SETUPTOOLS_SCM_PRETEND_VERSION="${VERSION}" pip3 install --no-cache-dir --root-user-action=ignore . && \
-    rm -rf /root/.cache
+ENV UV_SYSTEM_PYTHON=1
+RUN uv export --frozen --no-dev --no-emit-project -o /tmp/requirements.txt && \
+    pip3 install --no-cache-dir --root-user-action=ignore -r /tmp/requirements.txt && \
+    SETUPTOOLS_SCM_PRETEND_VERSION="${VERSION}" pip3 install --no-cache-dir --root-user-action=ignore --no-deps . && \
+    rm -rf /root/.cache /root/.local /tmp/requirements.txt
 
 RUN useradd -lms /bin/bash -u 1001 -g 0 pulp-tool && \
     chown -R 1001:0 /app && \
