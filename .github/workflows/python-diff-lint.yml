@@ -39,6 +39,11 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e ".[dev]"
 
+      - name: Verify uv.lock matches pyproject.toml
+        run: |
+          pip install uv
+          make lock-check
+
       - name: Check code formatting with Black
         id: black
         run: black --check pulp_tool tests

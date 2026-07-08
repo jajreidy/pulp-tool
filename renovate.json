@@ -11,10 +11,20 @@
   "updateNotScheduled": false,
   "prConcurrentLimit": 3,
   "prHourlyLimit": 1,
+  "lockFileMaintenance": {
+    "enabled": true,
+    "schedule": ["before 6am on Monday"]
+  },
   "packageRules": [
     {
-      "description": "Group pyproject.toml / uv.lock (pep621) updates into one PR",
+      "description": "Group pyproject.toml dependency bumps; Renovate regenerates uv.lock in the same PR",
       "matchManagers": ["pep621"],
+      "groupName": "python pep621"
+    },
+    {
+      "description": "Group uv.lock refresh (transitive pins) with pep621 updates",
+      "matchManagers": ["pep621"],
+      "matchUpdateTypes": ["lockFileMaintenance"],
       "groupName": "python pep621"
     }
   ]

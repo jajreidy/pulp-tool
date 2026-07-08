@@ -63,19 +63,20 @@ make check     # Run all checks
 
 ### Dependency lock file
 
-Pinned lockfiles:
+Pinned lockfile:
 
-- **`requirements.txt`** — from **`requirements.in`** via [pip-tools](https://github.com/jazzband/pip-tools) (`pip-compile`).
-- **`uv.lock`** — from the same **`pyproject.toml`** via **[uv](https://github.com/astral-sh/uv)** (`uv lock` or `python3 -m uv lock`).
+- **`uv.lock`** — from **`pyproject.toml`** via **[uv](https://github.com/astral-sh/uv)** (`uv lock` or `python3 -m uv lock`).
 
-After changing dependencies in **`pyproject.toml`**, regenerate both:
+After changing dependencies in **`pyproject.toml`**, regenerate the lockfile:
 
 ```bash
-pip install -e ".[dev]"   # includes pip-tools
+pip install -e ".[dev]"
 make lock
 ```
 
-Commit the updated **`requirements.txt`** and **`uv.lock`**. Normal installs remain **`pip install -e ".[dev]"`** from pyproject; lockfiles support reproducible CI and audits.
+Commit the updated **`uv.lock`**. Normal installs remain **`pip install -e ".[dev]"`** from pyproject; the lockfile supports reproducible CI, audits, and the Konflux container image. **`setup.py`** is a thin shim only — all dependency ranges and package metadata are in **`pyproject.toml`**. The **`Dockerfile`** exports runtime pins from **`uv.lock`** (`uv export --frozen --no-dev`) and installs with **`pip`**.
+
+**Mintmaker / Renovate** (`renovate.json`) bumps **`pyproject.toml`** and regenerates **`uv.lock`** in the same PR (`pep621` manager + `lockFileMaintenance`). CI runs **`make lock-check`** (`uv lock --check`) so the two files cannot drift on merge.
 
 ### Commit messages
 

@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **`make lock-check`:** fails when `pyproject.toml` and `uv.lock` are out of sync (`uv lock --check`); CI runs it in `python-diff-lint.yml`
 - **`tests/utils/test_iteration_utils.py`:** unit tests for `pulp_tool.utils.iteration_utils`
 - **`i686` architecture support:** `SUPPORTED_ARCHITECTURES` includes 32-bit x86; RPM filename and path detection, upload orchestration, and content queries treat `i686` like other supported arches
 - **`drafting-pulp-tool-pr` skill:** writes gitignored local `pr-description.md` at repo root for paste-ready PR body drafts
@@ -55,6 +56,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Comprehensive test suite with 85%+ coverage
 
 ### Changed
+- **Dependency lockfile:** **`uv.lock`** is the sole pinned lockfile (from **`pyproject.toml`** via `make lock`); removed **`requirements.in`** / **`requirements.txt`** and **`pip-tools`** from dev extras
+- **`setup.py`:** thin `setup()` shim only; dependency ranges and package metadata live in **`pyproject.toml`**
+- **Container image (`Dockerfile`):** install runtime deps from **`uv.lock`** (`uv export --frozen --no-dev`) then `pip install --no-deps .`; documented in **`CONTRIBUTING.md`** and **`README.md`**
+- **`renovate.json`:** enable **`lockFileMaintenance`** and group pep621 dependency bumps with **`uv.lock`** refresh in one Mintmaker PR
 - **`CHANGELOG.md`:** consolidate duplicate `[Unreleased]` subsections; fix compare URL org
 - **`pyproject.toml`:** Use setuptools package discovery instead of incomplete explicit package list
 - **`setup.py`:** Sync runtime and dev dependencies with `pyproject.toml` (including `python-json-logger`); drop hardcoded version (use `setuptools_scm` via `pyproject.toml`); container builds pass `SETUPTOOLS_SCM_PRETEND_VERSION` from the `VERSION` build-arg; exclude scm-generated `_version.py` from Black
@@ -95,6 +100,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CONTRIBUTING: recommend `make install-dev`, pre-commit run twice, `make test` and 100% diff coverage for new code
 
 ### Removed
+- **`requirements.in`** and **`requirements.txt`** (superseded by **`uv.lock`**)
 - `transfer` command (replaced by `pull`; use `pulp-tool pull` with `--transfer-dest` instead of `--config`)
 - Documentation GitHub workflow (`.github/workflows/docs.yml`)
 - Makefile targets: `docs`, `docs-clean`, `docs-serve`

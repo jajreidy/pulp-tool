@@ -58,7 +58,6 @@ dev = [
     # Dependency CVE audit (local: make audit). When Pygments >2.19.2 is on PyPI, add
     # "pygments>=2.19.3" here and remove CVE-2026-4539 ignores from .github/workflows/security-scan.yml.
     "pip-audit>=2.10.0",
-    "pip-tools>=7.4.0",
     "radon>=6.0.1",
 ]
 
