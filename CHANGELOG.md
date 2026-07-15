@@ -56,7 +56,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Comprehensive test suite with 85%+ coverage
 
 ### Changed
-- **Dependency lockfile:** **`uv.lock`** is the sole pinned lockfile (from **`pyproject.toml`** via `make lock`); removed **`requirements.in`** / **`requirements.txt`** and **`pip-tools`** from dev extras
+- **`docs/cli-reference.md`:** normalize `search-by` section to the same options-table layout as other commands; document `--keep-files`
 - **`setup.py`:** thin `setup()` shim only; dependency ranges and package metadata live in **`pyproject.toml`**
 - **Container image (`Dockerfile`):** install runtime deps from **`uv.lock`** (`uv export --frozen --no-dev`) then `pip install --no-deps .`; documented in **`CONTRIBUTING.md`** and **`README.md`**
 - **`renovate.json`:** enable **`lockFileMaintenance`** and group pep621 dependency bumps with **`uv.lock`** refresh in one Mintmaker PR
@@ -100,6 +100,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CONTRIBUTING: recommend `make install-dev`, pre-commit run twice, `make test` and 100% diff coverage for new code
 
 ### Removed
+- Unused model properties and classes (`UploadResult`, `FileSizeStats`, per-type count helpers on `PulledArtifacts`/`ContentData`, `RpmPackageResponse` NVRA/NEVRA helpers)
+- **`pulp_tool.utils.predicates`** and test-only helpers trimmed from `logging_utils`, `path_utils`, and `iteration_utils` (production call sites unchanged)
 - **`requirements.in`** and **`requirements.txt`** (superseded by **`uv.lock`**)
 - `transfer` command (replaced by `pull`; use `pulp-tool pull` with `--transfer-dest` instead of `--config`)
 - Documentation GitHub workflow (`.github/workflows/docs.yml`)

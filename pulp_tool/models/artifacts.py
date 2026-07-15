@@ -129,21 +129,6 @@ class PulledArtifacts(KonfluxBaseModel):
         """Total number of artifacts across all types."""
         return len(self.sboms) + len(self.logs) + len(self.rpms)
 
-    @property
-    def sbom_count(self) -> int:
-        """Number of SBOM artifacts."""
-        return len(self.sboms)
-
-    @property
-    def log_count(self) -> int:
-        """Number of log artifacts."""
-        return len(self.logs)
-
-    @property
-    def rpm_count(self) -> int:
-        """Number of RPM artifacts."""
-        return len(self.rpms)
-
     def add_sbom(self, name: str, file: str, labels: Dict[str, str]) -> None:
         """Add a SBOM artifact."""
         self.sboms[name] = ArtifactFile(file=file, labels=labels)  # pylint: disable=unsupported-assignment-operation
@@ -342,19 +327,9 @@ class ContentData(KonfluxBaseModel):
     artifacts: List[Dict[str, str]] = Field(default_factory=list)
 
     @property
-    def content_count(self) -> int:
-        """Total number of content results."""
-        return len(self.content_results)
-
-    @property
     def artifact_count(self) -> int:
         """Total number of artifacts."""
         return len(self.artifacts)
-
-    @property
-    def is_empty(self) -> bool:
-        """Check if content data is empty."""
-        return len(self.content_results) == 0
 
 
 class FileInfoModel(KonfluxBaseModel):

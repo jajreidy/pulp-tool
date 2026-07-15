@@ -90,53 +90,40 @@ pulp-tool create-repository --json-data '{
 
 ## search-by
 
-Search RPM content by checksum, filename, or signed_by label. Output is JSON.
+Search RPM packages in Pulp by checksum, filename, or `signed_by` label.
 
-**Constraints:**
+| Argument | Required | Description |
+|----------|----------|-------------|
+| `--checksums` | Conditional* | Comma-separated SHA256 checksums |
+| `--filenames` | Conditional* | Comma-separated RPM filenames (e.g. `pkg-1.0-1.x86_64.rpm`) |
+| `--signed-by` | No | Filter by `signed_by` label value (same substitution as `upload`) |
+| `--results-json` | No | Path to `pulp_results.json` to filter (remove RPMs found in Pulp) |
+| `--output-results` | Yes** | Output path for filtered `pulp_results.json` (requires `--results-json`) |
+| `--checksum` | No | Extract checksums from `--results-json` (requires `--results-json`) |
+| `--filename` | No | Extract filenames from `--results-json` (requires `--results-json`) |
+| `--keep-files` | No | Keep logs and SBOMs in `--output-results` (default: RPM artifacts only) |
 
-- `checksums` and `filenames` are mutually exclusive
-- `--signed-by` takes one argument. The same character substitution as `upload` applies (`:` for `,`, square brackets for parentheses) so the stored label and queries stay aligned.
-- When `signed_by` is combined with checksums or filenames, the client normalizes the value then uses **server-side** `pulp_label_select` in the same request as checksums or NVR filters when Pulp can parse the expression. Client-side label matching applies only in rare fallback cases.
-- **Signed-by only:** server-side `q=` when possible; pagination is a fallback when the filter cannot be expressed safely in one query
+\* Direct mode: at least one of `--checksums`, `--filenames`, or `--signed-by` is required. `--checksums` and `--filenames` are mutually exclusive.
 
-**Direct search (JSON output):**
+\** Required when `--results-json` is used.
+
+Requires `--config`.
+
+**Direct search:** Prints a JSON array of matching RPMs to stdout.
+
+**Results-json mode:** Loads `--results-json`, searches Pulp, removes found RPMs from the artifact map, and writes `--output-results`. When neither `--checksum`/`--checksums` nor `--filename`/`--filenames` is given and `--signed-by` is absent, checksums are extracted from the file by default.
+
+**Signed-by:** Same label substitution as `upload` (`,` → `:`, parentheses → square brackets). Quote the value in the shell if it contains spaces.
+
+**Examples:**
 
 ```bash
-# By checksum(s)
 pulp-tool --config ~/.config/pulp/cli.toml search-by --checksums <sha256>
-pulp-tool --config ~/.config/pulp/cli.toml search-by --checksums <sha256_1>,<sha256_2>
-
-# By filename (artifact keys, e.g. pkg-1.0-1.x86_64.rpm)
-pulp-tool --config ~/.config/pulp/cli.toml search-by --filenames pkg1.rpm,pkg2.rpm
-
-# By signed_by label (substitution: '('/' )' -> '['/']', ',' -> ':'; quote if spaces)
+pulp-tool --config ~/.config/pulp/cli.toml search-by --filenames pkg-1.0-1.x86_64.rpm
 pulp-tool --config ~/.config/pulp/cli.toml search-by --signed-by key-id-123
-pulp-tool --config ~/.config/pulp/cli.toml search-by --signed-by 'My Org (release) <keys@example.com>'
-```
-
-**Filter results.json** (remove RPMs found in Pulp, write filtered file):
-
-```bash
-# Default: extract checksums from file
 pulp-tool --config ~/.config/pulp/cli.toml search-by \
   --results-json /path/to/pulp_results.json \
   --output-results /path/to/filtered_results.json
-
-# Explicit: use checksums from file (--checksum flag)
-pulp-tool --config ~/.config/pulp/cli.toml search-by \
-  --checksum --results-json /path/to/pulp_results.json \
-  --output-results /path/to/filtered_results.json
-
-# Use filename from file (--filename flag)
-pulp-tool --config ~/.config/pulp/cli.toml search-by \
-  --filename --results-json /path/to/pulp_results.json \
-  --output-results /path/to/filtered_results.json
-
-# With signed_by filter (same substitution as upload; server-side filter when the value is filter-safe)
-pulp-tool --config ~/.config/pulp/cli.toml search-by \
-  --results-json /path/to/pulp_results.json \
-  --output-results /path/to/filtered_results.json \
-  --signed-by key-id-123
 ```
 
 ## Environment and logging

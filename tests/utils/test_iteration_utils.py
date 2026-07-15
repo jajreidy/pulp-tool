@@ -4,12 +4,8 @@ from pulp_tool.models.artifacts import ArtifactFile, PulledArtifacts
 from pulp_tool.utils.iteration_utils import (
     ARTIFACT_TYPES,
     count_artifacts,
-    extract_unique_labels,
-    filter_artifacts,
-    group_artifacts_by_label,
     iterate_all_artifacts,
     iterate_artifact_types,
-    map_artifacts,
 )
 
 
@@ -60,36 +56,6 @@ def test_iterate_all_artifacts_yields_every_item() -> None:
 def test_count_artifacts() -> None:
     pulled = _sample_pulled()
     assert count_artifacts(pulled) == {"rpms": 2, "sboms": 1, "logs": 1}
-
-
-def test_filter_artifacts_by_arch_label() -> None:
-    pulled = _sample_pulled()
-
-    def only_x86_64(_type: str, _name: str, data: ArtifactFile) -> bool:
-        return data.labels.get("arch") == "x86_64"
-
-    filtered = filter_artifacts(pulled, only_x86_64)
-    assert list(filtered["rpms"].keys()) == ["pkg.rpm"]
-
-
-def test_extract_unique_labels() -> None:
-    pulled = _sample_pulled()
-    assert extract_unique_labels(pulled, "build_id") == {"build-1", "build-2"}
-    assert extract_unique_labels(pulled, "arch") == {"x86_64", "aarch64"}
-
-
-def test_group_artifacts_by_label() -> None:
-    pulled = _sample_pulled()
-    by_arch = group_artifacts_by_label(pulled, "arch")
-    assert set(by_arch.keys()) == {"x86_64", "aarch64", "unknown"}
-    assert len(by_arch["x86_64"]) == 1
-
-
-def test_map_artifacts() -> None:
-    pulled = _sample_pulled()
-    paths = map_artifacts(pulled, lambda _t, _n, data: data.file)
-    assert "/tmp/pkg.rpm" in paths
-    assert len(paths) == pulled.total_count
 
 
 def test_artifact_types_constant() -> None:

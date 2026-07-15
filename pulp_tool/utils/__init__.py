@@ -22,13 +22,12 @@ from .pulp_tasks import create_file_content_and_wait
 from .url import get_pulp_content_base_url
 from ..models.repository import RepositoryRefs
 
-# New utility modules for clean code refactoring
+# Shared utility modules
 from . import error_handling
 from . import response_utils
 from . import logging_utils
 from . import iteration_utils
 from . import constants
-from . import predicates
 from . import artifact_detection
 from . import path_utils
 from . import config_manager
@@ -58,13 +57,12 @@ __all__ = [
     "create_file_content_and_wait",
     "get_pulp_content_base_url",
     "RepositoryRefs",
-    # New utility modules
+    # Shared utility modules
     "error_handling",
     "response_utils",
     "logging_utils",
     "iteration_utils",
     "constants",
-    "predicates",
     "artifact_detection",
     "path_utils",
     "config_manager",
