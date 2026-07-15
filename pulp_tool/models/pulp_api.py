@@ -251,18 +251,6 @@ class RpmPackageResponse(PulpBaseModel):
     location_href: Optional[str] = None
     pulp_labels: Dict[str, str] = Field(default_factory=dict)
 
-    @property
-    def nvra(self) -> str:
-        """Get NVRA (Name-Version-Release.Arch) string."""
-        return f"{self.name}-{self.version}-{self.release}.{self.arch}"
-
-    @property
-    def nevra(self) -> str:
-        """Get NEVRA (Name-Epoch:Version-Release.Arch) string."""
-        if self.epoch and self.epoch != "0":
-            return f"{self.name}-{self.epoch}:{self.version}-{self.release}.{self.arch}"
-        return self.nvra
-
 
 class RpmListResponse(PaginatedResponse):
     """Paginated list of RPM packages."""

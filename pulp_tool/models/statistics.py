@@ -30,36 +30,6 @@ class UploadStats(KonfluxBaseModel):
         return self.existing_count + self.uploaded_count
 
 
-class FileSizeStats(KonfluxBaseModel):
-    """
-    File count and size statistics.
-
-    Attributes:
-        file_count: Number of files
-        total_size: Total size in bytes
-    """
-
-    file_count: int = Field(default=0, ge=0)
-    total_size: int = Field(default=0, ge=0)
-
-    @property
-    def average_size(self) -> float:
-        """Average file size in bytes."""
-        if self.file_count == 0:
-            return 0.0
-        return self.total_size / self.file_count
-
-    @property
-    def size_mb(self) -> float:
-        """Total size in megabytes."""
-        return self.total_size / (1024 * 1024)
-
-    @property
-    def size_gb(self) -> float:
-        """Total size in gigabytes."""
-        return self.total_size / (1024 * 1024 * 1024)
-
-
 class DownloadStats(KonfluxBaseModel):
     """
     Statistics from downloading artifacts.
@@ -110,7 +80,6 @@ class UploadCounts(KonfluxBaseModel):
 
 __all__ = [
     "UploadStats",
-    "FileSizeStats",
     "DownloadStats",
     "UploadCounts",
 ]

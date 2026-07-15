@@ -1,6 +1,6 @@
 """Result models for upload and download operations."""
 
-from typing import Any, List, Dict, Optional
+from typing import Any, List, Dict
 
 from pydantic import AnyHttpUrl, Field, TypeAdapter
 
@@ -8,26 +8,6 @@ from .base import KonfluxBaseModel
 from .artifacts import ArtifactMetadata, PulledArtifacts
 from .repository import RepositoryRefs
 from .statistics import UploadCounts
-
-
-class UploadResult(KonfluxBaseModel):
-    """
-    Result of an upload operation.
-
-    Attributes:
-        uploaded_files: List of successfully uploaded file names
-        task_id: Pulp task ID for the upload operation
-        repository_href: Repository href where files were uploaded
-    """
-
-    uploaded_files: List[str] = Field(default_factory=list)
-    task_id: Optional[str] = None
-    repository_href: Optional[str] = None
-
-    @property
-    def total_files(self) -> int:
-        """Total number of files processed."""
-        return len(self.uploaded_files)
 
 
 class RpmUploadResult(KonfluxBaseModel):
@@ -41,16 +21,6 @@ class RpmUploadResult(KonfluxBaseModel):
 
     uploaded_rpms: List[str] = Field(default_factory=list)
     created_resources: List[str] = Field(default_factory=list)
-
-    @property
-    def upload_count(self) -> int:
-        """Total number of RPMs uploaded."""
-        return len(self.uploaded_rpms)
-
-    @property
-    def resource_count(self) -> int:
-        """Total number of created resources."""
-        return len(self.created_resources)
 
 
 class DownloadResult(KonfluxBaseModel):
@@ -201,7 +171,6 @@ class PulpResultsModel(KonfluxBaseModel):
 
 
 __all__ = [
-    "UploadResult",
     "RpmUploadResult",
     "DownloadResult",
     "ArtifactInfo",
