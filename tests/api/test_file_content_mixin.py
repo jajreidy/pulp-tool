@@ -144,3 +144,11 @@ class TestFileContentMixin:
         artifacts = ["/api/v3/artifacts/12345/"]
         result = test_client.add_content("/api/v3/repositories/test/", artifacts)
         assert result is not None
+
+    def test_build_file_relative_path_rejects_invalid_arch(self) -> None:
+        """Test _build_file_relative_path rejects unsupported architecture."""
+        import pytest
+        from pulp_tool.api.content.file_files import FileContentMixin
+
+        with pytest.raises(ValueError, match="Unsupported architecture"):
+            FileContentMixin._build_file_relative_path("build.log", "../../tmp")

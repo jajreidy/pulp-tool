@@ -1,7 +1,7 @@
 """Tests for pulp_upload.py module."""
 
 import re
-from unittest.mock import Mock, patch, mock_open
+from unittest.mock import Mock, patch
 import httpx
 from pulp_tool.models.pulp_api import TaskResponse
 from pulp_tool.models.context import UploadContext, UploadRpmContext
@@ -34,9 +34,17 @@ class TestHandleArtifactResults:
             created_resources=["/test/content/"],
             result={"relative_path": "test.txt"},
         )
-        with patch("builtins.open", mock_open()) as mock_file:
+        with (
+            patch("pulp_tool.services.upload_collect.PulpHelper") as mock_helper_class,
+            patch("pulp_tool.services.upload_collect._find_artifact_content", return_value=("ref", "abc123")),
+        ):
+            mock_helper = Mock()
+            mock_helper.get_distribution_urls.return_value = {"artifacts": "https://example.com/artifacts/"}
+            mock_helper_class.return_value = mock_helper
             _handle_artifact_results(mock_pulp_client, context, task_response)
-            assert mock_file.call_count == 2
+
+        assert url_path.read_text() == "https://example.com/artifacts/test.txt"
+        assert digest_path.read_text() == "sha256:abc123"
 
     def test_handle_artifact_results_no_content(self, mock_pulp_client, tmp_path) -> None:
         """Test artifact results handling with no content."""
@@ -260,6 +268,13 @@ class TestParseOciReference:
             assert image_url == "quay.io/org/repo"
             assert digest == ""
             mock_logging.debug.assert_called()
+
+    def test_format_sha256_digest_already_prefixed(self) -> None:
+        """Test _format_sha256_digest leaves sha256: prefix unchanged."""
+        from pulp_tool.services.upload_collect import _format_sha256_digest
+
+        assert _format_sha256_digest("sha256:abc123") == "sha256:abc123"
+        assert _format_sha256_digest("abc123") == "sha256:abc123"
 
 
 class TestDistributionUrlsForContext:

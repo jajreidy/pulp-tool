@@ -8,6 +8,9 @@ log uploads, and artifact uploads to repositories.
 import os
 import tempfile
 from unittest.mock import patch
+
+import pytest
+
 from pulp_tool.utils import upload_rpms
 from pulp_tool.utils.uploads import rpm_directory_has_log_files
 
@@ -83,7 +86,7 @@ class TestUploadRpms:
         )
         mock_repo_task = TaskResponse(pulp_href="/tasks/123/", state="pending", created_resources=[])
         with (
-            patch("pulp_tool.utils.uploads.upload_rpms_parallel", return_value=mock_artifacts),
+            patch("pulp_tool.utils.uploads.upload_rpms_parallel", return_value=(mock_artifacts, [])),
             patch.object(mock_pulp_client, "add_content", return_value=mock_repo_task),
             patch.object(mock_pulp_client, "wait_for_finished_task", return_value=mock_task_response),
             patch("pulp_tool.utils.uploads.logging") as mock_logging,
@@ -134,7 +137,7 @@ class TestUploadRpms:
         mock_task_response = TaskResponse(pulp_href="/tasks/123/", state="completed", created_resources=["/resource/1"])
         mock_repo_task = TaskResponse(pulp_href="/tasks/123/", state="pending", created_resources=[])
         with (
-            patch("pulp_tool.utils.uploads.upload_rpms_parallel", return_value=mock_artifacts),
+            patch("pulp_tool.utils.uploads.upload_rpms_parallel", return_value=(mock_artifacts, [])),
             patch.object(mock_pulp_client, "add_content", return_value=mock_repo_task),
             patch.object(mock_pulp_client, "wait_for_finished_task", return_value=mock_task_response),
             patch.object(mock_pulp_client, "add_uploaded_artifact_to_results_model") as mock_add,
@@ -186,7 +189,7 @@ class TestUploadRpms:
         mock_task_response = TaskResponse(pulp_href="/tasks/123/", state="completed", created_resources=["/resource/1"])
         mock_repo_task = TaskResponse(pulp_href="/tasks/123/", state="pending", created_resources=[])
         with (
-            patch("pulp_tool.utils.uploads.upload_rpms_parallel", return_value=mock_artifacts) as mock_parallel,
+            patch("pulp_tool.utils.uploads.upload_rpms_parallel", return_value=(mock_artifacts, [])) as mock_parallel,
             patch.object(mock_pulp_client, "add_content", return_value=mock_repo_task),
             patch.object(mock_pulp_client, "wait_for_finished_task", return_value=mock_task_response),
         ):
@@ -235,7 +238,7 @@ class TestUploadRpms:
         mock_repo_task = TaskResponse(pulp_href="/tasks/123/", state="pending", created_resources=[])
         with (
             patch("pulp_tool.utils.uploads.remove_rpms_matching_local_files_from_repository") as mock_remove,
-            patch("pulp_tool.utils.uploads.upload_rpms_parallel", return_value=mock_artifacts),
+            patch("pulp_tool.utils.uploads.upload_rpms_parallel", return_value=(mock_artifacts, [])),
             patch.object(mock_pulp_client, "add_content", return_value=mock_repo_task),
             patch.object(mock_pulp_client, "wait_for_finished_task", return_value=mock_task_response),
         ):
@@ -279,7 +282,7 @@ class TestUploadRpms:
         mock_task_response = TaskResponse(pulp_href="/tasks/123/", state="completed", created_resources=[])
         mock_repo_task = TaskResponse(pulp_href="/tasks/123/", state="pending", created_resources=[])
         with (
-            patch("pulp_tool.utils.uploads.upload_rpms_parallel", return_value=mock_artifacts),
+            patch("pulp_tool.utils.uploads.upload_rpms_parallel", return_value=(mock_artifacts, [])),
             patch.object(mock_pulp_client, "add_content", return_value=mock_repo_task),
             patch.object(mock_pulp_client, "wait_for_finished_task", return_value=mock_task_response),
             patch("pulp_tool.utils.uploads.logging") as mock_logging,
@@ -324,20 +327,20 @@ class TestUploadRpms:
         )
         results_model = PulpResultsModel(build_id="test-build", repositories=repositories)
         with (
-            patch("pulp_tool.utils.uploads.upload_rpms_parallel", return_value=[]),
+            patch("pulp_tool.utils.uploads.upload_rpms_parallel", return_value=([], [])),
             patch.object(mock_pulp_client, "add_content") as mock_add_content,
         ):
-            result = upload_rpms(
-                ["/path/to/package.rpm"],
-                context,
-                mock_pulp_client,
-                "x86_64",
-                rpm_repository_href="/test/rpm-href",
-                date="2024-01-01 00:00:00",
-                results_model=results_model,
-            )
-            assert result == []
-            assert results_model.uploaded_counts.rpms == 1
+            with pytest.raises(ValueError, match="Failed to upload 1 of 1 RPM"):
+                upload_rpms(
+                    ["/path/to/package.rpm"],
+                    context,
+                    mock_pulp_client,
+                    "x86_64",
+                    rpm_repository_href="/test/rpm-href",
+                    date="2024-01-01 00:00:00",
+                    results_model=results_model,
+                )
+            assert results_model.uploaded_counts.rpms == 0
             mock_add_content.assert_not_called()
 
 

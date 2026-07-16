@@ -117,8 +117,9 @@ def _upload_rpms_to_repository(
     logging.warning("Uploading %d RPM file(s)", len(rpm_infos))
 
     # Upload all RPMs in parallel using the consolidated function
-    rpm_pairs = upload_rpms_parallel(pulp_client, rpm_infos)
+    rpm_pairs, rpm_errors = upload_rpms_parallel(pulp_client, rpm_infos)
     rpm_artifacts = [href for _path, href in rpm_pairs]
+    upload_info.upload_errors.extend(rpm_errors)
 
     # Add all successfully uploaded RPM artifacts to the repository
     if rpm_artifacts:

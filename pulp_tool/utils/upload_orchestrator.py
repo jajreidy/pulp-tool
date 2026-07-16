@@ -419,7 +419,7 @@ class UploadOrchestrator:
                 )
                 if task_response.created_resources:
                     created_resources.extend(task_response.created_resources)
-                results_model.uploaded_counts.files += 1
+                results_model.increment_counts(files=1)
                 rel_path = os.path.basename(file_path)
                 client.add_uploaded_artifact_to_results_model(
                     results_model,
@@ -457,7 +457,7 @@ class UploadOrchestrator:
                     target_arch_repo=target_arch_repo,
                 )
                 created_resources.extend(log_created_resources)
-                results_model.uploaded_counts.logs += 1
+                results_model.increment_counts(logs=1)
 
         # Upload SBOMs
         if context.sbom_files:

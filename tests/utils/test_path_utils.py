@@ -2,6 +2,9 @@
 
 import os
 import tempfile
+
+import pytest
+
 from pulp_tool.utils.path_utils import get_artifact_save_path
 
 
@@ -46,3 +49,8 @@ class TestGetArtifactSavePath:
         """Test get_artifact_save_path extracts basename from filename with path."""
         path = get_artifact_save_path("/some/path/package.rpm", "x86_64", "rpm")
         assert path == "package.rpm"
+
+    def test_get_artifact_save_path_rejects_invalid_arch(self) -> None:
+        """Log paths reject architecture segments that could traverse directories."""
+        with pytest.raises(ValueError, match="Unsupported or invalid architecture"):
+            get_artifact_save_path("build.log", "../../tmp", "log")

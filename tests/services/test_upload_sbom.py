@@ -171,7 +171,8 @@ class TestUploadSbom:
         )
         results_model = PulpResultsModel(build_id="test-build", repositories=repositories)
         with patch("os.path.exists", return_value=False):
-            upload_sbom(mock_pulp_client, args, "test-repo", "2024-01-01", results_model, args.sbom_path)
+            with pytest.raises(FileNotFoundError, match="SBOM file not found"):
+                upload_sbom(mock_pulp_client, args, "test-repo", "2024-01-01", results_model, args.sbom_path)
 
     def test_upload_sbom_upload_error(self, mock_pulp_client, httpx_mock) -> None:
         """Test upload_sbom with upload error."""

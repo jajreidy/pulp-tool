@@ -202,12 +202,12 @@ class TestHandleArtifactResults:
                 uc._handle_artifact_results(mock_pulp_client, ctx, tr)
         log_mock.error.assert_called()
 
-    def test_parse_oci_raises(self, mock_pulp_client: Mock) -> None:
+    def test_find_artifact_content_missing(self, mock_pulp_client: Mock) -> None:
         ctx = _minimal_context(artifact_results="/u,/d")
         tr = TaskResponse(pulp_href="/t/", state="completed", result={"relative_path": "x.json"})
         with (
             patch.object(uc, "PulpHelper") as PH,
-            patch.object(uc, "_parse_oci_reference", side_effect=ValueError("bad oci")),
+            patch.object(uc, "_find_artifact_content", return_value=None),
         ):
             PH.return_value.get_distribution_urls.return_value = {"artifacts": "https://a/"}
             with patch("pulp_tool.services.upload_collect.logging") as log_mock:

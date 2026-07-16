@@ -177,7 +177,7 @@ class TestUploadFunctionality:
             patch("pulp_tool.utils.error_handling.logging") as mock_logging,
             patch("builtins.open", mock_open(read_data=b"fake rpm content")),
         ):
-            mock_upload_rpms.return_value = [("/fake/path.rpm", "/pulp/api/v3/content/rpm/packages/123/")]
+            mock_upload_rpms.return_value = ([("/fake/path.rpm", "/pulp/api/v3/content/rpm/packages/123/")], [])
             with patch.object(
                 mock_pulp_client, "add_content", side_effect=httpx.HTTPError("Repository addition failed")
             ):
