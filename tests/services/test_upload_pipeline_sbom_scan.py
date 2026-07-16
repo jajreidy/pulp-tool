@@ -128,7 +128,7 @@ class TestClassifyArtifactFromKey:
         assert _classify_artifact_from_key("sbom.spdx") == "sbom"
         assert _classify_artifact_from_key("sbom.spdx.json") == "sbom"
         assert _classify_artifact_from_key("path/to/sbom-file.json") == "sbom"
-        assert _classify_artifact_from_key("cyclonedx.json") == "sbom"
+        assert _classify_artifact_from_key("cyclonedx.json") == "artifacts"
         assert _classify_artifact_from_key("manifest.spdx") == "sbom"
 
     def test_classify_artifacts(self) -> None:
@@ -153,7 +153,7 @@ class TestScanResultsJsonForLogAndSbomKeys:
 
     def test_sbom_only(self, tmp_path) -> None:
         p = tmp_path / "r.json"
-        p.write_text(json.dumps({"artifacts": {"manifest-without-sbom-in-name.json": {}}}))
+        p.write_text(json.dumps({"artifacts": {"build-sbom.json": {}}}))
         assert scan_results_json_for_log_and_sbom_keys(str(p)) == (False, True)
 
     def test_invalid_json_returns_false_false(self, tmp_path) -> None:

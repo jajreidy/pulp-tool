@@ -108,6 +108,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Makefile targets: `docs`, `docs-clean`, `docs-serve`
 
 ### Fixed
+- **Konflux `--artifact-results` digest:** write `sha256:<hex>` from the uploaded artifact (via Pulp artifact API) instead of leaving the digest file empty when the pulp-content URL has no OCI `@sha256:` suffix
+- **Partial RPM uploads:** increment `uploaded_counts.rpms` by successful uploads only; record failures in `upload_errors`; raise when any RPM in a batch fails instead of exiting 0 with incomplete repo content
+- **Missing `--sbom-path`:** raise `FileNotFoundError` when the SBOM file is explicitly requested but absent (upload no longer continues silently)
+- **SBOM classification in `--results-json`:** bare `.json` keys are no longer treated as SBOM unless the key contains `sbom` (`.spdx` / `.spdx.json` unchanged)
+- **Parallel upload results model:** lock `PulpResultsModel` mutations during concurrent per-architecture uploads
 - **Repository URLs:** Correct GitHub org links from `konflux/pulp-tool` (404) to `konflux-ci/pulp-tool` across README, package metadata, issue templates, Dockerfile, and SECURITY.md
 - **CI security scan:** Run `pip-audit` before installing optional `safety`/`bandit` in `security-scan.yml`; `safety>=3.6` transitively installs `nltk` (PYSEC-2026-597), which is not a pulp-tool dependency and was failing the audit step
 - **E2e Tekton pipeline:** Apply Konflux `task-init` 0.3 migration in `pulp-e2e-testing` — remove stale `build` result `when` on `clone-repository` and obsolete init params (`image-url`, `rebuild`, `skip-checks`) for `task-init:0.4`
@@ -128,6 +133,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Fixed Optional import missing in content_query.py
 
 ### Security
+- **Path traversal via `--results-json`:** reject artifact keys whose resolved path escapes `files_base_path` (`resolve_path_under_base`)
+- **Path traversal via pull log `arch` labels:** validate architecture against `SUPPORTED_ARCHITECTURES` before writing under `logs/<arch>/`
+- **Invalid `arch` in Pulp file content paths:** `_build_file_relative_path` rejects unsupported architecture values
 - Added **`pip-audit`** to optional `dev` dependencies, **`make audit`** (isolated **`.audit-venv`** with **`pip-audit -l`**, same **CVE-2026-4539** / **GHSA-5239-wwwm-4pmq** ignores as CI until Pygments **>2.19.2** is on PyPI), and **`pip-audit -l`** in **`security-scan.yml`**; when a fixed Pygments is released, pin **`pygments>=…`** under `dev` in `pyproject.toml` / `setup.py` and drop the workflow/Makefile ignores
 - Optional docs stack (Sphinx) remains removed from `dev` extras; **CVE-2026-4539** still applies to transitive Pygments from **`pytest`** and **`diff-cover`** until a patched wheel is published
 

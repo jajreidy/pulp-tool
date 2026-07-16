@@ -1,8 +1,9 @@
 """Result models for upload and download operations."""
 
+from threading import Lock
 from typing import Any, List, Dict
 
-from pydantic import AnyHttpUrl, Field, TypeAdapter
+from pydantic import AnyHttpUrl, Field, PrivateAttr, TypeAdapter
 
 from .base import KonfluxBaseModel
 from .artifacts import ArtifactMetadata, PulledArtifacts
@@ -93,6 +94,8 @@ class PulpResultsModel(KonfluxBaseModel):
     uploaded_counts: UploadCounts = Field(default_factory=UploadCounts)
     upload_errors: List[str] = Field(default_factory=list)
 
+    _lock: Lock = PrivateAttr(default_factory=Lock)
+
     def add_artifact(self, key: str, url: str, sha256: str, labels: Dict[str, str]) -> None:
         """
         Add an artifact to the results.
@@ -103,8 +106,9 @@ class PulpResultsModel(KonfluxBaseModel):
             sha256: SHA256 checksum
             labels: Labels associated with the artifact
         """
-        # pylint: disable=unsupported-assignment-operation  # Pydantic mutable field
-        self.artifacts[key] = ArtifactMetadata(labels=labels, url=url, sha256=sha256)
+        with self._lock:
+            # pylint: disable=unsupported-assignment-operation  # Pydantic mutable field
+            self.artifacts[key] = ArtifactMetadata(labels=labels, url=url, sha256=sha256)
 
     def add_distribution(self, repo_type: str, url: str) -> None:
         """
@@ -114,10 +118,23 @@ class PulpResultsModel(KonfluxBaseModel):
             repo_type: Distribution slot name (e.g. ``logs``, ``rpms``, ``rpm_x86_64`` for per-arch RPM bases)
             url: Distribution base URL
         """
-        # Reassign the whole map so values are ``AnyHttpUrl`` (item assignment bypasses validation).
-        # pylint: disable=unsupported-assignment-operation  # Pydantic mutable field
-        coerced = TypeAdapter(AnyHttpUrl).validate_python(url)
-        self.distributions = {**self.distributions, repo_type: coerced}
+        with self._lock:
+            # Reassign the whole map so values are ``AnyHttpUrl`` (item assignment bypasses validation).
+            # pylint: disable=unsupported-assignment-operation  # Pydantic mutable field
+            coerced = TypeAdapter(AnyHttpUrl).validate_python(url)
+            self.distributions = {**self.distributions, repo_type: coerced}
+
+    def increment_counts(self, *, rpms: int = 0, logs: int = 0, sboms: int = 0, files: int = 0) -> None:
+        """Thread-safe increment of upload progress counters."""
+        with self._lock:
+            if rpms:
+                self.uploaded_counts.rpms += rpms  # pylint: disable=no-member
+            if logs:
+                self.uploaded_counts.logs += logs  # pylint: disable=no-member
+            if sboms:
+                self.uploaded_counts.sboms += sboms  # pylint: disable=no-member
+            if files:
+                self.uploaded_counts.files += files  # pylint: disable=no-member
 
     def add_error(self, error: str) -> None:
         """
@@ -126,7 +143,8 @@ class PulpResultsModel(KonfluxBaseModel):
         Args:
             error: Error message to record
         """
-        self.upload_errors.append(error)  # pylint: disable=no-member  # Pydantic field
+        with self._lock:
+            self.upload_errors.append(error)  # pylint: disable=no-member  # Pydantic field
 
     def to_json_dict(self) -> Dict[str, Any]:
         """

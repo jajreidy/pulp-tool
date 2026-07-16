@@ -32,6 +32,7 @@ if TYPE_CHECKING:
     from ..api.pulp_client import PulpClient
 
 from ..utils import PulpHelper, validate_file_path, create_labels
+from ..utils.path_utils import resolve_path_under_base
 from ..utils.pulp_tasks import create_file_content_and_wait
 from ..utils.constants import SBOM_EXTENSIONS, SUPPORTED_ARCHITECTURES
 
@@ -164,7 +165,7 @@ def upload_sbom(
     """
     if not os.path.exists(sbom_path):
         logging.error("SBOM file not found: %s", sbom_path)
-        return []
+        raise FileNotFoundError(f"SBOM file not found: {sbom_path}")
 
     if not sbom_repository_prn or not str(sbom_repository_prn).strip():
         raise ValueError(
@@ -187,7 +188,7 @@ def upload_sbom(
     logging.debug("SBOM uploaded successfully: %s", sbom_path)
 
     # Update upload counts
-    results_model.uploaded_counts.sboms += 1
+    results_model.increment_counts(sboms=1)
 
     if distribution_urls is not None:
         rel_path: Optional[str] = None
@@ -224,6 +225,8 @@ def _classify_artifact_from_key(key: str) -> str:
         return "sbom"
     for ext in SBOM_EXTENSIONS:
         if key_lower.endswith(ext):
+            if ext == ".json" and "sbom" not in key_lower:
+                continue
             return "sbom"
     return "artifacts"
 
@@ -329,9 +332,14 @@ def process_uploads_from_results_json(
             logging.warning("Skipping invalid artifact entry: %s", key)
             continue
 
-        file_path = base_path / key
-        if not file_path.exists():
-            logging.warning("Skipping missing file: %s", file_path)
+        try:
+            resolved_path = resolve_path_under_base(base_path, key)
+        except ValueError as e:
+            logging.error("Skipping unsafe artifact path %s: %s", key, e)
+            continue
+
+        if not resolved_path.exists():
+            logging.warning("Skipping missing file: %s", resolved_path)
             continue
 
         labels = dict(info.get("labels") or {})
@@ -357,7 +365,7 @@ def process_uploads_from_results_json(
                         break
                 if not arch:
                     arch = "noarch"
-            rpms_by_arch.setdefault(arch, []).append(str(file_path))
+            rpms_by_arch.setdefault(arch, []).append(str(resolved_path))
         elif art_type == "logs":
             if not arch:
                 parts = key.replace("\\", "/").split("/")
@@ -367,11 +375,11 @@ def process_uploads_from_results_json(
                         break
                 if not arch:
                     arch = "noarch"
-            logs_to_upload.append((str(file_path), arch))
+            logs_to_upload.append((str(resolved_path), arch))
         elif art_type == "sbom":
-            sboms_to_upload.append(str(file_path))
+            sboms_to_upload.append(str(resolved_path))
         else:
-            artifacts_to_upload.append((str(file_path), labels))
+            artifacts_to_upload.append((str(resolved_path), labels))
 
     if logs_to_upload and not (repositories.logs_prn or "").strip():
         raise ValueError(
@@ -419,7 +427,7 @@ def process_uploads_from_results_json(
             target_arch_repo=context.target_arch_repo,
         )
         created_resources.extend(log_resources)
-        results_model.uploaded_counts.logs += 1
+        results_model.increment_counts(logs=1)
 
     # Upload SBOMs
     for sbom_path in sboms_to_upload:
@@ -449,7 +457,7 @@ def process_uploads_from_results_json(
         )
         if task_response.created_resources:
             created_resources.extend(task_response.created_resources)
-        results_model.uploaded_counts.files += 1
+        results_model.increment_counts(files=1)
         if distribution_urls is not None:
             fn = os.path.basename(file_path)
             arch_part = labels.get("arch") or None

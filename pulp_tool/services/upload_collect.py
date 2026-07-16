@@ -360,6 +360,13 @@ def _write_konflux_results(image_url: str, digest: str, url_path: str, digest_pa
     logging.debug("Image digest: %s", digest)
 
 
+def _format_sha256_digest(sha256_hex: str) -> str:
+    """Format a SHA256 hex digest for Konflux artifact result files."""
+    if sha256_hex.startswith("sha256:"):
+        return sha256_hex
+    return f"sha256:{sha256_hex}"
+
+
 def _handle_artifact_results(client: "PulpClient", context: UploadContext, task_response: TaskResponse) -> None:
     """Handle artifact results for Konflux integration."""
     repository_helper = PulpHelper(client, parent_package=context.parent_package)
@@ -389,12 +396,14 @@ def _handle_artifact_results(client: "PulpClient", context: UploadContext, task_
         logging.error("Traceback: %s", traceback.format_exc())
         return
 
-    try:
-        image_url, digest = _parse_oci_reference(distribution_file_url)
-    except ValueError as e:
-        logging.error("Failed to parse OCI reference: %s", e)
-        logging.error("Traceback: %s", traceback.format_exc())
+    artifact_info = _find_artifact_content(client, task_response)
+    if not artifact_info:
+        logging.error("Could not resolve artifact digest for Konflux artifact results")
         return
+
+    _file_ref, sha256_hex = artifact_info
+    image_url = distribution_file_url
+    digest = _format_sha256_digest(sha256_hex)
 
     _write_konflux_results(image_url, digest, image_url_path, image_digest_path)
 

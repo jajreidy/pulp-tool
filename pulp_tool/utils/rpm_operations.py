@@ -166,7 +166,7 @@ def upload_rpms_parallel(
     rpms_to_upload: Union[List[str], List[Tuple[str, Dict[str, str], str]]],
     labels: Optional[Dict[str, str]] = None,
     arch: Optional[str] = None,
-) -> List[Tuple[str, str]]:
+) -> Tuple[List[Tuple[str, str]], List[str]]:
     """
     Upload RPMs in parallel and return (local_path, artifact_href) per successful upload.
 
@@ -182,11 +182,13 @@ def upload_rpms_parallel(
         arch: Architecture for all uploaded RPMs (ignored if rpms_to_upload contains tuples)
 
     Returns:
-        List of (local_path, pulp artifact href) for successfully uploaded RPMs
+        Tuple of:
+            - List of (local_path, pulp artifact href) for successfully uploaded RPMs
+            - List of error messages for failed uploads
 
     Examples:
         # Old style - all RPMs share same labels and arch
-        >>> pairs = upload_rpms_parallel(client, ["/path/rpm1.rpm", "/path/rpm2.rpm"],
+        >>> pairs, errors = upload_rpms_parallel(client, ["/path/rpm1.rpm", "/path/rpm2.rpm"],
         ...                              labels={"build_id": "123"}, arch="x86_64")
 
         # New style - each RPM has its own labels and arch
@@ -194,10 +196,10 @@ def upload_rpms_parallel(
         ...     ("/path/rpm1.rpm", {"build_id": "123", "name": "pkg1"}, "x86_64"),
         ...     ("/path/rpm2.rpm", {"build_id": "123", "name": "pkg2"}, "noarch"),
         ... ]
-        >>> pairs = upload_rpms_parallel(client, rpm_infos)
+        >>> pairs, errors = upload_rpms_parallel(client, rpm_infos)
     """
     if not rpms_to_upload:
-        return []
+        return [], []
 
     # Detect if we're using the new style (list of tuples) or old style (list of paths)
     # Check first element to determine the calling style
@@ -221,6 +223,7 @@ def upload_rpms_parallel(
         logging.warning("Uploading %d RPM file(s)", len(rpms_to_upload))
 
     path_href_pairs: List[Tuple[str, str]] = []
+    errors: List[str] = []
     with ThreadPoolExecutor(thread_name_prefix="upload_rpms", max_workers=DEFAULT_MAX_WORKERS) as executor:
         futures = {
             executor.submit(client.upload_content, rpm_path, rpm_labels, file_type="rpm", arch=rpm_arch): rpm_path
@@ -236,8 +239,9 @@ def upload_rpms_parallel(
             except Exception as e:  # pylint: disable=broad-except
                 # Log the error but continue processing other uploads
                 logging.error("Failed to upload %s: %s", rpm_path, e)
+                errors.append(f"{rpm_path}: {e}")
 
-    return path_href_pairs
+    return path_href_pairs, errors
 
 
 __all__ = [

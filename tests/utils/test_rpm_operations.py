@@ -208,8 +208,19 @@ class TestRPMUtilities:
         results_model = PulpResultsModel(build_id="test-build", repositories=repositories)
         with (
             patch("glob.glob", return_value=[temp_rpm_file]),
-            patch("pulp_tool.utils.uploads.upload_rpms_parallel", return_value=[]),
+            patch(
+                "pulp_tool.utils.uploads.upload_rpms_parallel",
+                return_value=([(temp_rpm_file, "/pulp/api/v3/content/rpm/packages/12345/")], []),
+            ),
+            patch.object(mock_pulp_client, "add_content") as mock_add,
+            patch.object(mock_pulp_client, "wait_for_finished_task") as mock_wait,
         ):
+            from pulp_tool.models.pulp_api import TaskResponse
+
+            mock_add.return_value = TaskResponse(pulp_href="/tasks/1/", state="pending")
+            mock_wait.return_value = TaskResponse(
+                pulp_href="/tasks/1/", state="completed", created_resources=["/resource/1"]
+            )
             result = upload_rpms_logs(
                 os.path.dirname(temp_rpm_file),
                 args,
@@ -291,12 +302,13 @@ class TestRPMUtilities:
     def test_upload_rpms_parallel_empty_list(self, mock_pulp_client) -> None:
         """Test upload_rpms_parallel with empty list."""
         result = upload_rpms_parallel(mock_pulp_client, [], {}, "x86_64")
-        assert result == []
+        assert result == ([], [])
 
     def test_upload_rpms_parallel_with_rpms(self, mock_pulp_client, temp_rpm_file) -> None:
         """Test upload_rpms_parallel with RPMs."""
         mock_pulp_client.upload_content = Mock(return_value="/pulp/api/v3/content/rpm/packages/12345/")
-        result = upload_rpms_parallel(mock_pulp_client, [temp_rpm_file], {"arch": "x86_64"}, "x86_64")
+        result, errors = upload_rpms_parallel(mock_pulp_client, [temp_rpm_file], {"arch": "x86_64"}, "x86_64")
         assert len(result) == 1
+        assert errors == []
         assert result[0][0] == temp_rpm_file
         assert result[0][1] == "/pulp/api/v3/content/rpm/packages/12345/"

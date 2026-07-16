@@ -13,6 +13,7 @@ from typing import Any, Dict, List, Optional, Union
 import httpx
 
 from ...models.pulp_api import FileResponse
+from ...utils.constants import SUPPORTED_ARCHITECTURES
 from ..base import BaseResourceMixin
 
 
@@ -31,7 +32,12 @@ class FileContentMixin(BaseResourceMixin):
         Returns:
             Relative path string (e.g., "x86_64/file.log" or "file.json")
         """
-        return f"{arch}/{filename}" if arch else filename
+        safe_name = os.path.basename(filename)
+        if arch:
+            if arch not in SUPPORTED_ARCHITECTURES:
+                raise ValueError(f"Unsupported architecture: {arch!r}")
+            return f"{arch}/{safe_name}"
+        return safe_name
 
     def create_file_content(
         self,

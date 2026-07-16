@@ -271,7 +271,7 @@ def upload_rpms(
         remove_rpms_matching_local_files_from_repository(client, rpms, rpm_repository_href, sb_for_search)
 
     # Upload RPMs in parallel
-    rpm_path_href_pairs = upload_rpms_parallel(client, rpms, labels, arch)
+    rpm_path_href_pairs, upload_errors = upload_rpms_parallel(client, rpms, labels, arch)
     rpm_results_artifacts = [href for _path, href in rpm_path_href_pairs]
 
     if distribution_urls is not None:
@@ -285,8 +285,16 @@ def upload_rpms(
                 target_arch_repo=target_arch_repo,
             )
 
-    # Update upload counts
-    results_model.uploaded_counts.rpms += len(rpms)
+    for err in upload_errors:
+        results_model.add_error(err)
+
+    # Update upload counts with successful uploads only
+    results_model.increment_counts(rpms=len(rpm_path_href_pairs))
+
+    if len(rpm_path_href_pairs) != len(rpms):
+        failed_count = len(rpms) - len(rpm_path_href_pairs)
+        detail = "; ".join(upload_errors) if upload_errors else f"{failed_count} RPM(s) failed without error details"
+        raise ValueError(f"Failed to upload {failed_count} of {len(rpms)} RPM(s) for {arch}: {detail}")
 
     # Store created resources from add_content operations
     created_resources = []
@@ -386,7 +394,7 @@ def upload_rpms_logs(
             target_arch_repo=target_arch_repo,
         )
         # Update upload counts
-        results_model.uploaded_counts.logs += len(logs)
+        results_model.increment_counts(logs=len(logs))
     else:
         logging.debug("No logs to upload for %s", arch)
 
