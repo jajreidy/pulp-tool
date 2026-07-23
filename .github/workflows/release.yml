@@ -1,0 +1,70 @@
+---
+# Publish pulp-tool to PyPI when a release tag is pushed to main.
+#
+# Prerequisites (one-time maintainer setup):
+# 1. Create a PyPI API token scoped to the pulp-tool project.
+# 2. Add it as repository secret PYPI_API_TOKEN (Settings → Secrets and variables → Actions).
+#
+# Release: tag a commit on main (e.g. v1.2.3) and push the tag.
+name: Release python package
+
+on: # yamllint disable-line rule:truthy
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-inspect-package:
+    name: Build & inspect package.
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify release tag format
+        run: |
+          if [[ ! "${GITHUB_REF_NAME}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::Release tag must match vMAJOR.MINOR.PATCH with optional SemVer pre-release (-...) and build metadata (+...), got ${GITHUB_REF_NAME}"
+            exit 1
+          fi
+
+      - name: Verify tagged commit is on main
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          status=$(gh api "repos/${GITHUB_REPOSITORY}/compare/main...${GITHUB_SHA}" --jq -r '.status')
+          case "${status}" in
+            behind|identical) ;;
+            *)
+              echo "::error::Release tags must point to a commit on main (${GITHUB_REF_NAME} -> ${GITHUB_SHA}, compare status: ${status})"
+              exit 1
+              ;;
+          esac
+
+      - uses: hynek/build-and-inspect-python-package@v2.14.0
+        with:
+          python-version: '3.12'
+
+  upload-to-pypi:
+    name: Upload package to PyPI
+    needs: build-and-inspect-package
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download built artifact to dist/
+        uses: actions/download-artifact@v8
+        with:
+          name: Packages
+          path: dist
+      - uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          password: ${{ secrets.PYPI_API_TOKEN }}
