@@ -9,27 +9,9 @@ import hashlib
 import logging
 import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import Any, Dict, Generator, List, Optional, Tuple, Union
+from typing import Dict, List, Optional, Tuple, Union
 
 from .constants import DEFAULT_MAX_WORKERS
-
-# Batch size for RPM upload batching (distinct from DEFAULT_CHUNK_SIZE used for API request line size)
-BATCH_SIZE = 50
-
-
-def _create_batches(items: List[str], batch_size: int = BATCH_SIZE) -> Generator[List[str], None, None]:
-    """
-    Split a list into batches of specified size using a generator.
-
-    Args:
-        items: List of items to split into batches
-        batch_size: Maximum number of items per batch
-
-    Yields:
-        List of items for each batch
-    """
-    for i in range(0, len(items), batch_size):
-        yield items[i : i + batch_size]
 
 
 def calculate_sha256_checksum(file_path: str) -> str:
@@ -146,19 +128,6 @@ def parse_rpm_filename_to_nvra(filename: str) -> Optional[Tuple[str, str, str, s
     arch_index = stem.rfind(".")
     arch = stem[arch_index + 1 :] if arch_index >= 0 else "noarch"
     return (name, version, release, arch)
-
-
-def _get_nvra(result: Dict[str, Any]) -> str:
-    """
-    Get Name-Version-Release-Architecture (NVRA) from Pulp response.
-
-    Args:
-        result: Dictionary containing RPM package information from Pulp
-
-    Returns:
-        NVRA string in format "name-version-release.arch"
-    """
-    return f"{result.get('name')}-{result.get('version')}-" f"{result.get('release')}.{result.get('arch')}"
 
 
 def upload_rpms_parallel(

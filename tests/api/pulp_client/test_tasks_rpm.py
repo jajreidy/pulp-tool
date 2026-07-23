@@ -454,29 +454,6 @@ class TestPulpClient:
         assert result.json()["results"] == []
         assert result.json()["count"] == 0
 
-    def test_get_rpm_by_unsigned_checksums_empty(self, mock_pulp_client) -> None:
-        """Test get_rpm_by_unsigned_checksums with empty list returns empty results."""
-        result = mock_pulp_client.get_rpm_by_unsigned_checksums([])
-        assert result.status_code == 200
-        assert result.json()["results"] == []
-        assert result.json()["count"] == 0
-
-    def test_get_rpm_by_unsigned_checksums_single_chunk(self, mock_pulp_client, httpx_mock) -> None:
-        """Test get_rpm_by_unsigned_checksums with 1-20 items uses single request path."""
-        httpx_mock.post("https://sso.redhat.com/auth/realms/redhat-external/protocol/openid-connect/token").mock(
-            return_value=httpx.Response(200, json={"access_token": "test-token", "expires_in": 3600})
-        )
-        checksums = ["a" * 64 for _ in range(5)]
-        results = [
-            {"pulp_href": f"/pkg/{i}/", "pulp_labels": {"unsigned_checksum": c}} for i, c in enumerate(checksums)
-        ]
-        httpx_mock.get(re.compile(".*content/rpm/packages/.*q=.*unsigned_checksum")).mock(
-            return_value=httpx.Response(200, json={"results": results})
-        )
-        result = mock_pulp_client.get_rpm_by_unsigned_checksums(checksums)
-        assert result.status_code == 200
-        assert len(result.json()["results"]) == 5
-
     def test_get_rpm_by_filenames_chunking(self, mock_pulp_client, httpx_mock) -> None:
         """Test get_rpm_by_filenames with 3 NVRs chunks and merges results."""
         httpx_mock.post("https://sso.redhat.com/auth/realms/redhat-external/protocol/openid-connect/token").mock(
@@ -615,29 +592,6 @@ class TestPulpClient:
             result = mock_pulp_client.get_rpm_by_filenames_and_signed_by(["pkg-1.0-1.x86_64.rpm"], "sb-f")
         assert result.status_code == 200
         assert len(result.json()["results"]) == 1
-
-    def test_get_rpm_by_unsigned_checksums_chunking(self, mock_pulp_client, httpx_mock) -> None:
-        """Test get_rpm_by_unsigned_checksums with 25+ items triggers chunking and merges results."""
-        httpx_mock.post("https://sso.redhat.com/auth/realms/redhat-external/protocol/openid-connect/token").mock(
-            return_value=httpx.Response(200, json={"access_token": "test-token", "expires_in": 3600})
-        )
-        checksums = ["a" * 64 for _ in range(25)]
-        chunk1_results = [
-            {"pulp_href": f"/pkg/{i}/", "pulp_labels": {"unsigned_checksum": c}} for i, c in enumerate(checksums[:20])
-        ]
-        chunk2_results = [
-            {"pulp_href": f"/pkg/{i}/", "pulp_labels": {"unsigned_checksum": c}}
-            for i, c in enumerate(checksums[20:], start=20)
-        ]
-        httpx_mock.get(re.compile(".*content/rpm/packages/.*q=.*unsigned_checksum")).mock(
-            side_effect=[
-                httpx.Response(200, json={"results": chunk1_results}),
-                httpx.Response(200, json={"results": chunk2_results}),
-            ]
-        )
-        result = mock_pulp_client.get_rpm_by_unsigned_checksums(checksums)
-        assert result.status_code == 200
-        assert len(result.json()["results"]) == 25
 
 
 class TestSignedByLabelFilterHelpers:

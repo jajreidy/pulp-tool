@@ -11,8 +11,6 @@ import httpx
 from pulp_tool.utils import upload_rpms_logs
 from pulp_tool.utils.rpm_operations import (
     calculate_sha256_checksum,
-    _create_batches,
-    _get_nvra,
     parse_rpm_filename_to_nvr,
     parse_rpm_filename_to_nvra,
     upload_rpms_parallel,
@@ -47,30 +45,6 @@ class TestChecksumUtilities:
         finally:
             os.chmod(temp_path, 420)
             os.unlink(temp_path)
-
-
-class TestBatchProcessingUtilities:
-    """Test batch processing utility functions."""
-
-    def test_create_batches(self) -> None:
-        """Test _create_batches function."""
-        items = [str(i) for i in range(100)]
-        batches = list(_create_batches(items, batch_size=25))
-        assert len(batches) == 4
-        assert len(batches[0]) == 25
-        assert len(batches[-1]) == 25
-
-    def test_create_batches_empty(self) -> None:
-        """Test _create_batches function with empty list."""
-        batches = list(_create_batches([], batch_size=25))
-        assert len(batches) == 0
-
-    def test_create_batches_single_batch(self) -> None:
-        """Test _create_batches function with single batch."""
-        items = [str(i) for i in range(10)]
-        batches = list(_create_batches(items, batch_size=25))
-        assert len(batches) == 1
-        assert len(batches[0]) == 10
 
 
 class TestParseRpmFilenameToNvr:
@@ -153,22 +127,6 @@ class TestParseRpmFilenameToNvra:
         """Return None for unparseable filenames."""
         assert parse_rpm_filename_to_nvra("pkg.tar.gz") is None
         assert parse_rpm_filename_to_nvra("package.rpm") is None
-
-
-class TestNVRAUtilities:
-    """Test NVRA utility functions."""
-
-    def test_get_nvra(self) -> None:
-        """Test _get_nvra function."""
-        result = {"name": "test-package", "version": "1.0.0", "release": "1", "arch": "x86_64"}
-        nvra = _get_nvra(result)
-        assert nvra == "test-package-1.0.0-1.x86_64"
-
-    def test_get_nvra_missing_fields(self) -> None:
-        """Test _get_nvra function with missing fields."""
-        result = {"name": "test-package", "version": "1.0.0"}
-        nvra = _get_nvra(result)
-        assert nvra == "test-package-1.0.0-None.None"
 
 
 class TestRPMUtilities:

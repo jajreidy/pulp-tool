@@ -31,7 +31,7 @@ class PerformanceMetrics:
         if cached:
             self.cached_requests += 1
 
-    def log_chunked_request(self, parallel: bool = True) -> None:
+    def log_chunked_request(self) -> None:
         """Log a chunked request (always parallel)."""
         self.chunked_requests += 1
 

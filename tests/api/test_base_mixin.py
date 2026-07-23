@@ -55,61 +55,6 @@ class TestBaseResourceMixin:
         assert result.name == "test"
         mixin._check_response.assert_not_called()
 
-    def test_parse_list_response_validation_error(self, mock_config) -> None:
-        """Test _parse_list_response with ValidationError."""
-        mixin = BaseResourceMixin()
-        mixin.config = mock_config
-        mixin._check_response = Mock()
-        response = Mock(spec=httpx.Response)
-        response.status_code = 200
-        response.text = '{"results": [{"invalid": "data"}]}'
-        response.json = Mock(return_value={"results": [{"invalid": "data"}]})
-        with patch("pulp_tool.api.base.logging") as mock_logging:
-            with pytest.raises(ValueError, match="Invalid response format"):
-                mixin._parse_list_response(response, RepositoryResponse, "test operation")
-            assert mock_logging.error.called
-
-    def test_parse_list_response_key_error(self, mock_config) -> None:
-        """Test _parse_list_response with KeyError (missing results)."""
-        mixin = BaseResourceMixin()
-        mixin.config = mock_config
-        mixin._check_response = Mock()
-        response = Mock(spec=httpx.Response)
-        response.status_code = 200
-        response.text = '{"results": [{"invalid": "data"}]}'
-        response.json = Mock(return_value={"results": [{"invalid": "data"}]})
-        with patch("pulp_tool.api.base.logging") as mock_logging:
-            with pytest.raises(ValueError, match="Invalid response format"):
-                mixin._parse_list_response(response, RepositoryResponse, "test operation")
-            assert mock_logging.error.called
-
-    def test_parse_list_response_value_error(self, mock_config) -> None:
-        """Test _parse_list_response with ValueError (invalid JSON)."""
-        mixin = BaseResourceMixin()
-        mixin.config = mock_config
-        mixin._check_response = Mock()
-        response = Mock(spec=httpx.Response)
-        response.status_code = 200
-        response.text = "not json"
-        response.json = Mock(side_effect=ValueError("Invalid JSON"))
-        with patch("pulp_tool.api.base.logging") as mock_logging:
-            with pytest.raises(ValueError, match="Invalid JSON response"):
-                mixin._parse_list_response(response, RepositoryResponse, "test operation")
-            assert mock_logging.error.called
-
-    def test_parse_list_response_no_check_success(self, mock_config) -> None:
-        """Test _parse_list_response with check_success=False."""
-        mixin = BaseResourceMixin()
-        mixin.config = mock_config
-        mixin._check_response = Mock()
-        response = Mock(spec=httpx.Response)
-        response.status_code = 200
-        response.json = Mock(return_value={"results": [{"pulp_href": "/test/", "name": "test"}]})
-        result = mixin._parse_list_response(response, RepositoryResponse, "test operation", check_success=False)
-        assert len(result) == 1
-        assert isinstance(result[0], RepositoryResponse)
-        mixin._check_response.assert_not_called()
-
     def test_get_resource_with_name(self, mock_config, httpx_mock) -> None:
         """Test _get_resource with name parameter."""
         mixin = BaseResourceMixin()

@@ -74,44 +74,6 @@ class BaseResourceMixin:
             logging.error("Traceback: %s", traceback.format_exc())
             raise ValueError(f"Invalid JSON response from Pulp API during {operation}: {e}") from e
 
-    def _parse_list_response(
-        self,
-        response: httpx.Response,
-        model_class: Type[T],
-        operation: str,
-        *,
-        check_success: bool = True,
-    ) -> list[T]:
-        """
-        Parse paginated HTTP response into a list of Pydantic models.
-
-        Args:
-            response: HTTP response to parse
-            model_class: Pydantic model class to parse each result into
-            operation: Description of operation for error messages
-            check_success: If True, check response status before parsing
-
-        Returns:
-            List of parsed model instances
-        """
-        if check_success:
-            self._check_response(response, operation)  # type: ignore[attr-defined]
-
-        try:
-            json_data = response.json()
-            results = json_data.get("results", [])
-            return [model_class(**item) for item in results]
-        except (ValidationError, KeyError) as e:
-            logging.error("Failed to validate %s list response: %s", operation, e)
-            logging.error("Response content: %s", response.text[:500])
-            logging.error("Traceback: %s", traceback.format_exc())
-            raise ValueError(f"Invalid response format for {operation}: {e}") from e
-        except ValueError as e:
-            logging.error("Failed to parse JSON response for %s: %s", operation, e)
-            logging.error("Response content: %s", response.text[:500])
-            logging.error("Traceback: %s", traceback.format_exc())
-            raise ValueError(f"Invalid JSON response from Pulp API during {operation}: {e}") from e
-
     def _get_resource(self, endpoint: str, model_class: Type[T], name: Optional[str] = None, **query_params: Any) -> T:
         """
         Get a single resource by name or href.

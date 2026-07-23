@@ -398,29 +398,6 @@ class DomainResponse(PulpBaseModel):
     hide_guarded_distributions: bool = False
 
 
-# ============================================================================
-# Status/Health Models
-# ============================================================================
-
-
-class VersionInfo(PulpBaseModel):
-    """Version information for a Pulp component."""
-
-    component: str
-    version: str
-
-
-class StatusResponse(PulpBaseModel):
-    """Response from status endpoint."""
-
-    versions: List[VersionInfo]
-    online_workers: List[Dict[str, Any]] = Field(default_factory=list)
-    online_content_apps: List[Dict[str, Any]] = Field(default_factory=list)
-    database_connection: Dict[str, bool]
-    redis_connection: Optional[Dict[str, bool]] = None
-    storage: Optional[Dict[str, Any]] = None
-
-
 __all__ = [
     # Base models
     "PulpBaseModel",
@@ -469,7 +446,4 @@ __all__ = [
     "OAuthTokenResponse",
     # Domain models
     "DomainResponse",
-    # Status models
-    "VersionInfo",
-    "StatusResponse",
 ]

@@ -18,7 +18,7 @@ Tests are grouped by package area. Prefer adding new tests next to the code they
 
 [Hypothesis](https://hypothesis.readthedocs.io/) is an optional dev dependency. Use it for **small, pure** functions (string parsing, mapping JSON to dicts, correlation ID rules) where randomized inputs catch edge cases without network or heavy I/O.
 
-- **Good fit:** `resolve_correlation_id`, `sanitize_build_id_for_repository`, `versions_from_status_payload`, RPM filename parsers.
+- **Good fit:** `resolve_correlation_id`, `sanitize_build_id_for_repository`, RPM filename parsers.
 - **Avoid (for now):** Full `PulpClient` HTTP flows—model the API tightly first or tests become slow and flaky.
 
 Property tests live alongside other tests (for example `tests/utils/test_hypothesis_properties.py`). Cap examples with `@settings(max_examples=…)`; mark unusually slow cases with `@pytest.mark.slow` if needed.

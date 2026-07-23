@@ -6,7 +6,6 @@ import string
 from hypothesis import given, settings
 from hypothesis import strategies as st
 from pulp_tool.utils.correlation import ENV_CORRELATION, resolve_correlation_id
-from pulp_tool.utils.pulp_capabilities import versions_from_status_payload
 from pulp_tool.utils.rpm_operations import parse_rpm_filename_to_nvra, parse_rpm_filename_to_nvr
 from pulp_tool.utils.validation.build_id import sanitize_build_id_for_repository, strip_namespace_from_build_id
 
@@ -96,38 +95,3 @@ def test_parse_rpm_filename_nvra_roundtrip(name, ver, rel, arch) -> None:
     assert nvra is not None
     assert nvra[:3] == nvr
     assert nvra[3] == arch
-
-
-@settings(max_examples=40)
-@given(
-    versions=st.lists(
-        st.tuples(
-            st.sampled_from(["core", "pulpcore", "rpm", "file"]),
-            st.from_regex("[0-9]+\\.[0-9]+\\.[0-9]+", fullmatch=True),
-        ),
-        min_size=0,
-        max_size=8,
-        unique_by=lambda x: x[0],
-    )
-)
-def test_versions_from_status_payload_extracts_pairs(versions) -> None:
-    """Status ``versions`` list becomes a flat component -> version map."""
-    payload = {"versions": [{"component": c, "version": v} for c, v in versions]}
-    out = versions_from_status_payload(payload)
-    assert len(out) == len(versions)
-    for c, v in versions:
-        assert out[c] == v
-
-
-def test_versions_from_status_payload_ignores_non_dict_entries() -> None:
-    """Non-dict rows and wrong-typed fields do not pollute output."""
-    payload = {
-        "versions": [
-            "not-a-dict",
-            {"component": 123, "version": "1.0"},
-            {"component": "ok", "version": "2.0"},
-            {"component": "bad-ver", "version": None},
-        ]
-    }
-    out = versions_from_status_payload(payload)
-    assert out == {"ok": "2.0"}
