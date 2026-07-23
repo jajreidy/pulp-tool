@@ -315,6 +315,61 @@ Closes #123
 - Be respectful and constructive in reviews
 - Ask questions if something is unclear
 
+## Releasing to PyPI
+
+Maintainers publish **`pulp-tool`** to [PyPI](https://pypi.org/project/pulp-tool/) with the GitHub Actions workflow [`.github/workflows/release.yml`](.github/workflows/release.yml). Releases are **tag-driven only** — pushing a semver tag on **`main`** triggers build, package inspection, and upload.
+
+### One-time setup
+
+1. On PyPI, create an API token scoped to the **`pulp-tool`** project (or the whole account, if your process allows).
+2. In the GitHub repository, add **Settings → Secrets and variables → Actions → New repository secret**:
+   - Name: **`PYPI_API_TOKEN`**
+   - Value: the PyPI token (including the `pypi-` prefix)
+
+Trusted publishing is not used; upload auth is the repository secret only.
+
+### Version numbers
+
+Package version comes from [setuptools-scm](https://setuptools-scm.readthedocs.io/) and the git tag (see `[tool.setuptools_scm]` in `pyproject.toml`). Tag **`v1.2.3`** produces version **`1.2.3`**. The release workflow checks out full git history (`fetch-depth: 0`) so the tagged version resolves correctly at build time.
+
+### Before you tag
+
+1. Merge release changes to **`main`** and confirm CI is green (`make test`, `make test-diff-coverage`, `pre-commit run --all-files`).
+2. Update **`CHANGELOG.md`**: move items from **`[Unreleased]`** into a new **`[X.Y.Z]`** section with the release date, and add compare links at the bottom per [Keep a Changelog](https://keepachangelog.com/).
+3. Commit the changelog update on **`main`** if it is not already included in the release commit.
+
+### Cut a release
+
+Tags must match **`vMAJOR.MINOR.PATCH`** with optional SemVer pre-release and build metadata (e.g. **`v1.2.3`**, **`v1.2.3-rc1`**, **`v1.2.3+build.1`**, **`v1.2.3-rc1+build.1`**) and must point at a commit on **`main`**. Other tags are rejected by the workflow.
+
+```bash
+git checkout main
+git pull origin main
+git tag v1.2.3
+git push origin v1.2.3
+```
+
+Pushing the tag starts the **Release python package** workflow:
+
+1. **Build & inspect package** — builds sdist and wheel with Python **3.12** (same as CI), runs wheel/README checks via [`hynek/build-and-inspect-python-package`](https://github.com/hynek/build-and-inspect-python-package), and uploads artifacts for inspection in the run summary.
+2. **Upload package to PyPI** — downloads the built artifacts and publishes with [`pypa/gh-action-pypi-publish`](https://github.com/pypa/gh-action-pypi-publish).
+
+### Verify the release
+
+- In GitHub **Actions**, open the workflow run for the tag and confirm both jobs succeeded.
+- On PyPI, confirm the new version appears at https://pypi.org/project/pulp-tool/
+- Optionally install locally: `pip install pulp-tool==1.2.3`
+
+### Troubleshooting
+
+| Issue | Check |
+|-------|-------|
+| Workflow did not start | Tag must match `v*` and be pushed to GitHub (`git push origin vX.Y.Z`) |
+| Tag format rejected | Use SemVer tags such as `v1.2.3`, `v1.2.3-rc1`, or `v1.2.3+build.1` (not `1.2.3` without the `v` prefix) |
+| Not on `main` | Tag must point at a commit reachable from `main` (checked via GitHub compare API, not a separate `git fetch`) |
+| Upload auth failed | `PYPI_API_TOKEN` secret missing, expired, or not scoped to the project |
+| Wrong package version | Tag name must match the intended release; rebuild requires a new tag |
+
 ## Questions?
 
 - Open an issue for bug reports or feature requests
