@@ -63,7 +63,7 @@ async def chunked_get_async(
     )
 
     if hasattr(client, "_metrics"):
-        client._metrics.log_chunked_request(parallel=True)
+        client._metrics.log_chunked_request()
 
     async def fetch_chunk(chunk: list, chunk_index: int) -> tuple:
         chunk_params = params.copy()
