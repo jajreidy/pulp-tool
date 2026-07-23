@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **PyPI release workflow (`.github/workflows/release.yml`):** builds and publishes `pulp-tool` on semver `v*` tags that point at `main`; uses `hynek/build-and-inspect-python-package` for wheel/sdist inspection and `PYPI_API_TOKEN` for upload via `pypa/gh-action-pypi-publish`; maintainer steps in [CONTRIBUTING.md](CONTRIBUTING.md#releasing-to-pypi)
 - **`make lock-check`:** fails when `pyproject.toml` and `uv.lock` are out of sync (`uv lock --check`); CI runs it in `python-diff-lint.yml`
 - **`tests/utils/test_iteration_utils.py`:** unit tests for `pulp_tool.utils.iteration_utils`
 - **`i686` architecture support:** `SUPPORTED_ARCHITECTURES` includes 32-bit x86; RPM filename and path detection, upload orchestration, and content queries treat `i686` like other supported arches
