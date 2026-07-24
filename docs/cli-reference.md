@@ -1,15 +1,28 @@
 # CLI reference
 
-Detailed command-line documentation for **pulp-tool**. For installation, configuration, and the Python API, see [README.md](../README.md). For system design and module layout, see [ARCHITECTURE.md](ARCHITECTURE.md).
+Detailed command-line documentation for **pulp-tool**. For installation, configuration, and the Python API, see [README.md](../README.md). For system design and module layout, see [ARCHITECTURE.md](ARCHITECTURE.md). Maintainers: [releasing.md](releasing.md).
+
+## Global options
+
+These options are on the root `pulp-tool` group and apply before subcommands (see `pulp-tool --help`):
+
+| Option | Description |
+|--------|-------------|
+| `--config` | Path to Pulp CLI config TOML or base64-encoded config (default: `~/.config/pulp/cli.toml`) |
+| `--build-id` | Build identifier (required for some commands) |
+| `--namespace` | Namespace for the build (required for some commands) |
+| `-d`, `--debug` | Verbosity: `-d` INFO, `-dd` DEBUG, `-ddd` HTTP logs |
+| `--max-workers` | Maximum concurrent workers for parallel operations (default: 4) |
+| `--version` | Print version and exit |
 
 ## upload
 
 Upload RPM packages, logs, and SBOM files.
 
+Requires global `--build-id` and `--namespace` unless `--results-json` is used (labels in the JSON supply context).
+
 | Argument | Required | Description |
 |----------|----------|-------------|
-| `--build-id` | No | Build identifier |
-| `--namespace` | No | Namespace (e.g. org or project) |
 | `--parent-package` | No | Parent package name |
 | `--rpm-path` | No | Path to RPM directory (default: current dir) |
 | `--sbom-path` | No | Path to SBOM file |
@@ -20,7 +33,6 @@ Upload RPM packages, logs, and SBOM files.
 | `--target-arch-repo` | No | RPM only: use each architecture as the RPM repo/distribution base path (e.g. `…/pulp-content/{namespace}/x86_64/`) instead of `{build}/rpms`; logs, SBOM, and generic artifacts stay `{build}/…`. With `--signed-by`, paths stay `{arch}/` only (`signed_by` is a label). Repos are created per arch at upload time. Works with `--results-json` |
 | `--artifact-results` | No | Comma-separated paths or folder for local `pulp_results.json` |
 | `--sbom-results` | No | Path to write SBOM results |
-| `-d, --debug` | No | Verbosity: `-d` INFO, `-dd` DEBUG, `-ddd` HTTP logs |
 
 **Upload from results JSON:** When `--results-json` is used, artifact keys from the JSON are resolved to file paths (default: same directory as the JSON; override with `--files-base-path`). Files are classified by extension (`.rpm` → rpms, `.log` → logs, SBOM extensions → sbom, else → artifacts) and uploaded to the appropriate repository. `--rpm-path` and `--sbom-path` are ignored in this mode.
 
@@ -34,10 +46,10 @@ Upload RPM packages, logs, and SBOM files.
 
 Upload individual files (RPMs, logs, SBOMs, generic files).
 
+Requires global `--build-id` and `--namespace`.
+
 | Argument | Required | Description |
 |----------|----------|-------------|
-| `--build-id` | Yes | Build identifier |
-| `--namespace` | Yes | Namespace |
 | `--parent-package` | Yes | Parent package name |
 | `--rpm` / `--file` / `--log` / `--sbom` | At least one | File paths (repeatable) |
 | `--arch` | No | Architecture (e.g. x86_64) |
@@ -48,17 +60,21 @@ Upload individual files (RPMs, logs, SBOMs, generic files).
 
 Download artifacts from Pulp distributions.
 
+Global `--build-id` and `--namespace` are required when using `--build-id` + `--namespace` instead of `--artifact-location`. Use global `--max-workers` for concurrent downloads (default: 4).
+
 | Argument | Required | Description |
 |----------|----------|-------------|
 | `--artifact-location` | Yes* | Path or URL to artifact metadata JSON |
-| `--build-id` + `--namespace` | Yes* | Alternative to artifact-location |
-| `--transfer-dest` | Conditional | Config path for cert/key and upload destination |
+| `--build-id` + `--namespace` | Yes* | Alternative to `--artifact-location` (global options) |
+| `--transfer-dest` | Conditional | Pulp config for destination upload: creates repos/distributions and re-uploads downloaded content when set |
+| `--distribution-config` | No | Config file for distribution download auth (cert/key or username/password); overrides `--transfer-dest` / `--config` for auth |
 | `--cert-path` / `--key-path` | Conditional | SSL cert/key (or from config) |
 | `--content-types` | No | Filter: rpm, log, sbom (comma-separated) |
 | `--archs` | No | Filter: x86_64, aarch64, etc. |
-| `--max-workers` | No | Concurrent downloads (default: 4) |
 
-\* Use `--artifact-location` OR `--build-id` + `--namespace`. For remote URLs, cert/key required.
+\* Use `--artifact-location` OR global `--build-id` + `--namespace`. For remote URLs, provide cert/key **or** username/password via `--distribution-config`, `--transfer-dest`, `--config`, or explicit cert/key flags.
+
+**Transfer behavior:** Destination repository creation and re-upload run **only** when `--transfer-dest` is set. Group-level `--config` alone supplies auth (and `base_url` for `--build-id` + `--namespace`) but does not create destination repos or upload.
 
 **File layout:** RPMs/SBOMs → current folder; logs → `logs/<arch>/`.
 
@@ -126,9 +142,26 @@ pulp-tool --config ~/.config/pulp/cli.toml search-by \
   --output-results /path/to/filtered_results.json
 ```
 
+## Pulp access and credentials
+
+### Konflux (primary)
+
+Red Hat Pulp access in Konflux is created with the **[pulp-access-controller](https://github.com/pulp/pulp-access-controller)** operator:
+
+1. Create a `PulpAccessRequest` in your namespace; see the [operator README](https://github.com/pulp/pulp-access-controller/blob/main/README.md) and [Konflux Pulp access guide](https://konflux-ci.dev/docs/building/pulp-access/).
+2. The controller writes the **`pulp-access`** secret (`cli.toml`, TLS or Basic Auth material, and `domain` such as `konflux-<namespace>`). It integrates with Red Hat's [terms-based registry](https://access.redhat.com/terms-based-registry/accounts) for credentials—**you do not create terms-based registry credentials yourself**; the controller will generate and manage them.
+
+Mount `cli.toml` from that secret as `--config` (Tekton often uses `/pulp-access/cli.toml`). pulp-tool reads the same `[cli]` shape the operator generates.
+
+### Local / manual `cli.toml`
+
+For development outside Konflux, create `~/.config/pulp/cli.toml` yourself or extract files from a `pulp-access` secret (`oc extract secret/pulp-access …`). See [Accessing Pulp content](https://konflux-ci.dev/docs/building/accessing-pulp-content/) for extracting cluster secrets.
+
 ## Environment and logging
 
-**Environment:** `SSL_CERT_FILE`, `SSL_CERT_DIR`, `HTTP_PROXY`, `HTTPS_PROXY`, `NO_PROXY` are supported.
+**Environment:** `SSL_CERT_FILE`, `SSL_CERT_DIR`, `HTTP_PROXY`, `HTTPS_PROXY`, `NO_PROXY`, and `PULP_TOOL_CORRELATION_ID` are supported. Correlation ID resolution: `cli.correlation_id` in config > `PULP_TOOL_CORRELATION_ID` > `{namespace}/{build_id}` from global CLI options > `build_id` alone.
+
+**Configuration (`[cli]`):** `base_url`, `api_root`, `domain`, OAuth (`client_id`, `client_secret`) or Basic Auth (`username`, `password`), optional client cert (`cert`, `key`), and optional `correlation_id`. SSL verification is always enabled; pulp-tool does not read pulp-cli keys such as `verify_ssl`, `dry_run`, or `timeout` from config today.
 
 **Verbosity:** `-d` INFO, `-dd` DEBUG, `-ddd` HTTP logs. Default: WARNING.
 

@@ -8,7 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-- **PyPI release workflow (`.github/workflows/release.yml`):** builds and publishes `pulp-tool` on semver `v*` tags that point at `main`; uses `hynek/build-and-inspect-python-package` for wheel/sdist inspection and `PYPI_API_TOKEN` for upload via `pypa/gh-action-pypi-publish`; maintainer steps in [CONTRIBUTING.md](CONTRIBUTING.md#releasing-to-pypi)
+- **`docs/releasing.md`:** maintainer guide for PyPI releases (trusted publishing setup, semver tagging on `main`, workflow steps, verification, troubleshooting); linked from `CONTRIBUTING.md`, `README.md`, and `.github/workflows/release.yml`
+- **PyPI release workflow (`.github/workflows/release.yml`):** builds and publishes `pulp-tool` on semver `v*` tags that point at `main`; uses `hynek/build-and-inspect-python-package` for wheel/sdist inspection and PyPI [trusted publishing](https://docs.pypi.org/trusted-publishers/) via `pypa/gh-action-pypi-publish`; maintainer steps in [docs/releasing.md](docs/releasing.md)
 - **`make lock-check`:** fails when `pyproject.toml` and `uv.lock` are out of sync (`uv lock --check`); CI runs it in `python-diff-lint.yml`
 - **`tests/utils/test_iteration_utils.py`:** unit tests for `pulp_tool.utils.iteration_utils`
 - **`i686` architecture support:** `SUPPORTED_ARCHITECTURES` includes 32-bit x86; RPM filename and path detection, upload orchestration, and content queries treat `i686` like other supported arches
@@ -48,7 +49,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - .editorconfig for consistent formatting
 - Dockerfile for containerized deployments
 - Initial release of pulp-tool
-- CLI commands: upload, transfer, get-repo-md
+- CLI commands: upload, upload-files, pull, search-by, create-repository
 - PulpClient for API interactions
 - PulpHelper for high-level operations
 - DistributionClient for artifact downloads
@@ -57,6 +58,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Comprehensive test suite with 85%+ coverage
 
 ### Changed
+- **Documentation audit:** align README, `docs/cli-reference.md`, `CONTRIBUTING.md`, `SECURITY.md`, `scripts/README.md`, and `docs/ARCHITECTURE.md` with current CLI flags, config keys, PyPI trusted publishing, and Makefile targets
 - **`docs/cli-reference.md`:** normalize `search-by` section to the same options-table layout as other commands; document `--keep-files`
 - **`setup.py`:** thin `setup()` shim only; dependency ranges and package metadata live in **`pyproject.toml`**
 - **Container image (`Dockerfile`):** install runtime deps from **`uv.lock`** (`uv export --frozen --no-dev`) then `pip install --no-deps .`; documented in **`CONTRIBUTING.md`** and **`README.md`**
@@ -91,7 +93,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Repository setup logs use the concrete repo slug (e.g. ``rpms-signed``) instead of a generic ``Rpms`` label; distribution creation logs state that ``name`` and ``base_path`` match the repository name on one line
 - `upload --target-arch-repo` with `--signed-by`: RPM paths remain `{arch}/` only (no `{arch}/rpms-signed`); signing is via `signed_by` label on content
 - Renamed `transfer` command to `pull`; added `--transfer-dest` option for transfer destination. When using `--build-id` + `--namespace`, either `--transfer-dest` or group-level `--config` can be used
-- Renamed file structure from `transfer` to `pull`: `cli/transfer.py` → `cli/pull.py`, `pulp_tool/transfer/` → `pulp_tool/pull/`, `TransferContext` → `PullContext`, `TransferService` → `PullService`, `tests/test_transfer.py` → `tests/test_pull.py`
+- Renamed file structure from `transfer` to `pull`: `cli/transfer.py` → `cli/pull.py`, `pulp_tool/transfer/` → `pulp_tool/pull/`, `TransferContext` → `PullContext`, `TransferService` → `PullService`, `tests/test_transfer.py` → `tests/pull/`
 - Upload progress messages (e.g. "Uploading SBOM: X", "Uploading RPM: X") now use logging.warning instead of info
 - Consolidated all dependencies into pyproject.toml
 - Improved type safety across the codebase
