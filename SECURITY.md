@@ -49,7 +49,7 @@ We follow responsible disclosure practices:
 
 - Keep dependencies up-to-date
 - Review security advisories for dependencies
-- Use `pip audit` or similar tools to check for vulnerabilities
+- Use `make audit` or `pip-audit -l` to check for known vulnerabilities in dependencies
 
 ### Configuration
 
@@ -98,4 +98,4 @@ Security updates will be:
 
 - [GitHub Security Advisories](https://github.com/konflux-ci/pulp-tool/security/advisories)
 - [OWASP Top 10](https://owasp.org/www-project-top-ten/)
-- [Python Security Best Practices](https://python.readthedocs.io/en/stable/library/security_warnings.html)
+- [Python Security Best Practices](https://docs.python.org/3/library/security_warnings.html)

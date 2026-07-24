@@ -1,11 +1,6 @@
 ---
 # Publish pulp-tool to PyPI when a release tag is pushed to main.
-#
-# Prerequisites (one-time maintainer setup):
-# 1. Create a PyPI API token scoped to the pulp-tool project.
-# 2. Add it as repository secret PYPI_API_TOKEN (Settings → Secrets and variables → Actions).
-#
-# Release: tag a commit on main (e.g. v1.2.3) and push the tag.
+# Maintainer guide: docs/releasing.md
 name: Release python package
 
 on: # yamllint disable-line rule:truthy

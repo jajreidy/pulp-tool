@@ -54,17 +54,12 @@ The e2e test suite follows a four-phase lifecycle:
 **Purpose:** Comprehensive end-to-end test suite for the `pulp-tool` CLI.
 
 **What it tests:**
-- **Global options:** `--config`, `--build-id`, `--namespace`, `--dry-run`
-- **Commands:**
-  - `upload` — Upload RPMs to Pulp
-  - `upload-files` — Upload arbitrary files to Pulp
-  - `publish` — Create/update distributions
-  - `create-repo` — Create repositories
-  - `list-repos` — List repositories with filtering
-  - `list-distributions` — List distributions with filtering
-  - `search-by` — Filter artifacts by repository/distribution existence
+- **Global options:** `--config`, `--build-id`, `--namespace`, `-d`/`--debug`
+- **Commands:** `upload`, `upload-files`, `pull`, `search-by`, `create-repository` (help and selected integration paths)
 - **Error handling:** Invalid paths, missing config, invalid options
 - **Result file generation:** JSON output for Konflux integration
+
+**Test harness modes:** By default the suite runs without mutating a real Pulp server unless `--real-server` is passed. That dry-run behavior is in the e2e scripts, not a `pulp-tool` CLI flag.
 
 **Usage:**
 ```bash
@@ -82,7 +77,7 @@ The e2e test suite follows a four-phase lifecycle:
 - `--rpm-dir`: Directory containing test RPM packages — **required**
 - `--pulp-results`: Path to fixture `pulp_results.json` file referencing existing test repositories/distributions in Pulp — **required** (used for `pull` and `search-by` tests)
 - `--test-dir`: Working directory for test execution (default: temp directory)
-- `--real-server`: Test against a real Pulp server (default: dry-run mode)
+- `--real-server`: Test against a real Pulp server (default: e2e harness skips mutating operations)
 - `--skip-setup`: Skip creating fresh test directory (reuse existing)
 
 **The `pulp-results` fixture:**
@@ -216,7 +211,7 @@ The e2e test suite runs automatically on pull requests via Konflux Tekton pipeli
    - Install `pulp-tool` from source
    - Run `test-pulp-tool.py --real-server` against the real Pulp server
    - Uses secrets:
-     - `pulp-access` → `/etc/pulp-access/cli.toml` (Pulp config)
+     - `pulp-access` → `/etc/pulp-access/cli.toml` (from [pulp-access-controller](https://github.com/pulp/pulp-access-controller); controller-managed credentials)
      - `pulp-results` → `/etc/pulp-results/pulp-results.json` (fixture file with test repo/dist references)
 3. **post-test-validation**
    - Install `pulp-cli`
@@ -314,16 +309,12 @@ See [`skills/changing-pulp-container/SKILL.md`](../skills/changing-pulp-containe
 
 The test suite validates:
 
-- ✅ All `pulp-tool` commands and subcommands
-- ✅ Global options (`--config`, `--build-id`, `--namespace`, `--dry-run`)
-- ✅ RPM upload workflows (single files, directories, architectures)
-- ✅ File upload workflows (artifacts, logs, SBOMs)
-- ✅ Repository and distribution creation/publishing
-- ✅ JSON input formats for batch operations
+- ✅ Current `pulp-tool` commands (`upload`, `upload-files`, `pull`, `search-by`, `create-repository`)
+- ✅ Global options (`--config`, `--build-id`, `--namespace`, `--debug`)
+- ✅ RPM and file upload workflows (directories, architectures, results JSON)
 - ✅ Artifact filtering with `search-by --results-json`
 - ✅ Result file generation (`pulp_results.json` output)
 - ✅ Error handling and validation
-- ✅ List and filter operations
 
 ---
 
@@ -367,4 +358,5 @@ If `post-test-cleanup.py` fails:
 - [ARCHITECTURE.md](../docs/ARCHITECTURE.md) — Code structure and data flow
 - [CLI Reference](../docs/cli-reference.md) — Complete command documentation
 - [CONTRIBUTING.md](../CONTRIBUTING.md) — Development workflow and checks
+- [releasing.md](../docs/releasing.md) — PyPI release workflow (maintainers)
 - [Konflux documentation](https://konflux-ci.dev/docs/) — Tekton pipeline platform

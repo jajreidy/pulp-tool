@@ -9,6 +9,17 @@ A Python client for Pulp API operations including RPM and file management.
 
 ## Setup
 
+### Konflux / Red Hat Pulp access (primary)
+
+In Konflux, Pulp access is provisioned by the **[pulp-access-controller](https://github.com/pulp/pulp-access-controller)** operator—not by hand-editing `cli.toml` or creating [terms-based registry](https://access.redhat.com/terms-based-registry/accounts) credentials yourself.
+
+1. Create a `PulpAccessRequest` in your namespace (see the [operator README](https://github.com/pulp/pulp-access-controller/blob/main/README.md) and [Konflux: Getting access to Pulp storage](https://konflux-ci.dev/docs/building/pulp-access/)).
+2. The controller creates a **`pulp-access`** secret with `cli.toml`, authentication material, and domain name (`konflux-<namespace>`). It uses Red Hat's [terms-based registry](https://access.redhat.com/terms-based-registry/accounts) for credentials—you do not create those credentials yourself; the controller generates and manages them.
+
+Tekton tasks mount that secret (for example `/pulp-access/cli.toml`) and run `pulp-tool --config …`. See **[CLAUDE.md](CLAUDE.md)** for downstream flag and path contracts.
+
+### Local install and manual config
+
 Clone and install:
 
 ```bash
@@ -23,11 +34,11 @@ For development (dev dependencies and pre-commit):
 pip install -e ".[dev]"
 ```
 
-Create `~/.config/pulp/cli.toml` with `base_url`, `api_root`, OAuth or Basic Auth fields, `domain`, `verify_ssl`, `format`, `dry_run`, `timeout`, `verbose`, and optionally `correlation_id` for `X-Correlation-ID` (or set `PULP_TOOL_CORRELATION_ID`). See [CONTRIBUTING.md](CONTRIBUTING.md) and `pulp-tool --help` for defaults.
+Create `~/.config/pulp/cli.toml` for **local** use when you are not consuming a controller-generated `pulp-access` secret. Use the `[cli]` keys pulp-tool reads: `base_url`, `api_root`, `domain`, OAuth (`client_id`, `client_secret`) or Basic Auth (`username`, `password`), optional client cert (`cert`, `key`), and optional `correlation_id` for `X-Correlation-ID` (or set `PULP_TOOL_CORRELATION_ID`). See [docs/cli-reference.md](docs/cli-reference.md) for access provisioning and command flags.
 
 When `--build-id` and `--namespace` are set and no correlation id is configured, the client sends `X-Correlation-ID: {namespace}/{build_id}` (or the build id alone if namespace is omitted), similar to [pulp-cli](https://github.com/pulp/pulp-cli).
 
-**packages.redhat.com:** use Basic Auth; `[cli]` can set `base_url = "https://packages.redhat.com"`, `api_root = "/api/pulp/"`, `username`, `password`, `domain`, `verify_ssl`. OAuth2 (`client_id` / `client_secret`) is also supported. For distribution pull, add `cert` and `key` paths for pull/transfer operations.
+**packages.redhat.com (manual / non-Konflux):** use Basic Auth; `[cli]` can set `base_url = "https://packages.redhat.com"`, `api_root = "/api/pulp/"`, `username`, `password`, and `domain`. OAuth2 (`client_id` / `client_secret`) is also supported. For distribution pull, add `cert` and `key` paths or use username/password via `--distribution-config`. Konflux namespaces should use [pulp-access-controller](https://github.com/pulp/pulp-access-controller) instead of ad hoc config.
 
 ## Usage and API
 
@@ -112,7 +123,7 @@ make check                # lint + test
 
 **Dependency lockfile:** **`uv.lock`** is generated from **`pyproject.toml`**; after changing dependencies, run `make lock`.
 
-Before a PR, ensure `pre-commit` has passed and, after `git fetch origin`, `make test-diff-coverage` is green. For AI-assisted work see **[AGENTS.md](AGENTS.md)** (start with § **Bootstrap**), **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)**, and **[CLAUDE.md](CLAUDE.md)** (Konflux contracts); also [CONTRIBUTING.md](CONTRIBUTING.md) (including [Releasing to PyPI](CONTRIBUTING.md#releasing-to-pypi)) and [tests/README.md](tests/README.md). Optional [AgentReady](https://github.com/ambient-code/agentready): `pip install agentready && agentready assess .` ([.agentready-config.yaml](.agentready-config.yaml); reports under `.agentready/`, gitignored).
+Before a PR, ensure `pre-commit` has passed and, after `git fetch origin`, `make test-diff-coverage` is green. For AI-assisted work see **[AGENTS.md](AGENTS.md)** (start with § **Bootstrap**), **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)**, and **[CLAUDE.md](CLAUDE.md)** (Konflux contracts); also [CONTRIBUTING.md](CONTRIBUTING.md) and [tests/README.md](tests/README.md). Maintainers: [docs/releasing.md](docs/releasing.md). Optional [AgentReady](https://github.com/ambient-code/agentready): `pip install agentready && agentready assess .` ([.agentready-config.yaml](.agentready-config.yaml); reports under `.agentready/`, gitignored).
 
 **Troubleshooting**
 

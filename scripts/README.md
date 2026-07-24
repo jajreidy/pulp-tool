@@ -67,11 +67,20 @@ chmod +x scripts/*.sh
 ./scripts/dev-setup.sh
 ```
 
-Alternatively, use the Makefile targets that wrap these scripts:
+Alternatively, use the Makefile targets:
 
 ```bash
-make setup        # Runs dev-setup.sh
-make run-tests    # Runs run-tests.sh
-make check-all    # Runs check-all.sh
-make update-deps  # Runs update-deps.sh
+make install-dev  # Same as make setup: editable install + pre-commit hooks
+make test         # Same as ./scripts/run-tests.sh (pytest with coverage)
+make check        # Same as ./scripts/check-all.sh (lint + test)
+make lock         # Regenerate uv.lock (see also ./scripts/update-deps.sh for broader bumps)
+```
+
+Optional scripts (run directly):
+
+```bash
+./scripts/dev-setup.sh   # Python version check + install-dev (no commit-msg hook)
+./scripts/run-tests.sh
+./scripts/check-all.sh
+./scripts/update-deps.sh
 ```

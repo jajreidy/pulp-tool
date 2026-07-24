@@ -33,11 +33,12 @@ Copy-paste **`make` / pre-commit** flow, **`make lock`** for dependencies, and P
    - **Konflux / Tekton contracts** (upload paths, flags, container): [CLAUDE.md](CLAUDE.md) — together with item 2 above.
    - **User-facing** install, config, overview: [README.md](README.md); deeper CLI detail stays in `docs/cli-reference.md`.
    - **Contributor workflow** (checks, deps, process): [CONTRIBUTING.md](CONTRIBUTING.md).
+   - **PyPI releases** (maintainers): [docs/releasing.md](docs/releasing.md).
    - **Tests / layout:** [tests/README.md](tests/README.md) when test organization or conventions change.
    - **ADRs:** [docs/adr/](docs/adr/) when you record a new architectural decision (see [0000-record-architecture-decisions.md](docs/adr/0000-record-architecture-decisions.md)).
    - **Agent skills** (`skills/`): [skills/README.md](skills/README.md) — index and cross-tool discovery; update when adding or renaming skills.
    - **Cross-links:** If you move or rename files, update links in other `.md` and Cursor rules that pointed at the old path.
-4. **Types:** prefer hints; `mypy` covers `pulp_tool/` (see `pyproject.toml` overrides).
+4. **Types:** prefer hints; `mypy` covers `pulp_tool/` and `tests/` (see `pyproject.toml` overrides).
 5. **Changelog / PR text:** always-on [`.cursor/rules/llm-development-guidelines.mdc`](.cursor/rules/llm-development-guidelines.mdc); on confirmation load **drafting-pulp-tool-pr** skill ([`skills/drafting-pulp-tool-pr/`](skills/drafting-pulp-tool-pr/)). Skill index: [`llm-development-guidelines-deep.mdc`](.cursor/rules/llm-development-guidelines-deep.mdc). Ask before drafting PR boilerplate; update `CHANGELOG.md` when preparing the PR, not every debug iteration.
 
 ---

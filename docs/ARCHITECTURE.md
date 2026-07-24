@@ -57,7 +57,7 @@ flowchart TB
 
 | Layer | Path | Role |
 |-------|------|------|
-| CLI | `pulp_tool/cli/` | `upload`, `upload_files`, `pull`, `search_by`, `create_repository`; shared globals (`--config`, `--build-id`, `--namespace`) |
+| CLI | `pulp_tool/cli/` | `upload`, `upload_files`, `pull`, `search_by`, `create_repository`; shared globals (`--config`, `--build-id`, `--namespace`, `--debug`, `--max-workers`) |
 | HTTP client | `pulp_tool/api/pulp_client/` | Session, chunked GET, RPM/content queries, repository ops |
 | Other API surface | `pulp_tool/api/` (`artifacts/`, `content/`, `distributions/`, `repositories/`, `tasks/`) | Typed calls aligned with Pulp endpoints |
 | Orchestration | `pulp_tool/utils/pulp_helper.py`, `upload_orchestrator.py` | Repo setup, upload pipelines |
@@ -77,7 +77,7 @@ flowchart TB
 | Kind | Location / system |
 |------|-------------------|
 | **Remote content & metadata** | Pulp server (repositories, distributions, RPM/file units, tasks) |
-| **Credentials & base URL** | `cli.toml` (path or base64 via `--config`); env: TLS, proxy vars (see [README § Setup](../README.md#setup)) |
+| **Credentials & base URL** | **`pulp-access` secret** from [pulp-access-controller](https://github.com/pulp/pulp-access-controller) (primary in Konflux): `cli.toml` + auth material; controller-managed [terms-based registry](https://access.redhat.com/terms-based-registry/accounts) credentials (not user-provisioned). Local/manual `cli.toml` or base64 via `--config`; env: TLS, proxy vars (see [README § Setup](../README.md#setup)) |
 | **Local inputs** | RPM trees, logs, SBOM files, `pulp_results.json` / results JSON for batch upload |
 | **Tekton workspace** | `/var/workdir/results`, optional `oras-staging/` (SBOM merge path in import-to-quay) |
 
@@ -90,6 +90,7 @@ No application database: state is on Pulp and in generated JSON artifacts.
 | System | Role |
 |--------|------|
 | **Pulp** | Primary API; plugins (e.g. RPM) assumed per deployment |
+| **[pulp-access-controller](https://github.com/pulp/pulp-access-controller)** | Konflux operator: `PulpAccessRequest` → `pulp-access` secret (`cli.toml`, domain `konflux-<namespace>`); uses [terms-based registry](https://access.redhat.com/terms-based-registry/accounts) for credentials (controller-generated, not manual user setup) |
 | **Konflux / Tekton** | Runs `pulp-tool` in `import-to-quay` and `push-artifacts-to-storage` (different config mounts and flags) |
 | **Container registry** | Quay image for tooling (`pulp-tool-container`); details in Tekton YAMLs linked from [CLAUDE.md](../CLAUDE.md) |
 | **OAuth / Basic** | Auth modes supported via client config (see [README](../README.md) / Pulp docs) |
@@ -135,8 +136,8 @@ Formal records: [ADR 0000 — how we record decisions](adr/0000-record-architect
 
 ## 10. Security (high level)
 
-- **Secrets:** Never commit; use mounted secrets in CI (e.g. `pulp-access`, `rok-access`) or local `cli.toml` outside VCS.
-- **TLS:** `verify_ssl`, cert/key paths for pull/transfer; see config docs.
+- **Secrets:** Never commit; Konflux uses controller-generated **`pulp-access`** / **`rok-access`** mounts (see [pulp-access-controller](https://github.com/pulp/pulp-access-controller)); local dev uses `cli.toml` outside VCS.
+- **TLS:** HTTPS with certificate verification enabled; cert/key or username/password for distribution pull; see [README § Setup](../README.md#setup) and [cli-reference.md](cli-reference.md).
 - **RBAC:** Pulp server enforces access; content labeling may require `core.content_labeler` (Pulp docs).
 
 ---
