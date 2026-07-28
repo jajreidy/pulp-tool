@@ -26,7 +26,8 @@ jobs:
       - name: Verify release tag format
         run: |
           if [[ ! "${GITHUB_REF_NAME}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$ ]]; then
-            echo "::error::Release tag must match vMAJOR.MINOR.PATCH with optional SemVer pre-release (-...) and build metadata (+...), got ${GITHUB_REF_NAME}"
+            echo "::error::Release tag must match vMAJOR.MINOR.PATCH with optional SemVer pre-release" \
+              "(-...) and build metadata (+...), got ${GITHUB_REF_NAME}"
             exit 1
           fi
 

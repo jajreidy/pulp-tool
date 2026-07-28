@@ -4,6 +4,7 @@ import os
 import tempfile
 from concurrent.futures import ThreadPoolExecutor
 from unittest.mock import Mock, patch
+
 from pulp_tool.models.context import UploadRpmContext
 from pulp_tool.models.repository import RepositoryRefs
 from pulp_tool.models.results import PulpResultsModel, RpmUploadResult
@@ -58,7 +59,7 @@ class TestUploadOrchestratorProcessArchitectureUploads:
                     distribution_urls={"rpms": "https://example.com/rpms/"},
                 )
                 assert set(result.keys()) == {"x86_64", "aarch64"}
-                assert all((isinstance(v, RpmUploadResult) for v in result.values()))
+                assert all(isinstance(v, RpmUploadResult) for v in result.values())
                 assert result["aarch64"] is arch64
                 mock_submit.assert_called_once()
                 mock_collect.assert_called_once()

@@ -1,8 +1,10 @@
 """Tests for search-by CLI error handling (checksum args)."""
 
 from unittest.mock import Mock, patch
+
 import httpx
 from click.testing import CliRunner
+
 from pulp_tool.cli import cli
 from tests.support.constants import VALID_CHECKSUM_1
 from tests.support.temp_config import tempfile_config

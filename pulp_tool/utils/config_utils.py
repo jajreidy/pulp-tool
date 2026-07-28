@@ -7,7 +7,6 @@ This module provides utilities for detecting and decoding base64-encoded config 
 import base64
 import logging
 from pathlib import Path
-from typing import Optional, Tuple, Union
 
 logger = logging.getLogger(__name__)
 
@@ -35,7 +34,7 @@ def decode_base64_config(config: str) -> bytes:
         raise ValueError(f"Failed to decode base64 config: {e}") from e
 
 
-def is_base64_config(config: Optional[str]) -> bool:
+def is_base64_config(config: str | None) -> bool:
     """
     Check if a string is likely base64-encoded config content.
 
@@ -77,7 +76,7 @@ def is_base64_config(config: Optional[str]) -> bool:
     return False
 
 
-def load_file_content_maybe_base64(path: Union[str, Path]) -> Tuple[bytes, bool]:
+def load_file_content_maybe_base64(path: str | Path) -> tuple[bytes, bool]:
     """
     Read file content, decoding from base64 if the content looks base64-encoded.
 
@@ -114,7 +113,7 @@ def load_file_content_maybe_base64(path: Union[str, Path]) -> Tuple[bytes, bool]
     return content, False
 
 
-def load_config_content(config: Optional[str]) -> Tuple[bytes, bool]:
+def load_config_content(config: str | None) -> tuple[bytes, bool]:
     """
     Load config content from either a file path or base64 string.
 

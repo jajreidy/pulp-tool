@@ -2,8 +2,10 @@
 
 from typing import Any
 from unittest.mock import Mock, patch
+
 import pytest
 from pydantic import ValidationError
+
 from pulp_tool.cli.search_by import (
     _collect_list,
     _filenames_to_nvras_deduplicated,

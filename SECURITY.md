@@ -49,7 +49,7 @@ We follow responsible disclosure practices:
 
 - Keep dependencies up-to-date
 - Review security advisories for dependencies
-- Use `make audit` or `pip-audit -l` to check for known vulnerabilities in dependencies
+- Use `make audit` (dev deps from `uv.lock` in an isolated venv, without editable install) or `pip-audit -l` to check for known vulnerabilities in dependencies
 
 ### Configuration
 

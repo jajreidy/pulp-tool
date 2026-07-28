@@ -3,6 +3,7 @@
 import json
 import logging
 from unittest.mock import Mock
+
 from pulp_tool.models.context import UploadRpmContext
 from pulp_tool.services.upload_service import (
     _classify_artifact_from_key,

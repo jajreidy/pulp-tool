@@ -4,7 +4,7 @@ Pulp RPM package search helpers (shared by search-by CLI and upload --overwrite)
 Parses RPM list API responses and runs the same queries as search-by.
 """
 
-from typing import TYPE_CHECKING, List, Optional
+from typing import TYPE_CHECKING
 
 import httpx
 
@@ -14,53 +14,53 @@ if TYPE_CHECKING:
     from pulp_tool.api.pulp_client import PulpClient
 
 
-def parse_rpm_response(response: httpx.Response) -> List[RpmPackageResponse]:
+def parse_rpm_response(response: httpx.Response) -> list[RpmPackageResponse]:
     """Parse paginated RPM response into RpmPackageResponse list."""
     response.raise_for_status()
     results_raw = response.json().get("results", [])
-    packages: List[RpmPackageResponse] = []
+    packages: list[RpmPackageResponse] = []
     for item in results_raw:
         try:
             packages.append(RpmPackageResponse(**item))
-        except Exception:
+        except Exception:  # noqa: S110
             pass
     return packages
 
 
-def search_pulp_for_rpms(client: "PulpClient", checksums: List[str]) -> List[RpmPackageResponse]:
+def search_pulp_for_rpms(client: "PulpClient", checksums: list[str]) -> list[RpmPackageResponse]:
     """Query Pulp for RPM packages matching the given checksums (pkgId / sha256)."""
     return parse_rpm_response(client.get_rpm_by_pkgIDs(checksums))
 
 
-def search_pulp_by_filenames(client: "PulpClient", filenames: List[str]) -> List[RpmPackageResponse]:
+def search_pulp_by_filenames(client: "PulpClient", filenames: list[str]) -> list[RpmPackageResponse]:
     """Query Pulp for RPM packages matching the given filenames."""
     return parse_rpm_response(client.get_rpm_by_filenames(filenames))
 
 
-def search_pulp_by_signed_by(client: "PulpClient", signed_by: str) -> List[RpmPackageResponse]:
+def search_pulp_by_signed_by(client: "PulpClient", signed_by: str) -> list[RpmPackageResponse]:
     """Query Pulp for RPM packages matching the given signed_by key."""
     return parse_rpm_response(client.get_rpm_by_signed_by([signed_by]))
 
 
 def search_pulp_for_rpms_with_signed_by(
-    client: "PulpClient", checksums: List[str], signed_by: str
-) -> List[RpmPackageResponse]:
+    client: "PulpClient", checksums: list[str], signed_by: str
+) -> list[RpmPackageResponse]:
     """Query Pulp for RPM packages matching checksums AND signed_by (single API call)."""
     return parse_rpm_response(client.get_rpm_by_checksums_and_signed_by(checksums, signed_by))
 
 
 def search_pulp_by_filenames_with_signed_by(
-    client: "PulpClient", filenames: List[str], signed_by: str
-) -> List[RpmPackageResponse]:
+    client: "PulpClient", filenames: list[str], signed_by: str
+) -> list[RpmPackageResponse]:
     """Query Pulp for RPM packages matching filenames AND signed_by (single API call)."""
     return parse_rpm_response(client.get_rpm_by_filenames_and_signed_by(filenames, signed_by))
 
 
 def search_rpms_by_filenames_for_overwrite(
     client: "PulpClient",
-    filenames: List[str],
-    signed_by: Optional[str],
-) -> List[RpmPackageResponse]:
+    filenames: list[str],
+    signed_by: str | None,
+) -> list[RpmPackageResponse]:
     """
     Find RPM content units by NVRA filename (name-version-release.arch.rpm), optionally scoped with signed_by.
 

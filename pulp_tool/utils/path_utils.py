@@ -2,7 +2,6 @@
 
 import os
 from pathlib import Path
-from typing import Optional
 
 from .constants import SUPPORTED_ARCHITECTURES
 
@@ -47,7 +46,7 @@ def resolve_path_under_base(base_path: Path, relative_key: str) -> Path:
     return candidate
 
 
-def get_artifact_save_path(filename: str, arch: str, artifact_type: str, base_dir: Optional[str] = None) -> str:
+def get_artifact_save_path(filename: str, arch: str, artifact_type: str, base_dir: str | None = None) -> str:
     """
     Determine the save path for an artifact based on its type.
 

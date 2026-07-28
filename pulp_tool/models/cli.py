@@ -1,7 +1,7 @@
 """Pulp Tool CLI models for JSON and input validation"""
 
 import os
-from typing import TYPE_CHECKING, Any, Dict, Literal, List, Optional, Set, Tuple
+from typing import TYPE_CHECKING, Any, Literal
 
 from pydantic import Field, field_validator, model_validator
 
@@ -16,15 +16,15 @@ SHA256_HEX_LENGTH = 64
 
 
 class RepositoryOptions(KonfluxBaseModel):
-    compression_type: Optional[Literal["zstd", "gz"]] = None
-    checksum_type: Optional[Literal["unknown", "md5", "sha1", "sha224", "sha256", "sha384", "sha512"]] = None
+    compression_type: Literal["zstd", "gz"] | None = None
+    checksum_type: Literal["unknown", "md5", "sha1", "sha224", "sha256", "sha384", "sha512"] | None = None
     autopublish: bool = True
 
 
 class DistributionOptions(KonfluxBaseModel):
     name: str
     base_path: str
-    generate_repo_config: Optional[bool] = None
+    generate_repo_config: bool | None = None
 
 
 class Package(KonfluxBaseModel):
@@ -99,11 +99,11 @@ class FoundPackages(KonfluxBaseModel):
 
     checksums: set[str] = Field(default_factory=set)
     filenames: set[str] = Field(default_factory=set)
-    filename_checksum_pairs: Set[Tuple[str, str]] = Field(default_factory=set)  # (basename, sha256)
+    filename_checksum_pairs: set[tuple[str, str]] = Field(default_factory=set)  # (basename, sha256)
     signed_by: set[str] = Field(default_factory=set)
 
     @classmethod
-    def from_packages(cls, packages: List["RpmPackageResponse"]) -> "FoundPackages":
+    def from_packages(cls, packages: list["RpmPackageResponse"]) -> "FoundPackages":
         """Build FoundPackages from RPM package responses."""
         from .pulp_api import RpmPackageResponse
 
@@ -136,7 +136,7 @@ class FoundPackages(KonfluxBaseModel):
 class SearchByResultsJson:
     """Wrapper for results.json structure with extraction and removal helpers."""
 
-    def __init__(self, data: Dict[str, Any]) -> None:
+    def __init__(self, data: dict[str, Any]) -> None:
         self._data = data
         self._artifacts = data.get("artifacts", {})
 
@@ -144,10 +144,10 @@ class SearchByResultsJson:
     def _is_rpm(key: str) -> bool:
         return key.lower().endswith(".rpm")
 
-    def extract_rpm_checksums(self) -> List[str]:
+    def extract_rpm_checksums(self) -> list[str]:
         """Extract SHA256 checksums from RPM artifacts."""
         seen: set[str] = set()
-        result: List[str] = []
+        result: list[str] = []
         for key, info in self._artifacts.items():
             if not self._is_rpm(key) or not isinstance(info, dict):
                 continue
@@ -157,10 +157,10 @@ class SearchByResultsJson:
                 seen.add(sha256)
         return result
 
-    def extract_filenames(self) -> List[str]:
+    def extract_filenames(self) -> list[str]:
         """Extract filenames (artifact keys) from RPM artifacts."""
         seen: set[str] = set()
-        result: List[str] = []
+        result: list[str] = []
         for key, info in self._artifacts.items():
             if not self._is_rpm(key) or not isinstance(info, dict) or not key or key in seen:
                 continue
@@ -168,7 +168,7 @@ class SearchByResultsJson:
             seen.add(key)
         return result
 
-    def remove_found(self, found: FoundPackages, only_remove_filenames: Optional[set[str]] = None) -> Dict[str, Any]:
+    def remove_found(self, found: FoundPackages, only_remove_filenames: set[str] | None = None) -> dict[str, Any]:
         """
         Return a copy with RPMs matching found identifiers removed.
 
@@ -221,7 +221,7 @@ class SearchByResultsJson:
             del artifacts[key]
         return out
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Return the underlying data dict."""
         return self._data
 

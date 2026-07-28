@@ -46,7 +46,7 @@ def test_oauth_auth_import() -> None:
 
 def test_utility_functions_import() -> None:
     """Test that utility functions can be imported."""
-    from pulp_tool import setup_logging, create_session_with_retry
+    from pulp_tool import create_session_with_retry, setup_logging
 
     assert setup_logging is not None
     assert create_session_with_retry is not None

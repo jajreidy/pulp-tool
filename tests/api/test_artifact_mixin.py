@@ -5,7 +5,9 @@ This module tests ArtifactMixin methods that need coverage.
 """
 
 from unittest.mock import Mock
+
 import httpx
+
 from pulp_tool.models.pulp_api import ArtifactResponse
 
 
@@ -48,7 +50,6 @@ class TestArtifactMixin:
         from pulp_tool.api.artifacts.operations import ArtifactMixin
 
         class TestClient(ArtifactMixin):
-
             def __init__(self, config, session) -> None:
                 self.config = config
                 self.session = session
@@ -88,7 +89,6 @@ class TestArtifactMixin:
         from pulp_tool.api.artifacts.operations import ArtifactMixin
 
         class TestClient(ArtifactMixin):
-
             def __init__(self, config, session) -> None:
                 self.config = config
                 self.session = session

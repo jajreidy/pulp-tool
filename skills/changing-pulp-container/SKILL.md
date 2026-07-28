@@ -49,6 +49,8 @@ Shared: namespace `artifact-storage-tenant`, app/component `tooling` / `pulp-too
 
 ## Regression checklist
 
+- [ ] `Dockerfile` passes hadolint locally (`pre-commit run hadolint --all-files`) and in CI (DL3041/DL3013 ignored; pin UBI base tag for DL3006)
+- [ ] `.tekton/` embedded scripts pass Checkton (`pre-commit run --hook-stage pre-push checkton --all-files` or CI tekton-lint job)
 - [ ] `Dockerfile` builds (`make test-container` or Konflux PR `build-container` task)
 - [ ] `pulp-tool --version` / `--help` in built image
 - [ ] Python matches UBI base (currently **3.12** on UBI 10 minimal)

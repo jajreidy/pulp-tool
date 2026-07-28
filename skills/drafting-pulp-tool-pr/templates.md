@@ -11,12 +11,12 @@ Reproduce `.github/PULL_REQUEST_TEMPLATE.md` exactly:
 
 ## How to test
 
-<!-- Concrete commands: make lint, make test, pre-commit run --all-files, etc. -->
+<!-- Concrete commands: make pre-commit-ci, make lint, make test, git fetch origin && make test-diff-coverage -->
 
 ## Checklist
 
-- [ ] `make test` and `make test-diff-coverage` (after `git fetch origin`) pass locally
-- [ ] `pre-commit run --all-files` passes
+- [ ] `make test` and `make test-diff-coverage` (after `git fetch origin`) pass locally, or `make pre-commit-ci` after green tests
+- [ ] `pre-commit run --all-files` passes (commit stage); `pre-commit run --hook-stage pre-push --all-files` passes when opening a PR
 - [ ] If this changes `upload`, global CLI flags, SBOM/artifact handling, or the container image: [CLAUDE.md](CLAUDE.md) Konflux sections and linked Tekton YAMLs were considered
 
 ## Notes for reviewers
@@ -35,7 +35,7 @@ Rules:
 On confirmation, write **only the PR body** (sections above) to `pr-description.md` at the repo root. The file is gitignored — a local paste-ready draft, not committed.
 
 - Include `## Summary`, `## How to test`, `## Checklist`, and `## Notes for reviewers` when there is reviewer context.
-- Use concrete commands under How to test (e.g. `make lint`, `make test`, `pre-commit run --all-files`, `make test-diff-coverage`).
+- Use concrete commands under How to test (e.g. `make pre-commit-ci`, `make lint`, `make test`, `make test-diff-coverage`).
 - Do **not** put the commit message or CHANGELOG entry in this file; those stay in chat / `CHANGELOG.md`.
 - Overwrite the file on each PR-drafting turn.
 

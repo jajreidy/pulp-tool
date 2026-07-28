@@ -1,19 +1,20 @@
 """Tests for response utilities module."""
 
-import pytest
 import httpx
+import pytest
+
+from pulp_tool.models.pulp_api import TaskResponse
 from pulp_tool.utils.response_utils import (
-    parse_json_response,
-    extract_task_href,
-    extract_created_resources,
     check_task_success,
-    extract_results_list,
     content_find_results_from_json,
     content_find_results_from_response,
+    extract_created_resources,
+    extract_results_list,
     extract_single_result,
+    extract_task_href,
     get_response_field,
+    parse_json_response,
 )
-from pulp_tool.models.pulp_api import TaskResponse
 
 
 class TestParseJsonResponse:

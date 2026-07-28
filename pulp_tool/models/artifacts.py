@@ -1,6 +1,6 @@
 """Artifact-related models for Konflux Pulp."""
 
-from typing import Dict, List, Optional, Any
+from typing import Any
 
 from pydantic import AnyHttpUrl, BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -13,9 +13,9 @@ class PulpContentRow(BaseModel):
     model_config = ConfigDict(extra="allow")
 
     pulp_href: str = ""
-    pulp_labels: Dict[str, Any] = Field(default_factory=dict)
-    artifacts: Dict[str, Any] = Field(default_factory=dict)
-    relative_path: Optional[str] = None
+    pulp_labels: dict[str, Any] = Field(default_factory=dict)
+    artifacts: dict[str, Any] = Field(default_factory=dict)
+    relative_path: str | None = None
 
 
 class ExtraArtifactRef(BaseModel):
@@ -23,8 +23,8 @@ class ExtraArtifactRef(BaseModel):
 
     model_config = ConfigDict(extra="ignore")
 
-    pulp_href: Optional[str] = None
-    file: Optional[str] = None
+    pulp_href: str | None = None
+    file: str | None = None
 
     @model_validator(mode="before")
     @classmethod
@@ -73,7 +73,7 @@ class ArtifactFile(KonfluxBaseModel):
     """
 
     file: str
-    labels: Dict[str, str] = Field(default_factory=dict)
+    labels: dict[str, str] = Field(default_factory=dict)
 
     @property
     def file_name(self) -> str:
@@ -90,22 +90,22 @@ class ArtifactFile(KonfluxBaseModel):
         return os.path.dirname(self.file)
 
     @property
-    def build_id(self) -> Optional[str]:
+    def build_id(self) -> str | None:
         """Get build_id from labels if available."""
         return self.labels.get("build_id")  # pylint: disable=no-member
 
     @property
-    def arch(self) -> Optional[str]:
+    def arch(self) -> str | None:
         """Get architecture from labels if available."""
         return self.labels.get("arch")  # pylint: disable=no-member
 
     @property
-    def namespace(self) -> Optional[str]:
+    def namespace(self) -> str | None:
         """Get namespace from labels if available."""
         return self.labels.get("namespace")  # pylint: disable=no-member
 
     @property
-    def parent_package(self) -> Optional[str]:
+    def parent_package(self) -> str | None:
         """Get parent_package from labels if available."""
         return self.labels.get("parent_package")  # pylint: disable=no-member
 
@@ -120,24 +120,24 @@ class PulledArtifacts(KonfluxBaseModel):
         rpms: Dictionary of RPM artifacts (name -> ArtifactFile)
     """
 
-    sboms: Dict[str, ArtifactFile] = Field(default_factory=dict)
-    logs: Dict[str, ArtifactFile] = Field(default_factory=dict)
-    rpms: Dict[str, ArtifactFile] = Field(default_factory=dict)
+    sboms: dict[str, ArtifactFile] = Field(default_factory=dict)
+    logs: dict[str, ArtifactFile] = Field(default_factory=dict)
+    rpms: dict[str, ArtifactFile] = Field(default_factory=dict)
 
     @property
     def total_count(self) -> int:
         """Total number of artifacts across all types."""
         return len(self.sboms) + len(self.logs) + len(self.rpms)
 
-    def add_sbom(self, name: str, file: str, labels: Dict[str, str]) -> None:
+    def add_sbom(self, name: str, file: str, labels: dict[str, str]) -> None:
         """Add a SBOM artifact."""
         self.sboms[name] = ArtifactFile(file=file, labels=labels)  # pylint: disable=unsupported-assignment-operation
 
-    def add_log(self, name: str, file: str, labels: Dict[str, str]) -> None:
+    def add_log(self, name: str, file: str, labels: dict[str, str]) -> None:
         """Add a log artifact."""
         self.logs[name] = ArtifactFile(file=file, labels=labels)  # pylint: disable=unsupported-assignment-operation
 
-    def add_rpm(self, name: str, file: str, labels: Dict[str, str]) -> None:
+    def add_rpm(self, name: str, file: str, labels: dict[str, str]) -> None:
         """Add an RPM artifact."""
         self.rpms[name] = ArtifactFile(file=file, labels=labels)  # pylint: disable=unsupported-assignment-operation
 
@@ -183,13 +183,13 @@ class ArtifactMetadata(KonfluxBaseModel):
 
     model_config = ConfigDict(extra="ignore", validate_assignment=True, frozen=False)
 
-    labels: Dict[str, str] = Field(default_factory=dict)
-    url: Optional[str] = None
-    sha256: Optional[str] = None
+    labels: dict[str, str] = Field(default_factory=dict)
+    url: str | None = None
+    sha256: str | None = None
 
     @field_validator("url")
     @classmethod
-    def _normalize_url(cls, v: Optional[str]) -> Optional[str]:
+    def _normalize_url(cls, v: str | None) -> str | None:
         if v is None:
             return None
         s = str(v).strip()
@@ -204,22 +204,22 @@ class ArtifactMetadata(KonfluxBaseModel):
         return s if s else None
 
     @property
-    def build_id(self) -> Optional[str]:
+    def build_id(self) -> str | None:
         """Get build ID from labels."""
         return self.labels.get("build_id")  # pylint: disable=no-member
 
     @property
-    def arch(self) -> Optional[str]:
+    def arch(self) -> str | None:
         """Get architecture from labels."""
         return self.labels.get("arch")  # pylint: disable=no-member
 
     @property
-    def namespace(self) -> Optional[str]:
+    def namespace(self) -> str | None:
         """Get namespace from labels."""
         return self.labels.get("namespace")  # pylint: disable=no-member
 
     @property
-    def parent_package(self) -> Optional[str]:
+    def parent_package(self) -> str | None:
         """Get parent package from labels."""
         return self.labels.get("parent_package")  # pylint: disable=no-member
 
@@ -233,8 +233,8 @@ class ArtifactJsonResponse(KonfluxBaseModel):
         distributions: Optional map of distribution slot to base URL (may be omitted in JSON)
     """
 
-    artifacts: Dict[str, ArtifactMetadata] = Field(default_factory=dict)
-    distributions: Optional[Dict[str, AnyHttpUrl]] = None
+    artifacts: dict[str, ArtifactMetadata] = Field(default_factory=dict)
+    distributions: dict[str, AnyHttpUrl] | None = None
 
     @property
     def artifact_count(self) -> int:
@@ -247,24 +247,24 @@ class ArtifactJsonResponse(KonfluxBaseModel):
         return bool(self.distributions)
 
     @property
-    def rpms_distribution_url(self) -> Optional[str]:
+    def rpms_distribution_url(self) -> str | None:
         """Get RPMs distribution URL."""
         v = (self.distributions or {}).get("rpms")
         return str(v) if v is not None else None
 
     @property
-    def logs_distribution_url(self) -> Optional[str]:
+    def logs_distribution_url(self) -> str | None:
         """Get logs distribution URL."""
         v = (self.distributions or {}).get("logs")
         return str(v) if v is not None else None
 
     @property
-    def sbom_distribution_url(self) -> Optional[str]:
+    def sbom_distribution_url(self) -> str | None:
         """Get SBOM distribution URL."""
         v = (self.distributions or {}).get("sbom")
         return str(v) if v is not None else None
 
-    def get_artifact(self, name: str) -> Optional[ArtifactMetadata]:
+    def get_artifact(self, name: str) -> ArtifactMetadata | None:
         """Get artifact metadata by name."""
         return self.artifacts.get(name)  # pylint: disable=no-member
 
@@ -294,7 +294,7 @@ class ArtifactData(KonfluxBaseModel):
     """
 
     artifact_json: ArtifactJsonResponse = Field(default_factory=ArtifactJsonResponse)
-    artifacts: Dict[str, ArtifactMetadata] = Field(default_factory=dict)
+    artifacts: dict[str, ArtifactMetadata] = Field(default_factory=dict)
 
     @property
     def artifact_count(self) -> int:
@@ -306,7 +306,7 @@ class ArtifactData(KonfluxBaseModel):
         """Check if distributions are present in metadata."""
         return self.artifact_json.has_distributions  # pylint: disable=no-member
 
-    def get_distributions(self) -> Dict[str, str]:
+    def get_distributions(self) -> dict[str, str]:
         """Get distribution URLs (empty dict when omitted)."""
         d = self.artifact_json.distributions
         if not d:
@@ -323,8 +323,8 @@ class ContentData(KonfluxBaseModel):
         artifacts: List of artifact information dictionaries
     """
 
-    content_results: List[PulpContentRow] = Field(default_factory=list)
-    artifacts: List[Dict[str, str]] = Field(default_factory=list)
+    content_results: list[PulpContentRow] = Field(default_factory=list)
+    artifacts: list[dict[str, str]] = Field(default_factory=list)
 
     @property
     def artifact_count(self) -> int:
@@ -348,11 +348,11 @@ class FileInfoModel(KonfluxBaseModel):
 
     pulp_href: str
     file: str  # URL
-    sha256: Optional[str] = None
-    size: Optional[int] = None
+    sha256: str | None = None
+    size: int | None = None
 
 
-FileInfoMap = Dict[str, FileInfoModel]
+FileInfoMap = dict[str, FileInfoModel]
 
 
 __all__ = [

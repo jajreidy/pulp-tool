@@ -1,14 +1,24 @@
 # Pre-commit hooks configuration for pulp-tool
-# See https://pre-commit.com for more information
+# Mirrors GitHub Actions: python-diff-lint.yml, security-scan.yml (pip-audit)
+#
+# Commit stage: lint + pip-audit (same commands/paths as CI).
+# Push stage: test-diff-coverage + checkton (PR-only jobs in CI).
+#
+# Install hooks:
+#   pre-commit install
+#   pre-commit install --hook-type pre-push
+#
+# Run everything locally (commit + pre-push stages):
+#   pre-commit run --all-files
+#   pre-commit run --hook-stage pre-push --all-files
 
 repos:
-  # General file checks
+  # General hygiene (local-only; not duplicated in CI)
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v6.0.0
     hooks:
       - id: trailing-whitespace
       - id: end-of-file-fixer
-      - id: check-yaml
       - id: check-toml
       - id: check-json
       - id: check-added-large-files
@@ -18,43 +28,108 @@ repos:
       - id: mixed-line-ending
         args: [--fix=lf]
 
-  # Python code formatting
-  - repo: https://github.com/psf/black
-    rev: 26.3.1
+  # python-lint job (.github/workflows/python-diff-lint.yml)
+  - repo: local
     hooks:
-      - id: black
-        language_version: python3
-        args: [--line-length=120]
+      - id: lock-check
+        name: lock-check (uv.lock)
+        entry: make lock-check
+        language: system
+        pass_filenames: false
+        always_run: true
 
-  # Python linting
-  - repo: https://github.com/pycqa/flake8
-    rev: 7.3.0
-    hooks:
-      - id: flake8
-        args: [--max-line-length=120, --extend-ignore=E203]
-        additional_dependencies:
-          - flake8>=3.8
+      - id: ruff-check
+        name: ruff check
+        entry: ruff check pulp_tool tests
+        language: system
+        pass_filenames: false
+        always_run: true
 
-  # Type checking
-  - repo: https://github.com/pre-commit/mirrors-mypy
-    rev: v2.0.0
-    hooks:
-      - id: mypy
-        additional_dependencies:
-          - types-requests
-          - types-toml
-        args: [--ignore-missing-imports, --show-error-codes]
-        # Check both source and test files
+      - id: ruff-format
+        name: ruff format --check
+        entry: ruff format --check pulp_tool tests
+        language: system
+        pass_filenames: false
+        always_run: true
 
-  # Pylint (errors only)
-  - repo: https://github.com/pycqa/pylint
-    rev: v4.0.5
-    hooks:
       - id: pylint
-        args: [--errors-only, --max-line-length=120]
-        # Check both source and test files
+        name: pylint (errors only)
+        entry: pylint pulp_tool tests --errors-only
+        language: system
+        pass_filenames: false
+        always_run: true
 
-  # Conventional Commits (optional locally: pre-commit install --hook-type commit-msg)
+      - id: mypy
+        name: mypy
+        entry: mypy pulp_tool tests --show-error-codes
+        language: system
+        pass_filenames: false
+        always_run: true
+
+  # security-scan job (pip-audit)
+  - repo: local
+    hooks:
+      - id: pip-audit
+        name: pip-audit (dev deps)
+        entry: make audit
+        language: system
+        pass_filenames: false
+        always_run: true
+
+  # repo-lint job (yamllint --strict .)
+  - repo: local
+    hooks:
+      - id: yamllint
+        name: yamllint
+        entry: yamllint --strict .
+        language: system
+        pass_filenames: false
+        always_run: true
+
+  - repo: https://github.com/shellcheck-py/shellcheck-py
+    rev: v0.10.0.1
+    hooks:
+      - id: shellcheck
+        files: ^scripts/.*\.sh$
+
+  - repo: https://github.com/codespell-project/codespell
+    rev: v2.4.1
+    hooks:
+      - id: codespell
+        args:
+          - --skip=uv.lock,htmlcov,.git
+          - --ignore-words=.codespell-ignore-words.txt
+        pass_filenames: false
+        always_run: true
+
+  - repo: local
+    hooks:
+      - id: hadolint
+        name: hadolint
+        entry: scripts/run-hadolint.sh
+        language: script
+        files: ^Dockerfile$
+
+  # tekton-lint + test-diff-coverage jobs (PR CI; run on pre-push)
+  - repo: local
+    hooks:
+      - id: checkton
+        name: checkton (Tekton embedded scripts)
+        entry: scripts/run-checkton.sh
+        language: script
+        pass_filenames: false
+        always_run: true
+        stages: [pre-push]
+
+      - id: test-diff-coverage
+        name: test-diff-coverage (100%)
+        entry: make test-diff-coverage
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [pre-push]
+
+  # Conventional Commits (optional: pre-commit install --hook-type commit-msg)
   - repo: https://github.com/compilerla/conventional-pre-commit
     rev: v4.4.0
     hooks:

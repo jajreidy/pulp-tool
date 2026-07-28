@@ -5,10 +5,12 @@ This module contains comprehensive tests for the DistributionClient class
 and related distribution functionality.
 """
 
-import pytest
-from unittest.mock import patch, mock_open
+from unittest.mock import mock_open, patch
+
 import httpx
+import pytest
 from httpx import HTTPError
+
 from pulp_tool.api import DistributionClient
 
 

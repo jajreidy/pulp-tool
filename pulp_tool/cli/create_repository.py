@@ -1,18 +1,16 @@
 import logging
 import sys
-from typing import Optional
 
 import click
 from pydantic import ValidationError
-
 
 from ..api import PulpClient
 from ..models.cli import CreateRepository, DistributionOptions, Package, RepositoryOptions
 from ..models.pulp_api import (
     DistributionRequest,
     RepositoryRequest,
-    RpmRepositoryRequest,
     RpmDistributionRequest,
+    RpmRepositoryRequest,
 )
 from ..utils import PulpHelper, setup_logging
 from ..utils.error_handling import handle_generic_error
@@ -66,7 +64,7 @@ def create_repository(  # pylint: disable=too-many-arguments,too-many-positional
     skip_publish: bool,
     base_path: str,
     generate_repo_config: bool,
-    json_data: Optional[str],
+    json_data: str | None,
 ):
     """
     Create a custom defined repository.
@@ -143,7 +141,6 @@ def create_repository(  # pylint: disable=too-many-arguments,too-many-positional
 
     client = None
     try:
-
         client = PulpClient.create_from_config_file(
             path=config,
             correlation_namespace=(ctx.obj.get("namespace") or None),

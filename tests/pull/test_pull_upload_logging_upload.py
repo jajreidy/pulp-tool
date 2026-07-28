@@ -6,8 +6,10 @@ import os
 import re
 import tempfile
 from unittest.mock import Mock, mock_open, patch
+
 import httpx
 from httpx import HTTPError
+
 from pulp_tool.models.artifacts import PulledArtifacts
 from pulp_tool.models.results import PulpResultsModel
 from pulp_tool.pull import upload_downloaded_files_to_pulp

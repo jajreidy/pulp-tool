@@ -5,16 +5,16 @@ This module provides functions for detecting artifact types from filenames
 and organizing artifacts by their content type.
 """
 
+import logging
 import os
 import re
-import logging
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any
 
 from ..models.artifacts import ArtifactMetadata
 from .constants import ARCH_DETECT_WARNING_MSG, SUPPORTED_ARCHITECTURES
 
 
-def rpm_packages_letter_and_basename(path_or_filename: str) -> Tuple[str, str]:
+def rpm_packages_letter_and_basename(path_or_filename: str) -> tuple[str, str]:
     """
     Basename and createrepo-style Packages subdirectory letter for an RPM.
 
@@ -42,7 +42,7 @@ def rpm_packages_letter_and_basename(path_or_filename: str) -> Tuple[str, str]:
     return basename, basename[0].lower()
 
 
-def detect_artifact_type(artifact_name: str) -> Optional[str]:
+def detect_artifact_type(artifact_name: str) -> str | None:
     """
     Detect artifact type from artifact name.
 
@@ -78,7 +78,7 @@ def detect_artifact_type(artifact_name: str) -> Optional[str]:
     return None
 
 
-def build_artifact_url(artifact_name: str, artifact_type: str, distros: Dict[str, str]) -> Optional[str]:
+def build_artifact_url(artifact_name: str, artifact_type: str, distros: dict[str, str]) -> str | None:
     """
     Build the download URL for an artifact based on its type.
 
@@ -108,7 +108,7 @@ def build_artifact_url(artifact_name: str, artifact_type: str, distros: Dict[str
     return None
 
 
-def extract_architecture_from_metadata(metadata: Union[Dict[str, Any], ArtifactMetadata]) -> str:
+def extract_architecture_from_metadata(metadata: dict[str, Any] | ArtifactMetadata) -> str:
     """
     Extract architecture from artifact metadata.
 
@@ -130,7 +130,7 @@ def extract_architecture_from_metadata(metadata: Union[Dict[str, Any], ArtifactM
     return metadata.get("labels", {}).get("arch", "noarch")
 
 
-def _embedded_artifact_url(metadata: Any) -> Optional[str]:
+def _embedded_artifact_url(metadata: Any) -> str | None:
     """
     Return the download URL from pulp_results.json-style artifact metadata if set.
 
@@ -150,13 +150,13 @@ def _embedded_artifact_url(metadata: Any) -> Optional[str]:
 
 
 def categorize_artifacts_by_type(
-    artifacts: Dict[str, Any],
-    distros: Dict[str, str],
-    content_types: Optional[List[str]] = None,
-    archs: Optional[List[str]] = None,
+    artifacts: dict[str, Any],
+    distros: dict[str, str],
+    content_types: list[str] | None = None,
+    archs: list[str] | None = None,
     *,
     embedded_urls_only: bool = False,
-) -> List[Tuple[str, str, str, str]]:
+) -> list[tuple[str, str, str, str]]:
     """
     Categorize artifacts and prepare download information.
 
@@ -215,7 +215,7 @@ def categorize_artifacts_by_type(
     return download_tasks
 
 
-def detect_arch_from_filepath(filepath: str) -> Optional[str]:
+def detect_arch_from_filepath(filepath: str) -> str | None:
     """
     Try to detect architecture from file path.
 
@@ -248,7 +248,7 @@ def detect_arch_from_filepath(filepath: str) -> Optional[str]:
     return None
 
 
-def detect_arch_from_rpm_filename(rpm_path: str) -> Optional[str]:
+def detect_arch_from_rpm_filename(rpm_path: str) -> str | None:
     """
     Try to detect architecture from RPM filename.
 
@@ -282,10 +282,10 @@ def detect_arch_from_rpm_filename(rpm_path: str) -> Optional[str]:
 
 
 def group_rpm_paths_by_arch(
-    rpm_paths: List[str],
+    rpm_paths: list[str],
     *,
-    explicit_arch: Optional[str] = None,
-) -> Dict[str, List[str]]:
+    explicit_arch: str | None = None,
+) -> dict[str, list[str]]:
     """
     Group RPM file paths by detected or explicit architecture.
 
@@ -302,7 +302,7 @@ def group_rpm_paths_by_arch(
         >>> group_rpm_paths_by_arch(["/path/pkg.x86_64.rpm", "/path/pkg.noarch.rpm"])
         {'x86_64': ['/path/pkg.x86_64.rpm'], 'noarch': ['/path/pkg.noarch.rpm']}
     """
-    rpms_by_arch: Dict[str, List[str]] = {}
+    rpms_by_arch: dict[str, list[str]] = {}
     for fp in rpm_paths:
         if explicit_arch:
             arch = explicit_arch

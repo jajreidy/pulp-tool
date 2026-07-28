@@ -15,12 +15,12 @@ Modules:
 from .download import (
     _categorize_artifacts,
     download_artifacts_concurrently,
-    load_artifact_metadata,
     load_and_validate_artifacts,
+    load_artifact_metadata,
     setup_repositories_if_needed,
 )
-from .upload import upload_downloaded_files_to_pulp
 from .reporting import generate_pull_report
+from .upload import upload_downloaded_files_to_pulp
 
 __all__ = [
     "_categorize_artifacts",

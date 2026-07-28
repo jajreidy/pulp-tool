@@ -6,9 +6,9 @@ abstracting the complexity of downloading and optionally re-uploading artifacts.
 """
 
 import logging
-from typing import Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Optional
 
-from ..models.artifacts import ArtifactData, PulledArtifacts
+from ..models.artifacts import ArtifactData, ArtifactJsonResponse, PulledArtifacts
 from ..models.context import PullContext
 from ..models.results import PulpResultsModel
 
@@ -94,7 +94,7 @@ class PullService:
         pulp_client: "PulpClient",
         pulled_artifacts: PulledArtifacts,
         context: PullContext,
-    ) -> Optional[PulpResultsModel]:
+    ) -> PulpResultsModel | None:
         """
         Upload downloaded artifacts to Pulp repositories.
 
@@ -112,7 +112,9 @@ class PullService:
         return upload_info
 
     def setup_destination_repositories(
-        self, context: PullContext, artifact_json: Optional[dict] = None
+        self,
+        context: PullContext,
+        artifact_json: dict[str, Any] | ArtifactJsonResponse | None = None,
     ) -> Optional["PulpClient"]:
         """
         Set up destination repositories if configuration is provided.
@@ -145,7 +147,7 @@ class PullService:
         completed: int,
         failed: int,
         context: PullContext,
-        upload_info: Optional[PulpResultsModel] = None,
+        upload_info: PulpResultsModel | None = None,
     ) -> None:
         """
         Generate and display pull report.

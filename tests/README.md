@@ -27,7 +27,7 @@ Property tests live alongside other tests (for example `tests/utils/test_hypothe
 
 Hypothesis can **generate** initial pytest-style property tests via the CLI. See the [Ghostwriter](https://hypothesis.readthedocs.io/en/latest/reference/integrations.html#ghostwriter) section of the Hypothesis docs (`hypothesis write --help` for options such as `--roundtrip`, `--equivalent`, `--idempotent`, `--except`).
 
-- Requires **Black** (the ghostwriter invokes it); run from an environment with `pip install -e ".[dev]"` so Hypothesis and dev tooling match CI.
+- Requires **Ruff format** (the ghostwriter invokes it); run from an environment with `pip install -e ".[dev]"` so Hypothesis and dev tooling match CI.
 - Example: `hypothesis write pulp_tool.utils.validation.build_id.strip_namespace_from_build_id` prints starter tests you copy into an appropriate `tests/utils/` (or similar) module, then edit.
 - **Always** review output: adjust imports, strategies, and settings; do not use pytest **function-scoped** fixtures as `@given` parameters (Hypothesis will warn—use explicit setup/teardown or module-scoped fixtures per Hypothesis guidance); keep the **100% PR diff coverage** merge gate in mind.
 
@@ -59,6 +59,7 @@ def test_with_fixture(temp_files):
     my_file.write_text('{"test": true}')
     # Automatic cleanup
 
+
 def test_with_factory(create_temp_file):
     """Factory fixture for multiple files."""
     config = create_temp_file("config.toml", "[cli]\nkey = value")
@@ -81,8 +82,8 @@ If you must create temp files manually (e.g., testing specific file paths), **al
 ```python
 def test_manual_cleanup():
     """Manual temp file with proper cleanup."""
-    with tempfile.NamedTemporaryFile(mode='w', delete=False) as f:
-        f.write('test content')
+    with tempfile.NamedTemporaryFile(mode="w", delete=False) as f:
+        f.write("test content")
         temp_path = f.name
 
     try:
@@ -106,7 +107,7 @@ def test_multiple_files():
         for i in range(3):
             with tempfile.NamedTemporaryFile(delete=False) as f:
                 temp_files.append(f.name)
-                f.write(f'file {i}'.encode())
+                f.write(f"file {i}".encode())
 
         # Your test code here
     finally:
@@ -122,6 +123,7 @@ You can also manually register files for automatic cleanup:
 
 ```python
 from tests.conftest import register_temp_file, unregister_temp_file
+
 
 def test_with_registration():
     temp_path = tempfile.mktemp()
@@ -142,6 +144,7 @@ Use Click's `CliRunner` for testing CLI commands:
 ```python
 from click.testing import CliRunner
 from pulp_tool.cli import cli
+
 
 def test_cli_command(tmp_path):
     """Test CLI with automatic cleanup."""
@@ -184,6 +187,7 @@ def test_good():
         assert something()
     finally:
         cleanup(temp_path)
+
 
 # BETTER: Use fixtures
 def test_better(tmp_path):

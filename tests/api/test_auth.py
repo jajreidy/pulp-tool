@@ -6,8 +6,10 @@ and related authentication functionality.
 """
 
 from datetime import datetime, timedelta
-import pytest
+
 import httpx
+import pytest
+
 from pulp_tool.api import OAuth2ClientCredentialsAuth
 
 

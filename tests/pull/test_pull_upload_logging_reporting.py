@@ -6,6 +6,7 @@ import logging
 import os
 import tempfile
 from unittest.mock import Mock, patch
+
 from pulp_tool.models.artifacts import ArtifactFile, PulledArtifacts
 from pulp_tool.models.results import PulpResultsModel
 from pulp_tool.pull.reporting import (
@@ -15,10 +16,10 @@ from pulp_tool.pull.reporting import (
     _get_file_size_safe,
     _log_artifacts_downloaded,
     _log_build_information,
+    _log_pull_summary,
     _log_pulp_upload_info,
     _log_single_artifact,
     _log_storage_summary,
-    _log_pull_summary,
     _log_upload_summary,
     generate_pull_report,
 )

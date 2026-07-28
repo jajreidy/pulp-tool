@@ -5,7 +5,9 @@ import tempfile
 from concurrent.futures import Future
 from typing import Any
 from unittest.mock import Mock, patch
+
 import pytest
+
 from pulp_tool.models.context import UploadRpmContext
 from pulp_tool.models.repository import RepositoryRefs
 from pulp_tool.models.results import PulpResultsModel, RpmUploadResult
@@ -34,7 +36,7 @@ class TestUploadOrchestratorFindExistingArchitectures:
                 result = orchestrator._find_existing_architectures(tmpdir)
                 assert "x86_64" in result
                 debug_calls = [str(call) for call in mock_logging.debug.call_args_list]
-                assert any(("Skipping" in str(call) for call in debug_calls))
+                assert any("Skipping" in str(call) for call in debug_calls)
 
     def test_find_existing_architectures_empty(self) -> None:
         """Test _find_existing_architectures with no existing architectures."""
@@ -147,4 +149,4 @@ class TestUploadOrchestratorCollectArchitectureResults:
         with patch("pulp_tool.utils.upload_orchestrator.logging") as mock_logging:
             orchestrator._collect_architecture_results(future_to_arch)
             debug_calls = [str(call) for call in mock_logging.debug.call_args_list]
-            assert any(("Processed architectures" in str(call) for call in debug_calls))
+            assert any("Processed architectures" in str(call) for call in debug_calls)

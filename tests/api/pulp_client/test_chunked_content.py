@@ -3,12 +3,12 @@
 import asyncio
 import json
 from unittest.mock import patch
+
 import httpx
 import pytest
 
 
 class TestPulpClient:
-
     def test_chunked_get_no_chunking(self, mock_pulp_client, httpx_mock) -> None:
         """Test _chunked_get method without chunking."""
         httpx_mock.get("https://test.com/api").mock(

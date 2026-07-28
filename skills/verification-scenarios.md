@@ -40,8 +40,11 @@ Baseline failure modes and how each skill addresses them. Re-run when editing sk
 
 | RED (without skill) | GREEN (with skill) |
 |---------------------|-------------------|
-| Single pre-commit run after partial fix | Loop until zero failures |
+| Single pre-commit run after partial fix | Loop until zero failures (commit + pre-push stages) |
 | Chase diff-cover as lint failure | Points to fixing-diff-cover-failures skill |
+| Expect Black/Flake8 or `.flake8` | Ruff + config in `pyproject.toml` `[tool.ruff]` |
+| `hadolint` not found on PATH | `scripts/run-hadolint.sh` caches binary; checkton needs docker/podman |
+| `pip-audit` hook rewrites `_version.py` | `make audit` uses `uv export` (no editable install) |
 
 ## Structural checks
 

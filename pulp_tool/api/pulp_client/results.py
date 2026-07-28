@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import os
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from ...models.artifacts import ContentData, ExtraArtifactRef, FileInfoMap, PulpContentRow
 from ...utils.response_utils import content_find_results_from_response
@@ -15,9 +15,7 @@ from ...utils.rpm_operations import calculate_sha256_checksum
 class PulpClientResultsMixin:
     """Mixin: ``gather_content_data`` and ``build_results_structure`` for upload results."""
 
-    def gather_content_data(
-        self, build_id: str, extra_artifacts: Optional[List[ExtraArtifactRef]] = None
-    ) -> ContentData:
+    def gather_content_data(self, build_id: str, extra_artifacts: list[ExtraArtifactRef] | None = None) -> ContentData:
         """
         Gather content data and artifacts for a build ID.
 
@@ -28,8 +26,8 @@ class PulpClientResultsMixin:
         Returns:
             ContentData containing content results and artifacts
         """
-        raw_results: List[Dict[str, Any]] = []
-        artifacts: List[Dict[str, str]] = []
+        raw_results: list[dict[str, Any]] = []
+        artifacts: list[dict[str, str]] = []
 
         # Always use bulk query by build_id for efficiency
         # This gets all content in a single API call instead of N individual calls
@@ -111,11 +109,11 @@ class PulpClientResultsMixin:
         results_model: Any,
         *,
         local_path: str,
-        labels: Dict[str, str],
+        labels: dict[str, str],
         is_rpm: bool,
-        distribution_urls: Dict[str, str],
+        distribution_urls: dict[str, str],
         target_arch_repo: bool = False,
-        file_relative_path: Optional[str] = None,
+        file_relative_path: str | None = None,
     ) -> None:
         """
         Add one uploaded artifact to PulpResultsModel using the same keys and URLs as gather/build.
@@ -142,9 +140,9 @@ class PulpClientResultsMixin:
     def build_results_structure(
         self,
         results_model: Any,
-        content_results: List[PulpContentRow],
+        content_results: list[PulpContentRow],
         file_info_map: FileInfoMap,
-        distribution_urls: Optional[Dict[str, str]] = None,
+        distribution_urls: dict[str, str] | None = None,
         *,
         target_arch_repo: bool = False,
         merge: bool = False,

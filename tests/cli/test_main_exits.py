@@ -23,7 +23,6 @@ def test_main_pulp_tool_http_error_exits_3() -> None:
 
 
 def test_main_keyboard_interrupt_exits_130() -> None:
-    with patch("pulp_tool.cli.cli", side_effect=KeyboardInterrupt):
-        with pytest.raises(SystemExit) as exc:
-            main()
+    with patch("pulp_tool.cli.cli", side_effect=KeyboardInterrupt), pytest.raises(SystemExit) as exc:
+        main()
     assert exc.value.code == 130

@@ -7,9 +7,11 @@ log uploads, and artifact uploads to repositories.
 
 import os
 from unittest.mock import Mock, patch
+
 import pytest
 from httpx import HTTPError
-from pulp_tool.utils import create_labels, upload_log, upload_artifacts_to_repository
+
+from pulp_tool.utils import create_labels, upload_artifacts_to_repository, upload_log
 
 
 class TestLabelUtilities:

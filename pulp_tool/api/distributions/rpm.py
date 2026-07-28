@@ -5,7 +5,7 @@ This module provides RPM-specific distribution operations following Pulp's API s
 API Reference: https://docs.pulpproject.org/pulp_rpm/restapi.html#distributions
 """
 
-from typing import Any, Optional
+from typing import Any
 
 import httpx
 
@@ -16,7 +16,7 @@ from .base import BaseDistributionMixin
 class RpmDistributionMixin(BaseDistributionMixin):
     """Mixin that provides RPM distribution operations for Pulp."""
 
-    def create_rpm_distribution(self, request: RpmDistributionRequest) -> tuple[httpx.Response, Optional[str]]:
+    def create_rpm_distribution(self, request: RpmDistributionRequest) -> tuple[httpx.Response, str | None]:
         """
         Create an RPM distribution.
 
@@ -55,7 +55,7 @@ class RpmDistributionMixin(BaseDistributionMixin):
 
     def list_rpm_distributions(
         self, **query_params: Any
-    ) -> tuple[list[RpmDistributionResponse], Optional[str], Optional[str], int]:
+    ) -> tuple[list[RpmDistributionResponse], str | None, str | None, int]:
         """
         List RPM distributions with pagination.
 

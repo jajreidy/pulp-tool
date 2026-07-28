@@ -6,7 +6,10 @@ This module tests file validation, build ID validation, and sanitization functio
 
 import os
 import tempfile
+
 import pytest
+
+from pulp_tool.models.artifacts import ArtifactJsonResponse, ArtifactMetadata, PulledArtifacts
 from pulp_tool.utils import (
     extract_build_id_from_artifact_json,
     extract_build_id_from_artifacts,
@@ -20,7 +23,6 @@ from pulp_tool.utils.validation.build_id import (
     extract_metadata_from_artifact_json,
     strip_namespace_from_build_id,
 )
-from pulp_tool.models.artifacts import ArtifactJsonResponse, ArtifactMetadata, PulledArtifacts
 
 
 class TestFileValidation:
@@ -102,7 +104,7 @@ class TestRepositoryValidation:
         is_valid, errors = validate_repository_setup(repositories)
         assert is_valid is False
         assert len(errors) > 0
-        assert any(("Missing logs repository PRN" in error for error in errors))
+        assert any("Missing logs repository PRN" in error for error in errors)
 
     def test_validate_repository_setup_missing_rpm_href(self) -> None:
         """Test validate_repository_setup function with missing RPM href."""
@@ -114,7 +116,7 @@ class TestRepositoryValidation:
         }
         is_valid, errors = validate_repository_setup(repositories)
         assert is_valid is False
-        assert any(("Missing rpms repository href" in error for error in errors))
+        assert any("Missing rpms repository href" in error for error in errors)
 
     def test_validate_repository_setup_invalid_reference(self) -> None:
         """Test validate_repository_setup with invalid repository reference."""
@@ -130,7 +132,7 @@ class TestRepositoryValidation:
         }
         is_valid, errors = validate_repository_setup(repositories)
         assert is_valid is False
-        assert any(("Invalid repository reference" in error for error in errors))
+        assert any("Invalid repository reference" in error for error in errors)
 
     def test_validate_repository_setup_required_types_excludes_artifacts(self) -> None:
         """Test validate_repository_setup with required_types excluding artifacts."""

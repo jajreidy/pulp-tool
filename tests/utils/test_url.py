@@ -5,11 +5,13 @@ This module tests URL utilities including build ID extraction,
 validation, and determination from various sources.
 """
 
-from unittest.mock import Mock
-import pytest
-import tempfile
 import os
-from pulp_tool.utils import extract_build_id_from_artifact_json, extract_build_id_from_artifacts, determine_build_id
+import tempfile
+from unittest.mock import Mock
+
+import pytest
+
+from pulp_tool.utils import determine_build_id, extract_build_id_from_artifact_json, extract_build_id_from_artifacts
 from pulp_tool.utils.url import get_pulp_content_base_url
 
 

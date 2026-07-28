@@ -13,7 +13,7 @@ try:
     from pythonjsonlogger.json import JsonFormatter as JsonFormatterCls
 except ImportError:
     from pythonjsonlogger.jsonlogger import JsonFormatter as JsonFormatterCls
-from pulp_tool.utils import setup_logging, WrappingFormatter
+from pulp_tool.utils import WrappingFormatter, setup_logging
 
 
 class TestLoggingUtilities(unittest.TestCase):

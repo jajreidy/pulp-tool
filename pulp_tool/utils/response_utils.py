@@ -7,14 +7,14 @@ from the Pulp API, eliminating code duplication.
 
 import logging
 import traceback
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import httpx
 
 from ..models.pulp_api import TaskResponse
 
 
-def parse_json_response(response: httpx.Response, operation: str, *, check_success: bool = True) -> Dict[str, Any]:
+def parse_json_response(response: httpx.Response, operation: str, *, check_success: bool = True) -> dict[str, Any]:
     """
     Parse JSON response with error handling.
 
@@ -30,7 +30,7 @@ def parse_json_response(response: httpx.Response, operation: str, *, check_succe
         ValueError: If JSON parsing fails or response is not successful
     """
     if check_success and not response.is_success:
-        raise ValueError(f"Response not successful for {operation}: " f"{response.status_code} - {response.text}")
+        raise ValueError(f"Response not successful for {operation}: {response.status_code} - {response.text}")
 
     try:
         return response.json()
@@ -135,7 +135,7 @@ def content_find_results_from_response(
     operation: str = "content search",
     *,
     check_success: bool = True,
-) -> List[Dict[str, Any]]:
+) -> list[dict[str, Any]]:
     """
     Parse the body of a Pulp ``GET /api/v3/content/`` response into normalized result dicts.
 
@@ -171,7 +171,7 @@ def content_find_results_from_response(
     return content_find_results_from_json(data)
 
 
-def content_find_results_from_json(data: Any) -> List[Dict[str, Any]]:
+def content_find_results_from_json(data: Any) -> list[dict[str, Any]]:
     """
     Normalize JSON from Pulp's generic ``/api/v3/content/`` list endpoint.
 
@@ -188,7 +188,7 @@ def content_find_results_from_json(data: Any) -> List[Dict[str, Any]]:
     return []
 
 
-def extract_single_result(response: httpx.Response, operation: str) -> Dict[str, Any]:
+def extract_single_result(response: httpx.Response, operation: str) -> dict[str, Any]:
     """
     Extract single result from response results list.
 
@@ -206,9 +206,7 @@ def extract_single_result(response: httpx.Response, operation: str) -> Dict[str,
     return results[0]
 
 
-def get_response_field(
-    response: httpx.Response, field_name: str, operation: str, *, default: Optional[Any] = None
-) -> Any:
+def get_response_field(response: httpx.Response, field_name: str, operation: str, *, default: Any | None = None) -> Any:
     """
     Get a specific field from response JSON.
 

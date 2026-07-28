@@ -7,7 +7,7 @@ API Reference: https://docs.pulpproject.org/pulp_rpm/restapi.html#content-packag
 
 import json
 import os
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import httpx
 
@@ -21,10 +21,10 @@ class RpmPackageContentMixin(BaseResourceMixin):
     def upload_rpm_package(
         self,
         file_path: str,
-        labels: Dict[str, str],
+        labels: dict[str, str],
         *,
         arch: str,
-        relative_path: Optional[str] = None,
+        relative_path: str | None = None,
     ) -> httpx.Response:
         """
         Upload an RPM package.
@@ -79,9 +79,7 @@ class RpmPackageContentMixin(BaseResourceMixin):
         response = self.session.get(url, timeout=self.timeout, **self.request_params)
         return self._parse_response(response, RpmPackageResponse, "get RPM package")
 
-    def list_rpm_packages(
-        self, **query_params: Any
-    ) -> tuple[list[RpmPackageResponse], Optional[str], Optional[str], int]:
+    def list_rpm_packages(self, **query_params: Any) -> tuple[list[RpmPackageResponse], str | None, str | None, int]:
         """
         List RPM packages with pagination.
 
@@ -99,7 +97,7 @@ class RpmPackageContentMixin(BaseResourceMixin):
         endpoint = "api/v3/content/rpm/packages/"
         return self._list_resources(endpoint, RpmPackageResponse, **query_params)
 
-    def get_rpm_by_pkg_ids(self, pkg_ids: List[str]) -> List[RpmPackageResponse]:
+    def get_rpm_by_pkg_ids(self, pkg_ids: list[str]) -> list[RpmPackageResponse]:
         """
         Get RPM packages by package IDs (checksums).
 

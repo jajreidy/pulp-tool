@@ -1,0 +1,19 @@
+---
+extends: default
+
+rules:
+  line-length:
+    max: 120
+    allow-non-breakable-inline-mappings: true
+  truthy:
+    allowed-values: ['true', 'false', 'on']
+  document-start: disable
+  comments:
+    min-spaces-from-content: 1
+  indentation:
+    spaces: 2
+    indent-sequences: whatever
+
+ignore: |
+  .venv/
+  htmlcov/

@@ -23,7 +23,7 @@ Thank you for your interest in contributing to Pulp Tool! This document provides
    ```bash
    make install-dev
    ```
-   This runs `pip install -e ".[dev]"` and `pre-commit install`.
+   This runs `pip install -e ".[dev]"`, `pre-commit install`, `pre-commit install --hook-type pre-push`, and optional commit-msg hooks.
 
 ### Using Development Scripts
 
@@ -90,35 +90,49 @@ pre-commit install --hook-type commit-msg
 
 ### Formatting
 
-We use [Black](https://black.readthedocs.io/) for code formatting with a line length of 120 characters.
+We use [Ruff](https://docs.astral.sh/ruff/) for code formatting and linting (replacing Black and Flake8) with a line length of 120 characters.
 
 ```bash
 # Format code
 make format
-# or: black pulp_tool/ tests/
+# or: ruff format pulp_tool/ tests/ && ruff check --fix pulp_tool/ tests/
 
-# Check formatting without changes
+# Check formatting and lint without changes
 make lint
-# or: black --check pulp_tool/ tests/
+# or: ruff check pulp_tool/ tests/ && ruff format --check pulp_tool/ tests/
 ```
 
 ### Linting
 
 We use multiple linting tools:
 
-- **Flake8**: Style guide enforcement
+- **Ruff**: Style guide enforcement, import sorting, and security checks (S ruleset)
 - **Pylint**: Code quality analysis (errors only in CI)
 - **Mypy**: Static type checking
+- **yamllint**, **ShellCheck**, **hadolint**, **codespell**: YAML, shell scripts, Dockerfile, and spelling (pre-commit + CI)
+- **Checkton**: ShellCheck on embedded Tekton scripts (pre-push hook + CI)
 
 ```bash
-# Run all linters
+# Run Python linters (same commands as CI python-lint job)
 make lint
 
 # Or individually:
-flake8 pulp_tool/ tests/
-pylint pulp_tool/ tests/ --errors-only   # CI also lints tests/
+ruff check pulp_tool/ tests/
+ruff format --check pulp_tool/ tests/
+pylint pulp_tool/ tests/ --errors-only
 mypy pulp_tool/ tests/ --show-error-codes
 ```
+
+**Pre-commit matches GitHub PR CI.** Commit hooks run lint + pip-audit; pre-push hooks run `make test-diff-coverage` and Checkton (install with `pre-commit install --hook-type pre-push`). Run everything locally:
+
+```bash
+make pre-commit-ci
+# or:
+pre-commit run --all-files
+pre-commit run --hook-stage pre-push --all-files   # needs git fetch origin first
+```
+
+Requires `pip install -e ".[dev]"` (ruff, pylint, mypy, yamllint, pre-commit). Hadolint is downloaded into the pre-commit cache on first use; codespell runs via the pre-commit hook environment. Checkton (pre-push) needs docker or podman.
 
 ### Type Annotations
 
@@ -153,8 +167,8 @@ make test
 make test-diff-coverage
 # Override base branch: make test-diff-coverage COMPARE_BRANCH=origin/my-base
 
-# Or with pytest directly
-pytest -v --tb=short --cov=pulp_tool --cov-report=term-missing --cov-fail-under=85
+# Or with pytest directly (options from pyproject.toml)
+pytest
 
 # Run specific test file
 pytest tests/cli/test_cli_core.py -v
@@ -205,7 +219,7 @@ def test_upload_content_success():
 
 1. **Update CHANGELOG.md**: Add an entry describing your changes
 2. **Update documentation**: If adding features, update README.md as needed
-3. **Run all checks**: Ensure `make check` passes (or run `make lint`, then `pre-commit run --all-files` twice, then `make test`)
+3. **Run all checks**: Ensure `make check` passes, or run `make pre-commit-ci` (matches GitHub PR CI), or `make lint` + `pre-commit run --all-files` + `git fetch origin` + `pre-commit run --hook-stage pre-push --all-files`
 4. **Verify PR diff coverage**: Run `make test-diff-coverage` (requires `git fetch origin` so `origin/main` or your `COMPARE_BRANCH` exists); CI fails below 100% on the diff
 5. **Write tests**: Add tests for new functionality (new/changed code requires 100% diff coverage)
 6. **Update type hints**: Ensure all functions have proper type annotations
@@ -215,8 +229,8 @@ def test_upload_content_success():
 - [ ] Code follows the project's style guidelines
 - [ ] All tests pass (`make test`)
 - [ ] PR diff coverage is 100% (`make test-diff-coverage` after `git fetch origin`)
-- [ ] All linters pass (`make lint`)
-- [ ] Pre-commit hooks pass (`pre-commit run --all-files`, run twice after fixing issues)
+- [ ] All linters pass (`make lint` or commit-stage pre-commit hooks)
+- [ ] Pre-commit hooks pass (`make pre-commit-ci`, or commit + pre-push stages separately)
 - [ ] Test coverage is maintained or improved (85%+ overall, 100% for new/changed lines)
 - [ ] CHANGELOG.md is updated
 - [ ] Documentation (e.g. README.md) is updated if needed

@@ -3,7 +3,9 @@ Tests for pulp_tool.pull module.
 """
 
 from unittest.mock import Mock, patch
+
 import pytest
+
 from pulp_tool.api import DistributionClient
 from pulp_tool.models.artifacts import PulledArtifacts
 from pulp_tool.pull import (
@@ -84,9 +86,9 @@ class TestTransferHelpers:
         }
         result = _categorize_artifacts(artifacts, distros)
         assert len(result) == 3
-        assert any((task.artifact_name == "file1.rpm" for task in result))
-        assert any((task.artifact_name == "file2.log" for task in result))
-        assert any((task.artifact_name == "sbom.json" for task in result))
+        assert any(task.artifact_name == "file1.rpm" for task in result)
+        assert any(task.artifact_name == "file2.log" for task in result)
+        assert any(task.artifact_name == "sbom.json" for task in result)
 
     def test_format_file_size(self) -> None:
         """Test file size formatting."""

@@ -40,7 +40,7 @@ Build metadata in tags (e.g. **`v1.2.3+build.1`**) is accepted by the workflow; 
 
 ## Before you tag
 
-1. Merge release changes to **`main`** and confirm CI is green (`make test`, `make test-diff-coverage`, `pre-commit run --all-files`).
+1. Merge release changes to **`main`** and confirm CI is green (`make test`, `make pre-commit-ci`, or `make test-diff-coverage` after `git fetch origin`).
 2. Update [`CHANGELOG.md`](../CHANGELOG.md): move items from **`[Unreleased]`** into a new **`[X.Y.Z]`** section with the release date, and add compare links at the bottom per [Keep a Changelog](https://keepachangelog.com/).
 3. Commit the changelog update on **`main`** if it is not already included in the release commit.
 

@@ -8,7 +8,9 @@ repository setup, distribution URL retrieval, and helper methods.
 from types import SimpleNamespace
 from typing import cast
 from unittest.mock import Mock, patch
+
 import pytest
+
 from pulp_tool.models.pulp_api import RpmDistributionRequest, RpmRepositoryRequest
 from pulp_tool.utils import PulpHelper, RepositoryRefs
 from pulp_tool.utils.repository_manager import RepositoryApiOps

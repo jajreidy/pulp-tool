@@ -146,7 +146,7 @@ Formal records: [ADR 0000 — how we record decisions](adr/0000-record-architect
 
 - **Setup:** [CONTRIBUTING.md](../CONTRIBUTING.md); `make install-dev` and the full command list live in [README.md § Development](../README.md#development).
 - **Tests:** `pytest`, `make test`, `make test-diff-coverage` (after `git fetch origin` for PR-style diff coverage).
-- **Quality:** Black, Flake8, Pylint, Mypy; `pre-commit run --all-files` (loop until clean).
+- **Quality:** Ruff (lint + format, S ruleset), Pylint (errors only), Mypy; yamllint, ShellCheck, hadolint, codespell, pip-audit, and Checkton in CI; `make pre-commit-ci` or `pre-commit run --all-files` plus pre-push stage (see [CONTRIBUTING.md](../CONTRIBUTING.md)).
 
 ---
 

@@ -8,18 +8,18 @@ and other artifacts to Pulp repositories.
 import glob
 import logging
 import os
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any
 
 import httpx
 
-from ..models.results import RpmUploadResult, PulpResultsModel
 from ..models.context import UploadContext
-from .error_handling import handle_generic_error
-from .validation import validate_file_path
+from ..models.results import PulpResultsModel, RpmUploadResult
 from .constants import SUPPORTED_ARCHITECTURES
+from .error_handling import handle_generic_error
+from .pulp_tasks import create_file_content_and_wait
 from .rpm_operations import upload_rpms_parallel
 from .rpm_overwrite import remove_rpms_matching_local_files_from_repository
-from .pulp_tasks import create_file_content_and_wait
+from .validation import validate_file_path
 
 if TYPE_CHECKING:
     from ..api.pulp_client import PulpClient
@@ -29,7 +29,7 @@ RPM_FILE_PATTERN = "*.rpm"
 LOG_FILE_PATTERN = "*.log"
 
 
-def create_labels(build_id: str, arch: str, namespace: str, parent_package: Optional[str], date: str) -> Dict[str, str]:
+def create_labels(build_id: str, arch: str, namespace: str, parent_package: str | None, date: str) -> dict[str, str]:
     """
     Create standard labels for Pulp content.
 
@@ -60,12 +60,12 @@ def upload_log(
     log_path: str,
     *,
     build_id: str,
-    labels: Dict[str, str],
+    labels: dict[str, str],
     arch: str,
-    results_model: Optional[PulpResultsModel] = None,
-    distribution_urls: Optional[Dict[str, str]] = None,
+    results_model: PulpResultsModel | None = None,
+    distribution_urls: dict[str, str] | None = None,
     target_arch_repo: bool = False,
-) -> List[str]:
+) -> list[str]:
     """
     Upload a log file to the specified file repository.
 
@@ -98,7 +98,7 @@ def upload_log(
     )
 
     if results_model is not None and distribution_urls is not None:
-        rel_path: Optional[str] = None
+        rel_path: str | None = None
         if task_response.result and isinstance(task_response.result, dict):
             rel_path = task_response.result.get("relative_path")
         if not rel_path:
@@ -120,14 +120,14 @@ def upload_log(
 
 def _upload_logs_sequential(
     client: "PulpClient",
-    logs: List[str],
+    logs: list[str],
     *,
     file_repository_prn: str,
     build_id: str,
-    labels: Dict[str, str],
+    labels: dict[str, str],
     arch: str,
-    results_model: Optional[PulpResultsModel] = None,
-    distribution_urls: Optional[Dict[str, str]] = None,
+    results_model: PulpResultsModel | None = None,
+    distribution_urls: dict[str, str] | None = None,
     target_arch_repo: bool = False,
 ) -> None:
     """
@@ -161,8 +161,8 @@ def _upload_logs_sequential(
 
 
 def upload_artifacts_to_repository(
-    client: "PulpClient", artifacts: Dict[str, Any], repository_prn: str, file_type: str
-) -> Tuple[int, List[str]]:
+    client: "PulpClient", artifacts: dict[str, Any], repository_prn: str, file_type: str
+) -> tuple[int, list[str]]:
     """
     Upload artifacts to a specific repository.
 
@@ -220,7 +220,7 @@ def upload_artifacts_to_repository(
 
 
 def upload_rpms(
-    rpms: List[str],
+    rpms: list[str],
     context: UploadContext,
     client: "PulpClient",
     arch: str,
@@ -228,9 +228,9 @@ def upload_rpms(
     rpm_repository_href: str,
     date: str,
     results_model: PulpResultsModel,
-    distribution_urls: Optional[Dict[str, str]] = None,
+    distribution_urls: dict[str, str] | None = None,
     target_arch_repo: bool = False,
-) -> List[str]:
+) -> list[str]:
     """
     Upload RPMs for a specific architecture.
 
@@ -322,7 +322,7 @@ def upload_rpms_logs(
     file_repository_prn: str,
     date: str,
     results_model: PulpResultsModel,
-    distribution_urls: Optional[Dict[str, str]] = None,
+    distribution_urls: dict[str, str] | None = None,
     target_arch_repo: bool = False,
 ) -> RpmUploadResult:
     """

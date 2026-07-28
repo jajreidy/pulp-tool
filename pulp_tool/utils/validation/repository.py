@@ -4,14 +4,12 @@ Repository validation utilities.
 This module provides functions for validating repository setup and configuration.
 """
 
-from typing import Dict, List, Optional, Tuple
-
 from ...utils.constants import REPOSITORY_TYPES
 
 
 def validate_repository_setup(
-    repositories: Dict[str, str], required_types: Optional[List[str]] = None
-) -> Tuple[bool, List[str]]:
+    repositories: dict[str, str], required_types: list[str] | None = None
+) -> tuple[bool, list[str]]:
     """
     Validate that repository setup is complete.
 

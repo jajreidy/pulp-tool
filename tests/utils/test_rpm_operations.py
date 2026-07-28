@@ -6,8 +6,10 @@ This module tests RPM checking, uploading, and processing functions.
 
 import os
 from unittest.mock import Mock, patch
-import pytest
+
 import httpx
+import pytest
+
 from pulp_tool.utils import upload_rpms_logs
 from pulp_tool.utils.rpm_operations import (
     calculate_sha256_checksum,
@@ -24,7 +26,7 @@ class TestChecksumUtilities:
         """Test _calculate_sha256_checksum function."""
         checksum = calculate_sha256_checksum(temp_file)
         assert len(checksum) == 64
-        assert all((c in "0123456789abcdef" for c in checksum))
+        assert all(c in "0123456789abcdef" for c in checksum)
 
     def test_calculate_sha256_checksum_file_not_found(self) -> None:
         """Test _calculate_sha256_checksum function with non-existent file."""

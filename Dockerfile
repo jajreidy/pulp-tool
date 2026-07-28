@@ -1,6 +1,6 @@
 # Dockerfile for pulp-tool
 # Base image: UBI 10 minimal (system python3 is 3.12)
-FROM registry.access.redhat.com/ubi10-minimal
+FROM registry.access.redhat.com/ubi10/ubi-minimal:10.2
 
 ARG VERSION=1.0.0
 ARG RELEASE=1

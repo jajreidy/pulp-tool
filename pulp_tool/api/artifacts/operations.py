@@ -5,7 +5,7 @@ This module provides artifact operations following Pulp's API structure.
 API Reference: https://docs.pulpproject.org/pulpcore/restapi.html#artifacts
 """
 
-from typing import Any, List, Optional
+from typing import Any
 
 from ...models.pulp_api import ArtifactResponse
 from ..base import BaseResourceMixin
@@ -33,7 +33,7 @@ class ArtifactMixin(BaseResourceMixin):
         response = self.session.get(url, timeout=self.timeout, **self.request_params)
         return self._parse_response(response, ArtifactResponse, "get artifact")
 
-    def list_artifacts(self, **query_params: Any) -> tuple[list[ArtifactResponse], Optional[str], Optional[str], int]:
+    def list_artifacts(self, **query_params: Any) -> tuple[list[ArtifactResponse], str | None, str | None, int]:
         """
         List artifacts with pagination.
 
@@ -51,7 +51,7 @@ class ArtifactMixin(BaseResourceMixin):
         endpoint = "api/v3/artifacts/"
         return self._list_resources(endpoint, ArtifactResponse, **query_params)
 
-    def get_file_locations(self, artifact_hrefs: List[str]) -> List[ArtifactResponse]:
+    def get_file_locations(self, artifact_hrefs: list[str]) -> list[ArtifactResponse]:
         """
         Get file locations for multiple artifacts.
 

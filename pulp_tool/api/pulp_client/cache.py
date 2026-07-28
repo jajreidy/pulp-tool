@@ -8,8 +8,9 @@ from __future__ import annotations
 
 import logging
 import time
+from collections.abc import Callable
 from functools import wraps
-from typing import Any, Callable, Dict, Optional, Tuple
+from typing import Any
 
 # Cache TTL (time-to-live) in seconds for GET request caching
 CACHE_TTL = 300  # 5 minutes
@@ -39,7 +40,7 @@ class PerformanceMetrics:
         """Log a task poll."""
         self.task_polls += 1
 
-    def get_summary(self) -> Dict[str, Any]:
+    def get_summary(self) -> dict[str, Any]:
         """
         Get metrics summary.
 
@@ -75,10 +76,10 @@ class TTLCache:
         Args:
             ttl: Time to live in seconds for cache entries
         """
-        self._cache: Dict[str, Tuple[Any, float]] = {}
+        self._cache: dict[str, tuple[Any, float]] = {}
         self._ttl = ttl
 
-    def get(self, key: str) -> Optional[Any]:
+    def get(self, key: str) -> Any | None:
         """
         Get value from cache if not expired.
 

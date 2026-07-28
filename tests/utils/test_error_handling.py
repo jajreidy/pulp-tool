@@ -1,7 +1,8 @@
 """Tests for error handling utilities."""
 
-import pytest
 import httpx
+import pytest
+
 from pulp_tool.utils.error_handling import (
     handle_generic_error,
     handle_http_error,

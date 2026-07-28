@@ -2,14 +2,15 @@
 
 import pytest
 from pydantic import ValidationError
-from pulp_tool.models.context import UploadContext, PullContext
+
 from pulp_tool.models.artifacts import (
-    ArtifactMetadata,
-    ArtifactJsonResponse,
     ArtifactData,
+    ArtifactJsonResponse,
+    ArtifactMetadata,
 )
+from pulp_tool.models.context import PullContext, UploadContext
+from pulp_tool.models.pulp_api import DistributionRequest, RepositoryRequest
 from pulp_tool.models.statistics import UploadCounts
-from pulp_tool.models.pulp_api import RepositoryRequest, DistributionRequest
 from tests.support.model_test_helpers import _dist_map
 
 

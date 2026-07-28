@@ -3,26 +3,16 @@
 
 set -e
 
-# Default to running all tests
-TEST_ARGS="${@:-}"
-
 echo "Running pulp-tool tests..."
 echo ""
 
-# Run pytest with coverage
-if [ -z "$TEST_ARGS" ]; then
+# Run pytest with coverage (options from pyproject.toml [tool.pytest.ini_options])
+if [ "$#" -eq 0 ]; then
     echo "Running all tests with coverage..."
-    python3 -m pytest \
-        -v \
-        --tb=short \
-        --cov=pulp_tool \
-        --cov-report=term-missing \
-        --cov-report=html \
-        --cov-report=xml \
-        --cov-fail-under=85
+    python3 -m pytest --cov-report=xml
 else
-    echo "Running tests with arguments: $TEST_ARGS"
-    python3 -m pytest -v --tb=short $TEST_ARGS
+    echo "Running tests with arguments: $*"
+    python3 -m pytest "$@"
 fi
 
 echo ""

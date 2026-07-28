@@ -6,7 +6,7 @@ Extracted to keep the client module smaller; behavior is unchanged.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Any
 from urllib.parse import urlencode
 
 import httpx
@@ -15,7 +15,7 @@ if TYPE_CHECKING:
     from .client import PulpClient  # pragma: no cover
 
 
-def get_single_resource_by_name(client: "PulpClient", endpoint: str, name: str) -> httpx.Response:
+def get_single_resource_by_name(client: PulpClient, endpoint: str, name: str) -> httpx.Response:
     """
     GET a single resource by name (uncached implementation body).
 
@@ -30,15 +30,15 @@ def get_single_resource_by_name(client: "PulpClient", endpoint: str, name: str) 
 
 
 def repository_operation(
-    client: "PulpClient",
+    client: PulpClient,
     operation: str,
     repo_type: str,
     *,
-    name: Optional[str] = None,
-    repository_data: Optional[Any] = None,
-    distribution_data: Optional[Any] = None,
-    publication: Optional[str] = None,
-    distribution_href: Optional[str] = None,
+    name: str | None = None,
+    repository_data: Any | None = None,
+    distribution_data: Any | None = None,
+    publication: str | None = None,
+    distribution_href: str | None = None,
 ) -> httpx.Response:
     """Perform repository or distribution operations (implementation body for ``PulpClient.repository_operation``)."""
     endpoint_base = f"api/v3/{'repositories' if 'repo' in operation else 'distributions'}/{repo_type}/{repo_type}/"

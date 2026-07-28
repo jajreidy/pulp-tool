@@ -38,11 +38,18 @@ import logging
 import os
 import ssl
 import tempfile
+import tomllib
 from pathlib import Path
-from typing import Any, Dict, Optional, Tuple, Union
+from typing import Any
 
 # Third-party imports
 import httpx
+
+from ...exceptions import PulpToolConfigError, PulpToolHTTPError
+from ...utils import create_session_with_retry
+from ...utils.constants import DEFAULT_CHUNK_SIZE, RED_HAT_SSO_TOKEN_URL
+from ...utils.correlation import CORRELATION_HEADER, resolve_correlation_id
+from ...utils.session import RetryingAsyncClient
 
 # Local imports
 from ..artifacts.operations import ArtifactMixin
@@ -54,18 +61,12 @@ from ..distributions.rpm import RpmDistributionMixin
 from ..repositories.file import FileRepositoryMixin
 from ..repositories.rpm import RpmRepositoryMixin
 from ..tasks.operations import TaskMixin
-from ...exceptions import PulpToolConfigError, PulpToolHTTPError
-from ...utils import create_session_with_retry
-from ...utils.constants import DEFAULT_CHUNK_SIZE
-from ...utils.correlation import CORRELATION_HEADER, resolve_correlation_id
-from ...utils.session import RetryingAsyncClient
 from .cache import CACHE_TTL, PerformanceMetrics, TTLCache, cached_get
 from .chunked_get import chunked_get, chunked_get_async
 from .content_query import PulpClientContentQueryMixin
-from .repository import get_single_resource_by_name, repository_operation as repository_operation_impl
+from .repository import get_single_resource_by_name
+from .repository import repository_operation as repository_operation_impl
 from .results import PulpClientResultsMixin
-
-import tomllib
 
 # ============================================================================
 # Constants
@@ -113,12 +114,12 @@ class PulpClient(
 
     def __init__(
         self,
-        config: Dict[str, Union[str, int]],
-        domain: Optional[str] = None,
-        config_path: Optional[Path] = None,
+        config: dict[str, str | int],
+        domain: str | None = None,
+        config_path: Path | None = None,
         *,
-        correlation_namespace: Optional[str] = None,
-        correlation_build_id: Optional[str] = None,
+        correlation_namespace: str | None = None,
+        correlation_build_id: str | None = None,
     ) -> None:
         """Initialize the Pulp client.
 
@@ -138,9 +139,9 @@ class PulpClient(
         self._correlation_build_id = correlation_build_id
         self.timeout = DEFAULT_TIMEOUT  # Used by Protocol mixins
         self._auth = None
-        self._async_session: Optional[httpx.AsyncClient] = None
-        self._cert_temp_dir: Optional[tempfile.TemporaryDirectory] = None
-        self._cert_paths: Optional[Tuple[str, str]] = None
+        self._async_session: httpx.AsyncClient | None = None
+        self._cert_temp_dir: tempfile.TemporaryDirectory | None = None
+        self._cert_paths: tuple[str, str] | None = None
         self.session = self._create_session()
         # Initialize cache for GET requests
         self._get_cache = TTLCache(ttl=CACHE_TTL)
@@ -203,12 +204,13 @@ class PulpClient(
             # Create async client with same configuration as sync client
             # Increased limits for concurrent chunked requests
             limits = httpx.Limits(
-                max_keepalive_connections=20, max_connections=100  # Match sync client's connection pool
+                max_keepalive_connections=20,
+                max_connections=100,  # Match sync client's connection pool
             )
             timeout = httpx.Timeout(self.timeout, connect=10.0)
 
             # Add compression headers and optional correlation ID (pulp-cli ``cid`` pattern)
-            default_headers: Dict[str, str] = {
+            default_headers: dict[str, str] = {
                 "Accept-Encoding": "gzip, deflate, br",
             }
             ch = self.headers
@@ -227,7 +229,7 @@ class PulpClient(
                 logging.debug("HTTP/2 support not available for async client (h2 package not installed)")
 
             # Configure SSL context for client certificates if provided
-            verify: Union[bool, ssl.SSLContext] = True
+            verify: bool | ssl.SSLContext = True
             if cert:
                 # Only create SSL context if certificate files actually exist
                 # This allows tests to pass fake paths without FileNotFoundError
@@ -239,7 +241,7 @@ class PulpClient(
                 # (useful for testing where we mock the actual HTTP calls)
 
             # Prepare client kwargs
-            client_kwargs: Dict[str, Any] = {
+            client_kwargs: dict[str, Any] = {
                 "limits": limits,
                 "timeout": timeout,
                 "follow_redirects": True,
@@ -308,15 +310,15 @@ class PulpClient(
         """Context manager entry."""
         return self
 
-    def __exit__(self, exc_type: Optional[type], exc_val: Optional[BaseException], exc_tb: Optional[Any]) -> None:
+    def __exit__(self, exc_type: type | None, exc_val: BaseException | None, exc_tb: Any | None) -> None:
         """Context manager exit - ensures session is closed."""
         self.close()
 
     async def _chunked_get_async(
         self,
         url: str,
-        params: Optional[Dict[str, Any]] = None,
-        chunk_param: Optional[str] = None,
+        params: dict[str, Any] | None = None,
+        chunk_param: str | None = None,
         chunk_size: int = DEFAULT_CHUNK_SIZE,
         **kwargs,
     ) -> httpx.Response:
@@ -338,8 +340,8 @@ class PulpClient(
     def _chunked_get(
         self,
         url: str,
-        params: Optional[Dict[str, Any]] = None,
-        chunk_param: Optional[str] = None,
+        params: dict[str, Any] | None = None,
+        chunk_param: str | None = None,
         chunk_size: int = DEFAULT_CHUNK_SIZE,
         **kwargs,
     ) -> httpx.Response:
@@ -354,11 +356,11 @@ class PulpClient(
     @classmethod
     def create_from_config_file(
         cls,
-        path: Optional[str] = None,
-        domain: Optional[str] = None,
+        path: str | None = None,
+        domain: str | None = None,
         *,
-        correlation_namespace: Optional[str] = None,
-        correlation_build_id: Optional[str] = None,
+        correlation_namespace: str | None = None,
+        correlation_build_id: str | None = None,
     ) -> "PulpClient":
         """
         Create a Pulp client from a standard configuration file that is
@@ -397,7 +399,7 @@ class PulpClient(
         )
 
     @property
-    def headers(self) -> Optional[Dict[str, str]]:
+    def headers(self) -> dict[str, str] | None:
         """
         Optional request headers (e.g. ``X-Correlation-ID`` for log correlation).
 
@@ -414,7 +416,7 @@ class PulpClient(
         return {CORRELATION_HEADER: cid}
 
     @property
-    def auth(self) -> Union[OAuth2ClientCredentialsAuth, httpx.BasicAuth]:
+    def auth(self) -> OAuth2ClientCredentialsAuth | httpx.BasicAuth:
         """
         Get authentication credentials.
 
@@ -432,10 +434,7 @@ class PulpClient(
 
             # Prefer OAuth2 if both client_id and client_secret are set
             if client_id and client_secret:
-                token_url = (
-                    "https://sso.redhat.com/auth/realms/redhat-external/"
-                    "protocol/openid-connect/token"  # nosec B105
-                )
+                token_url = RED_HAT_SSO_TOKEN_URL
                 self._auth = OAuth2ClientCredentialsAuth(  # type: ignore[assignment]
                     client_id=str(client_id),
                     client_secret=str(client_secret),
@@ -457,7 +456,7 @@ class PulpClient(
         return self._auth  # type: ignore[return-value]
 
     @property
-    def cert(self) -> Tuple[str, str]:
+    def cert(self) -> tuple[str, str]:
         """
         Get client certificate information.
 
@@ -522,7 +521,7 @@ class PulpClient(
         return (cert_path_str, key_path_str)
 
     @property
-    def request_params(self) -> Dict[str, Any]:
+    def request_params(self) -> dict[str, Any]:
         """
         Get default parameters for requests.
 
@@ -691,10 +690,10 @@ class PulpClient(
     # Async Methods for Repository Setup
     # ============================================================================
 
-    def _prepare_async_kwargs(self, **kwargs: Any) -> Dict[str, Any]:
+    def _prepare_async_kwargs(self, **kwargs: Any) -> dict[str, Any]:
         """Merge default request params (headers, auth) into async call kwargs."""
         rp = self.request_params
-        out: Dict[str, Any] = dict(kwargs)
+        out: dict[str, Any] = dict(kwargs)
         if "headers" in rp:
             base_h = dict(rp["headers"])
             if out.get("headers"):
@@ -718,9 +717,7 @@ class PulpClient(
     # Content Management Methods (migrated from ContentManagerMixin)
     # ============================================================================
 
-    def upload_content(
-        self, file_path: str, labels: Dict[str, str], *, file_type: str, arch: Optional[str] = None
-    ) -> str:
+    def upload_content(self, file_path: str, labels: dict[str, str], *, file_type: str, arch: str | None = None) -> str:
         """
         Generic file upload function with validation and error handling.
 
@@ -832,11 +829,11 @@ class PulpClient(
         operation: str,
         repo_type: str,
         *,
-        name: Optional[str] = None,
-        repository_data: Optional[Any] = None,
-        distribution_data: Optional[Any] = None,
-        publication: Optional[str] = None,
-        distribution_href: Optional[str] = None,
+        name: str | None = None,
+        repository_data: Any | None = None,
+        distribution_data: Any | None = None,
+        publication: str | None = None,
+        distribution_href: str | None = None,
     ) -> httpx.Response:
         """
         Perform repository or distribution operations.

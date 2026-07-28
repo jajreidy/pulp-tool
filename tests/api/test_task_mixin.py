@@ -5,8 +5,10 @@ This module tests TaskMixin wait_for_finished_task timeout path.
 """
 
 from unittest.mock import Mock, patch
+
 import httpx
 import pytest
+
 from pulp_tool.models.pulp_api import TaskResponse
 
 

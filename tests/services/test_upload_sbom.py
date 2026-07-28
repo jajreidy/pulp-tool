@@ -1,10 +1,12 @@
 """Tests for pulp_upload.py module."""
 
 import re
-from unittest.mock import Mock, patch, mock_open
+from unittest.mock import Mock, mock_open, patch
+
 import httpx
 import pytest
 from httpx import HTTPError
+
 from pulp_tool.models import PulpResultsModel, RepositoryRefs
 from pulp_tool.models.context import UploadRpmContext
 from pulp_tool.services.upload_service import upload_sbom
@@ -200,6 +202,6 @@ class TestUploadSbom:
             patch("pulp_tool.services.upload_service.validate_file_path"),
             patch("pulp_tool.services.upload_service.create_labels", return_value={"build_id": "test-build"}),
             patch("builtins.open", mock_open(read_data="test sbom content")),
+            pytest.raises(HTTPError),
         ):
-            with pytest.raises(HTTPError):
-                upload_sbom(mock_pulp_client, args, "test-repo", "2024-01-01", results_model, args.sbom_path)
+            upload_sbom(mock_pulp_client, args, "test-repo", "2024-01-01", results_model, args.sbom_path)

@@ -3,16 +3,17 @@
 import json
 import re
 from unittest.mock import Mock, patch
+
 import httpx
 import pytest
 from httpx import HTTPError
+
 from pulp_tool.api import PulpClient
 from pulp_tool.models.artifacts import ExtraArtifactRef, PulpContentRow
 from pulp_tool.models.pulp_api import RpmDistributionRequest, RpmRepositoryRequest
 
 
 class TestPulpClient:
-
     def test_gather_content_data(self, mock_pulp_client, mock_content_data, httpx_mock) -> None:
         """Test gather_content_data method."""
         httpx_mock.get(
@@ -70,7 +71,7 @@ class TestPulpClient:
         self, mock_pulp_client, mock_content_data, mock_file_locations, httpx_mock
     ) -> None:
         """Test build_results_structure method."""
-        from pulp_tool.models import PulpResultsModel, RepositoryRefs, FileInfoModel
+        from pulp_tool.models import FileInfoModel, PulpResultsModel, RepositoryRefs
 
         httpx_mock.get(
             "https://pulp.example.com/pulp/api/v3/test-domain/api/v3/artifacts/"
@@ -98,7 +99,7 @@ class TestPulpClient:
         self, mock_pulp_client, mock_content_data
     ) -> None:
         """merge=True keeps existing artifact entries; still adds keys from gather."""
-        from pulp_tool.models import PulpResultsModel, RepositoryRefs, FileInfoModel
+        from pulp_tool.models import FileInfoModel, PulpResultsModel, RepositoryRefs
 
         base = mock_content_data["results"][0]
         labels = dict(base["pulp_labels"])
@@ -146,13 +147,13 @@ class TestPulpClient:
         assert result.artifacts["test-build-123/x86_64/test-package.rpm"].sha256 == "incremental-sha"
         assert "test-build-123/x86_64/extra.rpm" in result.artifacts
         warn_msgs = [str(c) for c in mock_logging.warning.call_args_list]
-        assert any(("differs from incremental" in m for m in warn_msgs))
+        assert any("differs from incremental" in m for m in warn_msgs)
 
     def test_build_results_structure_invalid_artifact_href(
         self, mock_pulp_client, mock_content_data, httpx_mock
     ) -> None:
         """Test build_results_structure with invalid artifact hrefs (line 1249)."""
-        from pulp_tool.models import PulpResultsModel, RepositoryRefs, FileInfoModel
+        from pulp_tool.models import FileInfoModel, PulpResultsModel, RepositoryRefs
 
         repositories = RepositoryRefs(
             rpms_href="/rpms/",

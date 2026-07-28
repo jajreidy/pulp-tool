@@ -436,14 +436,14 @@ class E2ETestSuite:
             }
             if not set(pulp_results_content["artifacts"].keys()) == expected_pulp_artifacts:
                 self.stats.failed += 1
-                self.log_error(f"Unexpected pulp artifacts: {pulp_results_content["artifacts"].keys()}")
+                self.log_error(f"Unexpected pulp artifacts: {pulp_results_content['artifacts'].keys()}")
             else:
                 self.stats.passed += 1
                 self.log_success("Pulp results artifacts match expected values")
             expected_pulp_distributions = {"rpms", "rpms_signed", "sbom"}
             if not set(pulp_results_content["distributions"].keys()) == expected_pulp_distributions:
                 self.stats.failed += 1
-                self.log_error(f"Unexpected pulp distributions: {pulp_results_content["distributions"].keys()}")
+                self.log_error(f"Unexpected pulp distributions: {pulp_results_content['distributions'].keys()}")
             else:
                 self.stats.passed += 1
                 self.log_success("Pulp results distributions match expected values")

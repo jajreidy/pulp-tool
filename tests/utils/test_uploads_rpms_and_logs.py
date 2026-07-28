@@ -58,8 +58,8 @@ class TestUploadRpms:
     def test_upload_rpms_with_created_resources(self, mock_pulp_client) -> None:
         """Test upload_rpms with created resources (lines 225-227, 229-231)."""
         from pulp_tool.models.context import UploadRpmContext
-        from pulp_tool.models.results import PulpResultsModel, RepositoryRefs
         from pulp_tool.models.pulp_api import TaskResponse
+        from pulp_tool.models.results import PulpResultsModel, RepositoryRefs
 
         context = UploadRpmContext(
             build_id="test-build",
@@ -111,8 +111,8 @@ class TestUploadRpms:
     def test_upload_rpms_with_distribution_urls_adds_each_to_results(self, mock_pulp_client) -> None:
         """Passing distribution_urls records each uploaded RPM in results (incremental JSON)."""
         from pulp_tool.models.context import UploadRpmContext
-        from pulp_tool.models.results import PulpResultsModel, RepositoryRefs
         from pulp_tool.models.pulp_api import TaskResponse
+        from pulp_tool.models.results import PulpResultsModel, RepositoryRefs
 
         context = UploadRpmContext(
             build_id="test-build",
@@ -156,14 +156,14 @@ class TestUploadRpms:
         assert mock_add.call_count == 2
         rpm_calls = [c.kwargs for c in mock_add.call_args_list]
         assert {c["local_path"] for c in rpm_calls} == {"/path/to/a.rpm", "/path/to/b.rpm"}
-        assert all((c["is_rpm"] is True for c in rpm_calls))
-        assert all((c["target_arch_repo"] is True for c in rpm_calls))
+        assert all(c["is_rpm"] is True for c in rpm_calls)
+        assert all(c["target_arch_repo"] is True for c in rpm_calls)
 
     def test_upload_rpms_with_signed_by_adds_label(self, mock_pulp_client) -> None:
         """Test upload_rpms adds signed_by to labels when context has signed_by (lines 212-214)."""
         from pulp_tool.models.context import UploadRpmContext
-        from pulp_tool.models.results import PulpResultsModel, RepositoryRefs
         from pulp_tool.models.pulp_api import TaskResponse
+        from pulp_tool.models.results import PulpResultsModel, RepositoryRefs
 
         context = UploadRpmContext(
             build_id="test-build",
@@ -209,8 +209,8 @@ class TestUploadRpms:
     def test_upload_rpms_overwrite_calls_remove(self, mock_pulp_client) -> None:
         """Test upload_rpms with overwrite invokes remove_rpms_matching_local_files_from_repository."""
         from pulp_tool.models.context import UploadRpmContext
-        from pulp_tool.models.results import PulpResultsModel, RepositoryRefs
         from pulp_tool.models.pulp_api import TaskResponse
+        from pulp_tool.models.results import PulpResultsModel, RepositoryRefs
 
         context = UploadRpmContext(
             build_id="test-build",
@@ -256,8 +256,8 @@ class TestUploadRpms:
     def test_upload_rpms_no_created_resources(self, mock_pulp_client) -> None:
         """Test upload_rpms without created resources (lines 225-227, but not 229-231)."""
         from pulp_tool.models.context import UploadRpmContext
-        from pulp_tool.models.results import PulpResultsModel, RepositoryRefs
         from pulp_tool.models.pulp_api import TaskResponse
+        from pulp_tool.models.results import PulpResultsModel, RepositoryRefs
 
         context = UploadRpmContext(
             build_id="test-build",
@@ -300,7 +300,7 @@ class TestUploadRpms:
             assert results_model.uploaded_counts.rpms == 1
             mock_pulp_client.add_content.assert_called_once_with("/test/rpm-href", ["/rpm/artifact/1"])
             debug_calls = [str(call) for call in mock_logging.debug.call_args_list]
-            assert not any(("Captured" in call for call in debug_calls))
+            assert not any("Captured" in call for call in debug_calls)
 
     def test_upload_rpms_empty_artifacts(self, mock_pulp_client) -> None:
         """Test upload_rpms with empty rpm_results_artifacts (not hitting lines 225-227)."""

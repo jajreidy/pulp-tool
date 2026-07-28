@@ -38,11 +38,13 @@ Run all code quality checks (formatting, linting, type checking, tests).
 ```
 
 This script runs:
-1. Black formatting check
-2. Flake8 linting
-3. Pylint (errors only)
-4. Mypy type checking
-5. Pytest with coverage
+1. Ruff lint and format check (`pulp_tool/`, `tests/`)
+2. Pylint (errors only, `pulp_tool/`, `tests/`)
+3. Mypy type checking
+4. Pytest with coverage (options from `pyproject.toml`)
+5. Diff coverage vs merge base when available (100%, same as PR CI)
+
+For full CI parity (yamllint, shellcheck, hadolint, codespell, pip-audit, checkton), use `make pre-commit-ci`.
 
 ### `update-deps.sh`
 
@@ -70,9 +72,10 @@ chmod +x scripts/*.sh
 Alternatively, use the Makefile targets:
 
 ```bash
-make install-dev  # Same as make setup: editable install + pre-commit hooks
+make install-dev  # editable install + pre-commit (+ pre-push) hooks
 make test         # Same as ./scripts/run-tests.sh (pytest with coverage)
-make check        # Same as ./scripts/check-all.sh (lint + test)
+make check        # lint + test (subset; use make pre-commit-ci for full CI lint gates)
+make pre-commit-ci  # all pre-commit hooks (matches GitHub PR CI)
 make lock         # Regenerate uv.lock (see also ./scripts/update-deps.sh for broader bumps)
 ```
 

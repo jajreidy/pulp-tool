@@ -10,7 +10,7 @@ import asyncio
 import json
 import logging
 import traceback
-from typing import TYPE_CHECKING, Any, Dict, Optional
+from typing import TYPE_CHECKING, Any
 
 import httpx
 
@@ -21,10 +21,10 @@ if TYPE_CHECKING:
 
 
 async def chunked_get_async(
-    client: "PulpClient",
+    client: PulpClient,
     url: str,
-    params: Optional[Dict[str, Any]] = None,
-    chunk_param: Optional[str] = None,
+    params: dict[str, Any] | None = None,
+    chunk_param: str | None = None,
     chunk_size: int = DEFAULT_CHUNK_SIZE,
     **kwargs: Any,
 ) -> httpx.Response:
@@ -103,10 +103,10 @@ async def chunked_get_async(
 
 
 def chunked_get(
-    client: "PulpClient",
+    client: PulpClient,
     url: str,
-    params: Optional[Dict[str, Any]] = None,
-    chunk_param: Optional[str] = None,
+    params: dict[str, Any] | None = None,
+    chunk_param: str | None = None,
     chunk_size: int = DEFAULT_CHUNK_SIZE,
     **kwargs: Any,
 ) -> httpx.Response:

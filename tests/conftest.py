@@ -14,9 +14,11 @@ Best Practices for Temporary Files in Tests:
 import tempfile
 from pathlib import Path
 from unittest.mock import Mock
+
 import httpx
 import pytest
 import respx
+
 from tests.support.tls_certs import write_self_signed_pem_pair
 
 _temp_file_registry: set[str] = set()

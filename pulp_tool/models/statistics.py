@@ -1,7 +1,5 @@
 """Statistics and tracking models."""
 
-from typing import List, Dict
-
 from pydantic import Field
 
 from .base import KonfluxBaseModel
@@ -17,7 +15,7 @@ class UploadStats(KonfluxBaseModel):
     """
 
     existing_count: int = Field(default=0, ge=0)
-    uploaded_files: List[str] = Field(default_factory=list)
+    uploaded_files: list[str] = Field(default_factory=list)
 
     @property
     def uploaded_count(self) -> int:
@@ -40,7 +38,7 @@ class DownloadStats(KonfluxBaseModel):
         failed: Number of failed downloads
     """
 
-    pulled_artifacts: Dict[str, Dict] = Field(default_factory=dict)
+    pulled_artifacts: dict[str, dict] = Field(default_factory=dict)
     completed: int = Field(default=0, ge=0)
     failed: int = Field(default=0, ge=0)
 

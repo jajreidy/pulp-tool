@@ -8,9 +8,8 @@ import json
 import logging
 import os
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Optional, Tuple
 
 import click
 import httpx
@@ -19,11 +18,11 @@ from ..api import PulpClient
 from ..models.context import UploadRpmContext
 from ..services.upload_service import scan_results_json_for_log_and_sbom_keys
 from ..utils import PulpHelper, setup_logging
-from ..utils.uploads import rpm_directory_has_log_files
 from ..utils.error_handling import handle_generic_error, handle_http_error
+from ..utils.uploads import rpm_directory_has_log_files
 
 
-def _extract_build_id_namespace_from_results_json(results_json_path: Path) -> Tuple[str, str]:
+def _extract_build_id_namespace_from_results_json(results_json_path: Path) -> tuple[str, str]:
     """
     Extract build_id and namespace from artifact labels in pulp_results.json.
 
@@ -122,14 +121,14 @@ def _extract_build_id_namespace_from_results_json(results_json_path: Path) -> Tu
 @click.pass_context
 def upload(  # pylint: disable=too-many-arguments,too-many-positional-arguments
     ctx: click.Context,
-    parent_package: Optional[str],
-    rpm_path: Optional[str],
-    sbom_path: Optional[str],
-    artifact_results: Optional[str],
-    sbom_results: Optional[str],
-    results_json: Optional[Path],
-    files_base_path: Optional[Path],
-    signed_by: Optional[str],
+    parent_package: str | None,
+    rpm_path: str | None,
+    sbom_path: str | None,
+    artifact_results: str | None,
+    sbom_results: str | None,
+    results_json: Path | None,
+    files_base_path: Path | None,
+    signed_by: str | None,
     overwrite: bool,
     target_arch_repo: bool,
 ) -> None:
@@ -182,7 +181,7 @@ def upload(  # pylint: disable=too-many-arguments,too-many-positional-arguments
             correlation_namespace=namespace or None,
             correlation_build_id=build_id or None,
         )
-        date_str = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+        date_str = datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S")
 
         # Create context object with generated date_str
         args = UploadRpmContext(

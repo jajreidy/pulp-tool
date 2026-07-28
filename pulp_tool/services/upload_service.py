@@ -21,22 +21,20 @@ import json
 import logging
 import os
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple, TYPE_CHECKING
+from typing import TYPE_CHECKING
 
+from ..models.artifacts import ExtraArtifactRef
 from ..models.context import UploadContext, UploadRpmContext
 from ..models.repository import RepositoryRefs
 from ..models.results import PulpResultsModel
-from ..models.artifacts import ExtraArtifactRef
 
 if TYPE_CHECKING:
     from ..api.pulp_client import PulpClient
 
-from ..utils import PulpHelper, validate_file_path, create_labels
+from ..utils import PulpHelper, create_labels, validate_file_path
+from ..utils.constants import SBOM_EXTENSIONS, SUPPORTED_ARCHITECTURES
 from ..utils.path_utils import resolve_path_under_base
 from ..utils.pulp_tasks import create_file_content_and_wait
-from ..utils.constants import SBOM_EXTENSIONS, SUPPORTED_ARCHITECTURES
-
-from .upload_common import _distribution_urls_for_context
 from .upload_collect import (
     _add_distributions_to_results,
     _build_artifact_map,
@@ -52,6 +50,7 @@ from .upload_collect import (
     _upload_and_get_results_url,
     collect_results,
 )
+from .upload_common import _distribution_urls_for_context
 
 # ============================================================================
 # Constants
@@ -68,7 +67,7 @@ class UploadService:
     coordinating between repositories, distributions, and content uploads.
     """
 
-    def __init__(self, pulp_client: "PulpClient", parent_package: Optional[str] = None) -> None:
+    def __init__(self, pulp_client: "PulpClient", parent_package: str | None = None) -> None:
         """
         Initialize the upload service.
 
@@ -94,7 +93,7 @@ class UploadService:
         logging.info("Repository setup completed")
         return repositories
 
-    def upload_artifacts(self, context: UploadRpmContext, repositories: RepositoryRefs) -> Optional[str]:
+    def upload_artifacts(self, context: UploadRpmContext, repositories: RepositoryRefs) -> str | None:
         """
         Upload all artifacts (RPMs, logs, SBOMs) and collect results.
 
@@ -146,9 +145,9 @@ def upload_sbom(
     results_model: PulpResultsModel,
     sbom_path: str,
     *,
-    distribution_urls: Optional[Dict[str, str]] = None,
+    distribution_urls: dict[str, str] | None = None,
     target_arch_repo: bool = False,
-) -> List[str]:
+) -> list[str]:
     """
     Upload SBOM file to repository.
 
@@ -191,7 +190,7 @@ def upload_sbom(
     results_model.increment_counts(sboms=1)
 
     if distribution_urls is not None:
-        rel_path: Optional[str] = None
+        rel_path: str | None = None
         if task_response.result and isinstance(task_response.result, dict):
             rel_path = task_response.result.get("relative_path")
         if not rel_path:
@@ -231,7 +230,7 @@ def _classify_artifact_from_key(key: str) -> str:
     return "artifacts"
 
 
-def scan_results_json_for_log_and_sbom_keys(results_json_path: str) -> Tuple[bool, bool]:
+def scan_results_json_for_log_and_sbom_keys(results_json_path: str) -> tuple[bool, bool]:
     """
     Return (has_log_artifacts, has_sbom_artifacts) from keys in ``artifacts`` of a pulp_results.json.
 
@@ -263,8 +262,8 @@ def process_uploads_from_results_json(
     context: UploadRpmContext,
     repositories: RepositoryRefs,
     *,
-    pulp_helper: Optional[PulpHelper] = None,
-) -> Optional[str]:
+    pulp_helper: PulpHelper | None = None,
+) -> str | None:
     """
     Upload artifacts from pulp_results.json.
 
@@ -281,7 +280,7 @@ def process_uploads_from_results_json(
     Returns:
         URL of the uploaded results JSON, or None if upload failed
     """
-    from ..utils.uploads import upload_rpms, upload_log
+    from ..utils.uploads import upload_log, upload_rpms
 
     helper = pulp_helper or PulpHelper(client, parent_package=context.parent_package)
     distribution_urls = helper.get_distribution_urls_for_upload_context(context.build_id, context)
@@ -318,14 +317,14 @@ def process_uploads_from_results_json(
         raise ValueError("signed_by requires signed repositories")
 
     results_model = PulpResultsModel(build_id=context.build_id, repositories=repositories)
-    created_resources: List[str] = []
+    created_resources: list[str] = []
     date_str = context.date_str
 
     # Group artifacts by type for batch processing
-    rpms_by_arch: Dict[str, List[str]] = {}
-    logs_to_upload: List[Tuple[str, str]] = []  # (path, arch)
-    sboms_to_upload: List[str] = []
-    artifacts_to_upload: List[Tuple[str, Dict[str, str]]] = []  # (path, labels)
+    rpms_by_arch: dict[str, list[str]] = {}
+    logs_to_upload: list[tuple[str, str]] = []  # (path, arch)
+    sboms_to_upload: list[str] = []
+    artifacts_to_upload: list[tuple[str, dict[str, str]]] = []  # (path, labels)
 
     for key, info in artifacts.items():
         if not isinstance(info, dict):

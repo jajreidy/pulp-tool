@@ -12,7 +12,8 @@ import logging
 import os
 import ssl
 import time
-from typing import Any, Dict, Optional, Sequence, Tuple, Union
+from collections.abc import Sequence
+from typing import Any
 
 import httpx
 from httpx import HTTPTransport
@@ -22,7 +23,7 @@ from httpx import HTTPTransport
 # ============================================================================
 
 # HTTP status codes that should trigger automatic retries (transient / overload)
-RETRY_STATUS_CODES: Tuple[int, ...] = (429, 500, 502, 503, 504)
+RETRY_STATUS_CODES: tuple[int, ...] = (429, 500, 502, 503, 504)
 
 # Connection-level retries (httpx transport; failed connects, etc.)
 TRANSPORT_MAX_RETRIES = 3
@@ -64,8 +65,8 @@ class RetryingHttpClient(httpx.Client):
     def __init__(
         self,
         *args: Any,
-        response_retry_total_attempts: Optional[int] = None,
-        response_retry_status_codes: Optional[Sequence[int]] = None,
+        response_retry_total_attempts: int | None = None,
+        response_retry_status_codes: Sequence[int] | None = None,
         response_retry_backoff_s: float = RETRY_BACKOFF_FACTOR,
         **kwargs: Any,
     ) -> None:
@@ -85,7 +86,7 @@ class RetryingHttpClient(httpx.Client):
         if stream:
             return super().send(request, stream=True, **kwargs)
 
-        last_response: Optional[httpx.Response] = None
+        last_response: httpx.Response | None = None
         for attempt in range(self._response_retry_total_attempts):
             response = super().send(request, stream=False, **kwargs)
             last_response = response
@@ -113,7 +114,7 @@ class RetryingHttpClient(httpx.Client):
                 logging.debug("Could not close response before retry", exc_info=True)
             time.sleep(delay_s)
 
-        assert last_response is not None
+        assert last_response is not None  # noqa: S101
         return last_response
 
 
@@ -123,8 +124,8 @@ class RetryingAsyncClient(httpx.AsyncClient):
     def __init__(
         self,
         *args: Any,
-        response_retry_total_attempts: Optional[int] = None,
-        response_retry_status_codes: Optional[Sequence[int]] = None,
+        response_retry_total_attempts: int | None = None,
+        response_retry_status_codes: Sequence[int] | None = None,
         response_retry_backoff_s: float = RETRY_BACKOFF_FACTOR,
         **kwargs: Any,
     ) -> None:
@@ -144,7 +145,7 @@ class RetryingAsyncClient(httpx.AsyncClient):
         if stream:
             return await super().send(request, stream=True, **kwargs)
 
-        last_response: Optional[httpx.Response] = None
+        last_response: httpx.Response | None = None
         for attempt in range(self._response_retry_total_attempts):
             response = await super().send(request, stream=False, **kwargs)
             last_response = response
@@ -172,16 +173,16 @@ class RetryingAsyncClient(httpx.AsyncClient):
                 logging.debug("Could not close response before retry", exc_info=True)
             await asyncio.sleep(delay_s)
 
-        assert last_response is not None
+        assert last_response is not None  # noqa: S101
         return last_response
 
 
 def create_session_with_retry(
-    cert: Optional[Tuple[str, str]] = None,
+    cert: tuple[str, str] | None = None,
     timeout: float = 30.0,
     max_connections: int = 100,
-    auth: Optional[Union[httpx.Auth, Tuple[str, str]]] = None,
-    extra_headers: Optional[Dict[str, str]] = None,
+    auth: httpx.Auth | tuple[str, str] | None = None,
+    extra_headers: dict[str, str] | None = None,
 ) -> httpx.Client:
     """
     Create an httpx client with retry strategy and connection pooling.
@@ -221,7 +222,7 @@ def create_session_with_retry(
     timeout_config = httpx.Timeout(timeout, connect=10.0)
 
     # Configure SSL context for client certificates if provided
-    verify: Union[bool, ssl.SSLContext] = True
+    verify: bool | ssl.SSLContext = True
     if cert:
         # PEM paths are validated in PulpClient before session creation when mTLS is configured.
         if os.path.exists(cert[0]) and os.path.exists(cert[1]):
@@ -243,7 +244,7 @@ def create_session_with_retry(
     )
 
     # Add compression support headers
-    default_headers: Dict[str, str] = {
+    default_headers: dict[str, str] = {
         "Accept-Encoding": "gzip, deflate, br",
     }
     if extra_headers:

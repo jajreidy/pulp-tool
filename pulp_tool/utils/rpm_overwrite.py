@@ -5,7 +5,7 @@ RPM upload --overwrite: locate existing package units in Pulp and remove them fr
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING, List, Optional
+from typing import TYPE_CHECKING
 
 from pulp_tool.utils.rpm_operations import parse_rpm_filename_to_nvra
 from pulp_tool.utils.rpm_pulp_search import search_rpms_by_filenames_for_overwrite
@@ -17,10 +17,10 @@ if TYPE_CHECKING:
 _PULP_HREF_IN_CHUNK = 20
 
 
-def _rpm_paths_to_pulp_query_filenames(rpm_paths: List[str]) -> List[str]:
+def _rpm_paths_to_pulp_query_filenames(rpm_paths: list[str]) -> list[str]:
     """Derive name-version-release.arch.rpm strings from local paths (same basis as search-by --filenames)."""
     seen: set[tuple[str, str, str, str]] = set()
-    out: List[str] = []
+    out: list[str] = []
     for path in rpm_paths:
         nvra = parse_rpm_filename_to_nvra(path)
         if nvra is None:
@@ -37,8 +37,8 @@ def _rpm_paths_to_pulp_query_filenames(rpm_paths: List[str]) -> List[str]:
 def filter_rpm_hrefs_in_repository_version(
     client: PulpClient,
     repository_version_href: str,
-    candidate_hrefs: List[str],
-) -> List[str]:
+    candidate_hrefs: list[str],
+) -> list[str]:
     """
     Return candidate RPM package pulp_hrefs that exist in the given repository version.
 
@@ -47,7 +47,7 @@ def filter_rpm_hrefs_in_repository_version(
     if not candidate_hrefs or not repository_version_href:
         return []
     unique = list(dict.fromkeys(candidate_hrefs))
-    confirmed: List[str] = []
+    confirmed: list[str] = []
     for i in range(0, len(unique), _PULP_HREF_IN_CHUNK):
         chunk = unique[i : i + _PULP_HREF_IN_CHUNK]
         chunk_set = set(chunk)
@@ -63,9 +63,9 @@ def filter_rpm_hrefs_in_repository_version(
 
 def remove_rpms_matching_local_files_from_repository(
     client: PulpClient,
-    rpm_paths: List[str],
+    rpm_paths: list[str],
     rpm_repository_href: str,
-    signed_by: Optional[str],
+    signed_by: str | None,
 ) -> int:
     """
     Search Pulp by NVRA filename from each local path (and signed_by when set); remove matching units from the repo.

@@ -3,13 +3,13 @@
 from __future__ import annotations
 
 import os
-from typing import Any, Optional
+from typing import Any
 
 CORRELATION_HEADER = "X-Correlation-ID"
 ENV_CORRELATION = "PULP_TOOL_CORRELATION_ID"
 
 
-def _strip_opt(value: Optional[str]) -> Optional[str]:
+def _strip_opt(value: str | None) -> str | None:
     if value is None:
         return None
     stripped = str(value).strip()
@@ -19,10 +19,10 @@ def _strip_opt(value: Optional[str]) -> Optional[str]:
 def resolve_correlation_id(
     *,
     config_value: Any = None,
-    env_value: Optional[str] = None,
-    namespace: Optional[str] = None,
-    build_id: Optional[str] = None,
-) -> Optional[str]:
+    env_value: str | None = None,
+    namespace: str | None = None,
+    build_id: str | None = None,
+) -> str | None:
     """
     Resolve correlation ID: config ``correlation_id`` > env > ``namespace/build_id`` > ``build_id``.
 

@@ -118,20 +118,22 @@ class TestPartialRpmUploadFailure:
         )
         results_model = PulpResultsModel(build_id="test-build", repositories=repositories)
 
-        with patch(
-            "pulp_tool.utils.uploads.upload_rpms_parallel",
-            return_value=([("/ok.rpm", "/artifact/1")], ["/bad.rpm: upload failed"]),
+        with (
+            patch(
+                "pulp_tool.utils.uploads.upload_rpms_parallel",
+                return_value=([("/ok.rpm", "/artifact/1")], ["/bad.rpm: upload failed"]),
+            ),
+            pytest.raises(ValueError, match="Failed to upload 1 of 2 RPM"),
         ):
-            with pytest.raises(ValueError, match="Failed to upload 1 of 2 RPM"):
-                upload_rpms(
-                    ["/ok.rpm", "/bad.rpm"],
-                    context,
-                    mock_pulp_client,
-                    "x86_64",
-                    rpm_repository_href="/test/rpm-href",
-                    date="2024-01-01 00:00:00",
-                    results_model=results_model,
-                )
+            upload_rpms(
+                ["/ok.rpm", "/bad.rpm"],
+                context,
+                mock_pulp_client,
+                "x86_64",
+                rpm_repository_href="/test/rpm-href",
+                date="2024-01-01 00:00:00",
+                results_model=results_model,
+            )
 
         assert results_model.uploaded_counts.rpms == 1
         assert len(results_model.upload_errors) == 1

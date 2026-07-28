@@ -1,7 +1,9 @@
 """Tests for UploadOrchestrator process_file_uploads and target arch repo."""
 
 from unittest.mock import Mock, patch
+
 import pytest
+
 from pulp_tool.models.context import UploadFilesContext, UploadRpmContext
 from pulp_tool.models.repository import RepositoryRefs
 from pulp_tool.utils.upload_orchestrator import UploadOrchestrator

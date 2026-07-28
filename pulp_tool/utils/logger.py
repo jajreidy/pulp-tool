@@ -10,7 +10,6 @@ using python-json-logger; default remains human-readable plain text.
 
 import logging
 import os
-from typing import Optional
 
 try:
     from pythonjsonlogger.json import JsonFormatter as _JsonLogFormatter
@@ -40,9 +39,7 @@ class WrappingFormatter(logging.Formatter):
     long messages by wrapping them at a specified width.
     """
 
-    def __init__(
-        self, fmt: Optional[str] = None, datefmt: Optional[str] = None, width: int = DEFAULT_LOG_WIDTH
-    ) -> None:
+    def __init__(self, fmt: str | None = None, datefmt: str | None = None, width: int = DEFAULT_LOG_WIDTH) -> None:
         """
         Initialize the wrapping formatter.
 
