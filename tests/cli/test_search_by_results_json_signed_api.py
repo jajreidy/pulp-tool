@@ -2,7 +2,9 @@
 
 import json
 from unittest.mock import Mock, patch
+
 from click.testing import CliRunner
+
 from pulp_tool.cli import cli
 from tests.support.constants import VALID_CHECKSUM_1
 from tests.support.factories import make_rpm_list_response as _make_rpm_response

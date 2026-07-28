@@ -3,7 +3,9 @@
 import json
 import re
 from unittest.mock import Mock, patch
+
 import httpx
+
 from pulp_tool.models import PulpResultsModel, RepositoryRefs
 from pulp_tool.models.context import UploadRpmContext
 from pulp_tool.services.upload_service import _build_artifact_map, _save_results_to_folder, collect_results
@@ -279,6 +281,6 @@ class TestSaveResultsToFolder:
             sbom_results=None,
         )
         json_content = '{"artifacts": {}, "distributions": {}}'
-        with patch("builtins.open", side_effect=IOError("Permission denied")):
+        with patch("builtins.open", side_effect=OSError("Permission denied")):
             result = _save_results_to_folder(str(output_dir), json_content, context)
         assert result is None

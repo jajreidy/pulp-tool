@@ -5,8 +5,9 @@ This module provides type-safe models for all Pulp API responses, enabling
 better validation, IDE support, and error handling.
 """
 
-from typing import Dict, List, Literal, Optional, Any
-from pydantic import BaseModel, Field, ConfigDict, ValidationInfo, field_validator
+from typing import Any, Literal
+
+from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, field_validator
 
 # ============================================================================
 # Base Models
@@ -23,13 +24,12 @@ class PaginatedResponse(PulpBaseModel):
     """Base model for paginated Pulp API responses."""
 
     count: int
-    next: Optional[str] = None
-    previous: Optional[str] = None
-    results: List[Dict[str, Any]]
+    next: str | None = None
+    previous: str | None = None
+    results: list[dict[str, Any]]
 
 
 class PulpRequestModel(BaseModel):
-
     model_config = ConfigDict(extra="ignore")
 
 
@@ -41,7 +41,7 @@ class PulpRequestModel(BaseModel):
 class TaskResult(PulpBaseModel):
     """Result details from a completed task."""
 
-    relative_path: Optional[str] = None
+    relative_path: str | None = None
     # Tasks can return various result structures, so we keep this flexible
 
 
@@ -50,16 +50,16 @@ class TaskResponse(PulpBaseModel):
 
     pulp_href: str
     state: str  # waiting, running, completed, failed, canceled, skipped
-    started_at: Optional[str] = None
-    finished_at: Optional[str] = None
-    error: Optional[Dict[str, Any]] = None
-    progress_reports: Optional[List[Dict[str, Any]]] = None
-    created_resources: List[str] = Field(default_factory=list)
-    reserved_resources_record: Optional[List[str]] = None
-    result: Optional[Any] = None
-    parent_task: Optional[str] = None
-    worker: Optional[str] = None
-    logging_cid: Optional[str] = None
+    started_at: str | None = None
+    finished_at: str | None = None
+    error: dict[str, Any] | None = None
+    progress_reports: list[dict[str, Any]] | None = None
+    created_resources: list[str] = Field(default_factory=list)
+    reserved_resources_record: list[str] | None = None
+    result: Any | None = None
+    parent_task: str | None = None
+    worker: str | None = None
+    logging_cid: str | None = None
 
     @property
     def is_complete(self) -> bool:
@@ -80,7 +80,7 @@ class TaskResponse(PulpBaseModel):
 class TaskListResponse(PaginatedResponse):
     """Paginated list of tasks."""
 
-    results: List[TaskResponse]  # type: ignore[assignment]
+    results: list[TaskResponse]  # type: ignore[assignment]
 
 
 # ============================================================================
@@ -92,30 +92,30 @@ class RepositoryResponse(PulpBaseModel):
     """Response for repository objects."""
 
     pulp_href: str
-    prn: Optional[str] = None  # Pulp Resource Name
+    prn: str | None = None  # Pulp Resource Name
     name: str
-    description: Optional[str] = None
-    pulp_labels: Dict[str, str] = Field(default_factory=dict)
-    versions_href: Optional[str] = None
-    latest_version_href: Optional[str] = None
+    description: str | None = None
+    pulp_labels: dict[str, str] = Field(default_factory=dict)
+    versions_href: str | None = None
+    latest_version_href: str | None = None
 
 
 class RepositoryListResponse(PaginatedResponse):
     """Paginated list of repositories."""
 
-    results: List[RepositoryResponse]  # type: ignore[assignment]
+    results: list[RepositoryResponse]  # type: ignore[assignment]
 
 
 class RepositoryRequest(PulpRequestModel):
     """Request model for creating/updating repositories."""
 
     name: str
-    pulp_labels: Optional[dict[str, str]] = None
-    description: Optional[str] = None
-    retain_repo_versions: Optional[str] = None
-    remote: Optional[str] = None
-    autopublish: Optional[bool] = None
-    manifest: Optional[str] = None
+    pulp_labels: dict[str, str] | None = None
+    description: str | None = None
+    retain_repo_versions: str | None = None
+    remote: str | None = None
+    autopublish: bool | None = None
+    manifest: str | None = None
 
     @field_validator("name", mode="after")
     @classmethod
@@ -128,20 +128,20 @@ class RepositoryRequest(PulpRequestModel):
 class RpmRepositoryResponse(RepositoryResponse):
     """Response for RPM repository objects."""
 
-    metadata_signing_service: Optional[str] = None
-    package_signing_service: Optional[str] = None
-    package_signing_fingerprint: Optional[str] = None
-    retain_package_versions: Optional[int] = None
-    checksum_type: Optional[str] = None
-    repo_config: Optional[Dict[str, Any]] = None
-    compression_type: Optional[str] = None
-    layout: Optional[str] = None
+    metadata_signing_service: str | None = None
+    package_signing_service: str | None = None
+    package_signing_fingerprint: str | None = None
+    retain_package_versions: int | None = None
+    checksum_type: str | None = None
+    repo_config: dict[str, Any] | None = None
+    compression_type: str | None = None
+    layout: str | None = None
 
 
 class RpmRepositoryListResponse(PaginatedResponse):
     """Paginated list of RPM repositories."""
 
-    results: List[RpmRepositoryResponse]  # type: ignore[assignment]
+    results: list[RpmRepositoryResponse]  # type: ignore[assignment]
 
 
 class FileRepositoryResponse(RepositoryResponse):
@@ -159,7 +159,7 @@ class FileRepositoryRequest(RepositoryRequest):
 class FileRepositoryListResponse(PaginatedResponse):
     """Paginated list of file repositories."""
 
-    results: List[FileRepositoryResponse]  # type: ignore[assignment]
+    results: list[FileRepositoryResponse]  # type: ignore[assignment]
 
 
 # ============================================================================
@@ -173,28 +173,28 @@ class DistributionResponse(PulpBaseModel):
     pulp_href: str
     name: str
     base_path: str
-    base_url: Optional[str] = None
-    content_guard: Optional[str] = None
-    publication: Optional[str] = None
-    repository: Optional[str] = None
-    pulp_labels: Dict[str, str] = Field(default_factory=dict)
+    base_url: str | None = None
+    content_guard: str | None = None
+    publication: str | None = None
+    repository: str | None = None
+    pulp_labels: dict[str, str] = Field(default_factory=dict)
 
 
 class DistributionListResponse(PaginatedResponse):
     """Paginated list of distributions."""
 
-    results: List[DistributionResponse]  # type: ignore[assignment]
+    results: list[DistributionResponse]  # type: ignore[assignment]
 
 
 class DistributionRequest(PulpRequestModel):
     base_path: str
-    content_guard: Optional[str] = None
-    hidden: Optional[bool] = None
-    pulp_labels: Optional[dict[str, str]] = None
+    content_guard: str | None = None
+    hidden: bool | None = None
+    pulp_labels: dict[str, str] | None = None
     name: str
-    repository: Optional[str] = None
-    publication: Optional[str] = None
-    checkpoint: Optional[bool] = None
+    repository: str | None = None
+    publication: str | None = None
+    checkpoint: bool | None = None
 
     @field_validator("base_path", "name", mode="after")
     @classmethod
@@ -213,23 +213,23 @@ class ArtifactRef(PulpBaseModel):
     """Reference to an artifact."""
 
     pulp_href: str = Field(alias="artifact")
-    sha256: Optional[str] = None
-    size: Optional[int] = None
+    sha256: str | None = None
+    size: int | None = None
 
 
 class ContentResponse(PulpBaseModel):
     """Response for content objects."""
 
     pulp_href: str
-    artifacts: Dict[str, str] = Field(default_factory=dict)  # filename -> artifact href
-    pulp_labels: Dict[str, str] = Field(default_factory=dict)
-    pulp_created: Optional[str] = None
+    artifacts: dict[str, str] = Field(default_factory=dict)  # filename -> artifact href
+    pulp_labels: dict[str, str] = Field(default_factory=dict)
+    pulp_created: str | None = None
 
 
 class ContentListResponse(PaginatedResponse):
     """Paginated list of content."""
 
-    results: List[ContentResponse]  # type: ignore[assignment]
+    results: list[ContentResponse]  # type: ignore[assignment]
 
 
 # ============================================================================
@@ -241,50 +241,50 @@ class RpmPackageResponse(PulpBaseModel):
     """Response for RPM package content."""
 
     pulp_href: str
-    artifact: Optional[str] = None
+    artifact: str | None = None
     name: str
     epoch: str = "0"
     version: str
     release: str
     arch: str
     pkgId: str = Field(alias="sha256")
-    location_href: Optional[str] = None
-    pulp_labels: Dict[str, str] = Field(default_factory=dict)
+    location_href: str | None = None
+    pulp_labels: dict[str, str] = Field(default_factory=dict)
 
 
 class RpmListResponse(PaginatedResponse):
     """Paginated list of RPM packages."""
 
-    results: List[RpmPackageResponse]  # type: ignore[assignment]
+    results: list[RpmPackageResponse]  # type: ignore[assignment]
 
 
 class RpmRepositoryRequest(RepositoryRequest):
-    metadata_signing_service: Optional[str] = None
-    package_signing_service: Optional[str] = None
-    package_signing_fingerprint: Optional[str] = None
-    retain_package_versions: Optional[int] = None
-    checksum_type: Optional[Literal["unknown", "md5", "sha1", "sha224", "sha256", "sha384", "sha512"]] = None
-    repo_config: Optional[Any] = None
-    compression_type: Optional[Literal["zstd", "gz"]] = None
-    layout: Optional[Literal["nested_alphabetically", "flat"]] = None
+    metadata_signing_service: str | None = None
+    package_signing_service: str | None = None
+    package_signing_fingerprint: str | None = None
+    retain_package_versions: int | None = None
+    checksum_type: Literal["unknown", "md5", "sha1", "sha224", "sha256", "sha384", "sha512"] | None = None
+    repo_config: Any | None = None
+    compression_type: Literal["zstd", "gz"] | None = None
+    layout: Literal["nested_alphabetically", "flat"] | None = None
 
 
 class RpmDistributionResponse(DistributionResponse):
     """Response for RPM distribution objects."""
 
-    generate_repo_config: Optional[bool] = None
+    generate_repo_config: bool | None = None
 
 
 class RpmDistributionListResponse(PaginatedResponse):
     """Paginated list of RPM distributions."""
 
-    results: List[RpmDistributionResponse]  # type: ignore[assignment]
+    results: list[RpmDistributionResponse]  # type: ignore[assignment]
 
 
 class RpmDistributionRequest(DistributionRequest):
     """Request model for creating/updating RPM distributions."""
 
-    generate_repo_config: Optional[bool] = None
+    generate_repo_config: bool | None = None
 
 
 class FileDistributionResponse(DistributionResponse):
@@ -296,7 +296,7 @@ class FileDistributionResponse(DistributionResponse):
 class FileDistributionListResponse(PaginatedResponse):
     """Paginated list of file distributions."""
 
-    results: List[FileDistributionResponse]  # type: ignore[assignment]
+    results: list[FileDistributionResponse]  # type: ignore[assignment]
 
 
 class FileDistributionRequest(DistributionRequest):
@@ -316,15 +316,15 @@ class FileResponse(PulpBaseModel):
     pulp_href: str
     artifact: str
     relative_path: str
-    file: Optional[str] = None  # Download URL
-    sha256: Optional[str] = None
-    pulp_labels: Dict[str, str] = Field(default_factory=dict)
+    file: str | None = None  # Download URL
+    sha256: str | None = None
+    pulp_labels: dict[str, str] = Field(default_factory=dict)
 
 
 class FileListResponse(PaginatedResponse):
     """Paginated list of files."""
 
-    results: List[FileResponse]  # type: ignore[assignment]
+    results: list[FileResponse]  # type: ignore[assignment]
 
 
 class ArtifactResponse(PulpBaseModel):
@@ -333,18 +333,18 @@ class ArtifactResponse(PulpBaseModel):
     pulp_href: str
     file: str  # Path or URL
     size: int
-    md5: Optional[str] = None
-    sha1: Optional[str] = None
-    sha224: Optional[str] = None
-    sha256: Optional[str] = None
-    sha384: Optional[str] = None
-    sha512: Optional[str] = None
+    md5: str | None = None
+    sha1: str | None = None
+    sha224: str | None = None
+    sha256: str | None = None
+    sha384: str | None = None
+    sha512: str | None = None
 
 
 class ArtifactListResponse(PaginatedResponse):
     """Paginated list of artifacts."""
 
-    results: List[ArtifactResponse]  # type: ignore[assignment]
+    results: list[ArtifactResponse]  # type: ignore[assignment]
 
 
 # ============================================================================
@@ -357,7 +357,7 @@ class UploadResponse(PulpBaseModel):
 
     pulp_href: str
     size: int = 0
-    completed: Optional[str] = None
+    completed: str | None = None
 
 
 class UploadCommitResponse(PulpBaseModel):
@@ -376,9 +376,9 @@ class OAuthTokenResponse(PulpBaseModel):
 
     access_token: str
     expires_in: int
-    token_type: str = "Bearer"
-    refresh_token: Optional[str] = None
-    scope: Optional[str] = None
+    token_type: str = "Bearer"  # noqa: S105
+    refresh_token: str | None = None
+    scope: str | None = None
 
 
 # ============================================================================
@@ -391,9 +391,9 @@ class DomainResponse(PulpBaseModel):
 
     pulp_href: str
     name: str
-    description: Optional[str] = None
+    description: str | None = None
     storage_class: str = "pulpcore.app.models.storage.FileSystem"
-    storage_settings: Dict[str, Any] = Field(default_factory=dict)
+    storage_settings: dict[str, Any] = Field(default_factory=dict)
     redirect_to_object_storage: bool = True
     hide_guarded_distributions: bool = False
 

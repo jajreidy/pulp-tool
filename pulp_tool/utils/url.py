@@ -6,13 +6,11 @@ for Pulp content access.
 """
 
 import logging
-from pathlib import Path
-from typing import Optional
-
 import tomllib
+from pathlib import Path
 
 
-def get_pulp_content_base_url(cert_config_path: Optional[str] = None) -> str:
+def get_pulp_content_base_url(cert_config_path: str | None = None) -> str:
     """
     Get the Pulp content base URL from cert config or use default.
 

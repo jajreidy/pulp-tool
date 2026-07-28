@@ -4,9 +4,11 @@ Tests for pulp_tool.pull module.
 
 import json
 from unittest.mock import Mock, mock_open, patch
+
 import httpx
 import pytest
 from httpx import HTTPError
+
 from pulp_tool.api import DistributionClient
 from pulp_tool.models.artifacts import PulledArtifacts
 from pulp_tool.pull import _categorize_artifacts, load_artifact_metadata, setup_repositories_if_needed

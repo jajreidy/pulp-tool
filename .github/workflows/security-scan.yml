@@ -25,37 +25,14 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -e ".[dev]"
-
       # pip-audit: fail on new OSV/PyPI advisories. Pygments CVE-2026-4539 (dev-only via pytest/diff-cover):
       # no release >2.19.2 on PyPI yet — remove these --ignore-vuln flags when pyproject pins pygments>=2.19.3.
-      # Run before optional safety/bandit: safety>=3.6 pulls nltk (PYSEC-2026-597) which is not a pulp-tool dep.
+      # Dev deps install from uv.lock (no editable install) so setuptools-scm does not rewrite pulp_tool/_version.py.
       - name: Run pip-audit
         run: |
+          python -m pip install --upgrade pip uv pip-audit
+          uv export --frozen --extra dev --no-emit-project -o /tmp/requirements-audit.txt
+          pip install -r /tmp/requirements-audit.txt
           pip-audit -l --desc on \
             --ignore-vuln CVE-2026-4539 \
             --ignore-vuln GHSA-5239-wwwm-4pmq
-
-      - name: Install optional security tools
-        run: pip install safety bandit
-
-      - name: Run Safety check
-        run: |
-          safety check --json || safety check
-        continue-on-error: true
-
-      - name: Run Bandit security linter
-        run: |
-          bandit -r pulp_tool/ -f json -o bandit-report.json || bandit -r pulp_tool/
-        continue-on-error: true
-
-      - name: Upload Bandit results
-        if: always()
-        uses: actions/upload-artifact@v7
-        with:
-          name: bandit-report
-          path: bandit-report.json
-          if-no-files-found: ignore

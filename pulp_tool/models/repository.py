@@ -1,7 +1,5 @@
 """Repository-related models for Konflux Pulp."""
 
-from typing import Optional
-
 from .base import KonfluxBaseModel
 
 
@@ -56,7 +54,7 @@ class RepositoryInfo(KonfluxBaseModel):
     """
 
     href: str
-    prn: Optional[str] = None
+    prn: str | None = None
 
 
 __all__ = ["RepositoryRefs", "RepositoryInfo"]

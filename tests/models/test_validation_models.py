@@ -9,7 +9,7 @@ This test file covers validation models from pulp_tool.models.validation:
 Note: Other data models are tested in test_all_models.py
 """
 
-from pulp_tool.models.validation import RpmCheckResult, ValidationResult, ArtifactValidationResult
+from pulp_tool.models.validation import ArtifactValidationResult, RpmCheckResult, ValidationResult
 
 
 class TestRpmCheckResult:

@@ -2,6 +2,7 @@
 
 from types import SimpleNamespace
 from unittest.mock import patch
+
 from pulp_tool.models.artifacts import ArtifactMetadata
 from pulp_tool.utils.artifact_detection import (
     _embedded_artifact_url,

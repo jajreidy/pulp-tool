@@ -21,13 +21,14 @@ alwaysApply: true
 
 ## After code changes (mandatory)
 
-1. `make lint` → fix issues
-2. `make format`
-3. `pre-commit run --all-files` → **loop** until **zero** failures
-4. `make test` (full suite) → **loop** until green
-5. `git fetch origin` → `make test-diff-coverage` (use `COMPARE_BRANCH=origin/<base>` if not targeting `main`) → **loop** until diff is fully covered
+1. `make lint` → fix issues (or run `make format` first for Ruff import/format fixes)
+2. `pre-commit run --all-files` → **loop** until **zero** failures (commit stage: lock-check, ruff, pylint, mypy, pip-audit, yamllint, shellcheck, codespell, hadolint)
+3. `make test` (full suite) → **loop** until green
+4. `git fetch origin` → `pre-commit run --hook-stage pre-push --all-files` (or `make test-diff-coverage`) → **loop** until diff-cover and Checkton pass
 
-Do not treat the branch as PR-ready without clean pre-commit, green tests, and passing diff-cover.
+Shortcut before a PR: `make pre-commit-ci` (runs steps 2 and 4 after you have green tests).
+
+Do not treat the branch as PR-ready without clean pre-commit (commit + pre-push stages), green tests, and passing diff-cover.
 
 ## References (quick)
 
@@ -40,7 +41,7 @@ Do not treat the branch as PR-ready without clean pre-commit, green tests, and p
 
 ## Checklist (same as CI)
 
-- Pre-commit: fully passing run (not “mostly” fixed).
+- Pre-commit commit stage: fully passing run (not “mostly” fixed).
+- Pre-commit pre-push stage (`make test-diff-coverage`, checkton) after `git fetch origin`.
 - Tests: full `make test` green.
-- PR: `make test-diff-coverage` green after `git fetch origin`.
 - PR materials: only after user confirmation; use **drafting-pulp-tool-pr** skill.

@@ -5,6 +5,7 @@ This module tests FileContentMixin methods that need coverage.
 """
 
 import httpx
+
 from pulp_tool.models.pulp_api import FileResponse
 
 
@@ -119,7 +120,6 @@ class TestFileContentMixin:
         from pulp_tool.api.content.file_files import FileContentMixin
 
         class TestClient(FileContentMixin):
-
             def __init__(self, config, session) -> None:
                 self.config = config
                 self.session = session
@@ -148,6 +148,7 @@ class TestFileContentMixin:
     def test_build_file_relative_path_rejects_invalid_arch(self) -> None:
         """Test _build_file_relative_path rejects unsupported architecture."""
         import pytest
+
         from pulp_tool.api.content.file_files import FileContentMixin
 
         with pytest.raises(ValueError, match="Unsupported architecture"):

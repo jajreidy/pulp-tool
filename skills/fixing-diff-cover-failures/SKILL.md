@@ -44,4 +44,4 @@ Use `python3 -m pytest --cov=pulp_tool --cov-report=term-missing` only to debug 
 ## References
 
 - Merge policy: [CONTRIBUTING.md](../../CONTRIBUTING.md)
-- Full check script: `git fetch origin && ./scripts/check-all.sh`
+- Full check script: `git fetch origin && make pre-commit-ci` (or `./scripts/check-all.sh` for Python lint + tests + diff-cover)

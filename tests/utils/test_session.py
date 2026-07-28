@@ -8,8 +8,10 @@ import os
 import ssl
 import tempfile
 from unittest.mock import Mock, patch
+
 import httpx
 import pytest
+
 from pulp_tool.utils import create_session_with_retry
 from pulp_tool.utils.session import RETRY_STATUS_CODES, RetryingAsyncClient, RetryingHttpClient, _compute_retry_delay_s
 
@@ -270,14 +272,16 @@ class TestSessionUtilities:
             return httpx.Response(504, text="timeout", request=request)
 
         transport = httpx.MockTransport(handler)
-        async with RetryingAsyncClient(
-            transport=transport,
-            base_url="https://example.com",
-            timeout=httpx.Timeout(5.0),
-            response_retry_total_attempts=4,
-        ) as client:
-            async with client.stream("GET", "https://example.com/stream.bin") as r:
-                assert r.status_code == 504
+        async with (
+            RetryingAsyncClient(
+                transport=transport,
+                base_url="https://example.com",
+                timeout=httpx.Timeout(5.0),
+                response_retry_total_attempts=4,
+            ) as client,
+            client.stream("GET", "https://example.com/stream.bin") as r,
+        ):
+            assert r.status_code == 504
         assert calls["n"] == 1
 
     @pytest.mark.asyncio

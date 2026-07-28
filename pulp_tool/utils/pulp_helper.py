@@ -6,11 +6,11 @@ delegating to specialized manager classes for repository, distribution,
 and upload operations.
 """
 
-from typing import Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 
 from pulp_tool.models.pulp_api import DistributionRequest, RepositoryRequest
 
-from ..models.context import UploadContext, UploadRpmContext, UploadFilesContext
+from ..models.context import UploadContext, UploadFilesContext, UploadRpmContext
 from ..models.repository import RepositoryRefs
 from ..models.results import PulpResultsModel, RpmUploadResult
 
@@ -30,7 +30,7 @@ class PulpHelper:
     delegating to specialized manager classes.
     """
 
-    def __init__(self, pulp_client: "PulpClient", parent_package: Optional[str] = None) -> None:
+    def __init__(self, pulp_client: "PulpClient", parent_package: str | None = None) -> None:
         """
         Initialize the helper with a PulpClient instance.
 
@@ -54,7 +54,7 @@ class PulpHelper:
     def setup_repositories(
         self,
         build_id: str,
-        signed_by: Optional[str] = None,
+        signed_by: str | None = None,
         skip_artifacts_repo: bool = False,
         target_arch_repo: bool = False,
         skip_logs_repo: bool = False,
@@ -164,11 +164,11 @@ class PulpHelper:
 
     def create_or_get_repository(
         self,
-        build_id: Optional[str],
+        build_id: str | None,
         repo_api_type: str,
-        new_repository: Optional[RepositoryRequest] = None,
-        new_distribution: Optional[DistributionRequest] = None,
-    ) -> tuple[str, Optional[str]]:
+        new_repository: RepositoryRequest | None = None,
+        new_distribution: DistributionRequest | None = None,
+    ) -> tuple[str, str | None]:
         """
         Create or get a repository and distribution of the specified type.
 
@@ -235,7 +235,7 @@ class PulpHelper:
         repositories: RepositoryRefs,
         *,
         pulp_helper: Optional["PulpHelper"] = None,
-    ) -> Optional[str]:
+    ) -> str | None:
         """
         Process all upload operations.
 
@@ -254,7 +254,7 @@ class PulpHelper:
 
     def process_file_uploads(
         self, client: "PulpClient", context: UploadFilesContext, repositories: RepositoryRefs
-    ) -> Optional[str]:
+    ) -> str | None:
         """
         Process upload of individual files to Pulp repositories.
 

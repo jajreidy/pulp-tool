@@ -2,13 +2,14 @@
 
 import pytest
 from pydantic import ValidationError
-from pulp_tool.models.base import KonfluxBaseModel
-from pulp_tool.models.repository import RepositoryRefs
-from pulp_tool.models.context import UploadRpmContext, PullContext
+
 from pulp_tool.models.artifacts import (
     ArtifactFile,
     PulledArtifacts,
 )
+from pulp_tool.models.base import KonfluxBaseModel
+from pulp_tool.models.context import PullContext, UploadRpmContext
+from pulp_tool.models.repository import RepositoryRefs
 
 
 class TestKonfluxBaseModel:

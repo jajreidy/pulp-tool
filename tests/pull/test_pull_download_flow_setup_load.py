@@ -4,7 +4,9 @@ Tests for pulp_tool.pull module (setup and load).
 
 import json
 from unittest.mock import Mock, patch
+
 import pytest
+
 from pulp_tool.pull import load_and_validate_artifacts, setup_repositories_if_needed
 
 
@@ -137,9 +139,8 @@ class TestLoadAndValidateArtifacts:
         with open(temp_file, "w") as f:
             json.dump({"artifacts": {"a.rpm": {"labels": {}, "url": "ftp://example.com/a.rpm"}}}, f)
         mock_client = Mock()
-        with patch.object(sys, "exit", side_effect=SystemExit(1)) as mock_exit:
-            with pytest.raises(SystemExit):
-                load_and_validate_artifacts(args, mock_client)
+        with patch.object(sys, "exit", side_effect=SystemExit(1)) as mock_exit, pytest.raises(SystemExit):
+            load_and_validate_artifacts(args, mock_client)
         mock_exit.assert_called_once_with(1)
 
     def test_load_and_validate_artifacts_validation_fails_extra_top_level_key(self, temp_file) -> None:
@@ -157,9 +158,8 @@ class TestLoadAndValidateArtifacts:
                 f,
             )
         mock_client = Mock()
-        with patch.object(sys, "exit", side_effect=SystemExit(1)) as mock_exit:
-            with pytest.raises(SystemExit):
-                load_and_validate_artifacts(args, mock_client)
+        with patch.object(sys, "exit", side_effect=SystemExit(1)) as mock_exit, pytest.raises(SystemExit):
+            load_and_validate_artifacts(args, mock_client)
         mock_exit.assert_called_once_with(1)
 
     def test_load_and_validate_artifacts_converts_to_typed_models(self, temp_file) -> None:

@@ -2,9 +2,10 @@
 
 import os
 import tempfile
-from typing import Dict
 from unittest.mock import Mock, patch
+
 import pytest
+
 from pulp_tool.models.context import UploadRpmContext
 from pulp_tool.models.repository import RepositoryRefs
 from pulp_tool.models.results import PulpResultsModel, RpmUploadResult
@@ -105,7 +106,7 @@ class TestUploadOrchestratorProcessUploads:
             artifacts_href="",
             artifacts_prn="",
         )
-        mock_processed_uploads: Dict[str, RpmUploadResult] = {"x86_64": RpmUploadResult()}
+        mock_processed_uploads: dict[str, RpmUploadResult] = {"x86_64": RpmUploadResult()}
         with (
             patch("pulp_tool.utils.pulp_helper.PulpHelper") as mock_ph_cls,
             patch.object(orchestrator, "process_architecture_uploads", return_value=mock_processed_uploads),
@@ -145,7 +146,7 @@ class TestUploadOrchestratorProcessUploads:
             artifacts_href="",
             artifacts_prn="",
         )
-        mock_processed_uploads: Dict[str, RpmUploadResult] = {
+        mock_processed_uploads: dict[str, RpmUploadResult] = {
             "x86_64": RpmUploadResult(created_resources=["/resource/1"])
         }
         with (
@@ -187,7 +188,7 @@ class TestUploadOrchestratorProcessUploads:
             artifacts_href="",
             artifacts_prn="",
         )
-        mock_processed_uploads: Dict[str, RpmUploadResult] = {"x86_64": RpmUploadResult()}
+        mock_processed_uploads: dict[str, RpmUploadResult] = {"x86_64": RpmUploadResult()}
         root_rpm_files = ["/test/rpms/pkg.noarch.rpm"]
         with (
             patch("pulp_tool.utils.pulp_helper.PulpHelper") as mock_ph_cls,
@@ -247,7 +248,7 @@ class TestUploadOrchestratorProcessUploads:
             "sbom": "https://example.com/sbom/",
             "artifacts": "https://example.com/artifacts/",
         }
-        mock_processed_uploads: Dict[str, RpmUploadResult] = {"x86_64": RpmUploadResult()}
+        mock_processed_uploads: dict[str, RpmUploadResult] = {"x86_64": RpmUploadResult()}
         root_rpm_files = ["/test/rpms/pkg.noarch.rpm"]
         with (
             patch.object(orchestrator, "process_architecture_uploads", return_value=mock_processed_uploads),

@@ -1,15 +1,15 @@
 """Iteration helpers for pulled artifact collections."""
 
-from typing import Dict, Iterator, List, Optional, Tuple
+from collections.abc import Iterator
 
-from ..models.artifacts import PulledArtifacts, ArtifactFile
+from ..models.artifacts import ArtifactFile, PulledArtifacts
 
 ARTIFACT_TYPES = ["rpms", "sboms", "logs"]
 
 
 def iterate_artifact_types(
-    pulled_artifacts: PulledArtifacts, *, types: Optional[List[str]] = None
-) -> Iterator[Tuple[str, Dict[str, ArtifactFile]]]:
+    pulled_artifacts: PulledArtifacts, *, types: list[str] | None = None
+) -> Iterator[tuple[str, dict[str, ArtifactFile]]]:
     """
     Iterate over artifact types and their collections.
 
@@ -29,8 +29,8 @@ def iterate_artifact_types(
 
 
 def iterate_all_artifacts(
-    pulled_artifacts: PulledArtifacts, *, types: Optional[List[str]] = None
-) -> Iterator[Tuple[str, str, ArtifactFile]]:
+    pulled_artifacts: PulledArtifacts, *, types: list[str] | None = None
+) -> Iterator[tuple[str, str, ArtifactFile]]:
     """
     Iterate over all individual artifacts across types.
 
@@ -46,7 +46,7 @@ def iterate_all_artifacts(
             yield artifact_type, artifact_name, artifact_data
 
 
-def count_artifacts(pulled_artifacts: PulledArtifacts, *, types: Optional[List[str]] = None) -> Dict[str, int]:
+def count_artifacts(pulled_artifacts: PulledArtifacts, *, types: list[str] | None = None) -> dict[str, int]:
     """
     Count artifacts by type.
 

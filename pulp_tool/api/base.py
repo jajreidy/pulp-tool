@@ -8,7 +8,8 @@ and error handling patterns.
 
 import logging
 import traceback
-from typing import Any, Callable, Optional, Protocol, Type, TypeVar, runtime_checkable
+from collections.abc import Callable
+from typing import Any, Protocol, TypeVar, runtime_checkable
 
 import httpx
 from pydantic import BaseModel, ValidationError
@@ -39,7 +40,7 @@ class BaseResourceMixin:
     """Base mixin providing common HTTP methods and response parsing for Pulp API resources."""
 
     def _parse_response(
-        self, response: httpx.Response, model_class: Type[T], operation: str, *, check_success: bool = True
+        self, response: httpx.Response, model_class: type[T], operation: str, *, check_success: bool = True
     ) -> T:
         """
         Parse HTTP response into a Pydantic model.
@@ -74,7 +75,7 @@ class BaseResourceMixin:
             logging.error("Traceback: %s", traceback.format_exc())
             raise ValueError(f"Invalid JSON response from Pulp API during {operation}: {e}") from e
 
-    def _get_resource(self, endpoint: str, model_class: Type[T], name: Optional[str] = None, **query_params: Any) -> T:
+    def _get_resource(self, endpoint: str, model_class: type[T], name: str | None = None, **query_params: Any) -> T:
         """
         Get a single resource by name or href.
 
@@ -116,8 +117,8 @@ class BaseResourceMixin:
         return model_class(**results[0])
 
     def _list_resources(
-        self, endpoint: str, model_class: Type[T], **query_params: Any
-    ) -> tuple[list[T], Optional[str], Optional[str], int]:
+        self, endpoint: str, model_class: type[T], **query_params: Any
+    ) -> tuple[list[T], str | None, str | None, int]:
         """
         List resources with pagination support.
 
@@ -149,7 +150,7 @@ class BaseResourceMixin:
         )
 
     def _create_resource(
-        self, endpoint: str, request_model: BaseModel, response_model_class: Type[T], operation: str
+        self, endpoint: str, request_model: BaseModel, response_model_class: type[T], operation: str
     ) -> T:
         """
         Create a resource.
@@ -171,7 +172,7 @@ class BaseResourceMixin:
         )
         return self._parse_response(response, response_model_class, operation)
 
-    def _update_resource(self, href: str, request_model: BaseModel, response_model_class: Type[T], operation: str) -> T:
+    def _update_resource(self, href: str, request_model: BaseModel, response_model_class: type[T], operation: str) -> T:
         """
         Update a resource by href.
 

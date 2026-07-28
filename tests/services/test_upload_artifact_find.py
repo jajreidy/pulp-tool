@@ -2,9 +2,11 @@
 
 import re
 from unittest.mock import Mock, patch
+
 import httpx
-from pulp_tool.models.pulp_api import TaskResponse
+
 from pulp_tool.models.context import UploadContext, UploadRpmContext
+from pulp_tool.models.pulp_api import TaskResponse
 from pulp_tool.services.upload_service import _distribution_urls_for_context, _handle_artifact_results
 
 
@@ -141,8 +143,8 @@ class TestFindArtifactContent:
 
     def test_find_artifact_content_no_artifacts_dict(self, mock_pulp_client) -> None:
         """Test _find_artifact_content when artifacts_dict is empty."""
-        from pulp_tool.services.upload_collect import _find_artifact_content
         from pulp_tool.models.pulp_api import TaskResponse
+        from pulp_tool.services.upload_collect import _find_artifact_content
 
         task_response = TaskResponse(
             pulp_href="/api/v3/tasks/123/", state="completed", created_resources=["/api/v3/content/file/files/12345/"]
@@ -157,8 +159,8 @@ class TestFindArtifactContent:
 
     def test_find_artifact_content_non_dict_artifacts(self, mock_pulp_client) -> None:
         """Test _find_artifact_content when artifacts is not a dict."""
-        from pulp_tool.services.upload_collect import _find_artifact_content
         from pulp_tool.models.pulp_api import TaskResponse
+        from pulp_tool.services.upload_collect import _find_artifact_content
 
         task_response = TaskResponse(
             pulp_href="/api/v3/tasks/123/", state="completed", created_resources=["/api/v3/content/file/files/12345/"]
@@ -173,8 +175,8 @@ class TestFindArtifactContent:
 
     def test_find_artifact_content_no_file_value(self, mock_pulp_client, httpx_mock) -> None:
         """Test _find_artifact_content when artifact response has no file value."""
-        from pulp_tool.services.upload_collect import _find_artifact_content
         from pulp_tool.models.pulp_api import TaskResponse
+        from pulp_tool.services.upload_collect import _find_artifact_content
 
         task_response = TaskResponse(
             pulp_href="/api/v3/tasks/123/", state="completed", created_resources=["/api/v3/content/file/files/12345/"]
@@ -192,8 +194,8 @@ class TestFindArtifactContent:
 
     def test_find_artifact_content_no_sha256_value(self, mock_pulp_client, httpx_mock) -> None:
         """Test _find_artifact_content when artifact response has no sha256 value."""
-        from pulp_tool.services.upload_collect import _find_artifact_content
         from pulp_tool.models.pulp_api import TaskResponse
+        from pulp_tool.services.upload_collect import _find_artifact_content
 
         task_response = TaskResponse(
             pulp_href="/api/v3/tasks/123/", state="completed", created_resources=["/api/v3/content/file/files/12345/"]
@@ -211,8 +213,8 @@ class TestFindArtifactContent:
 
     def test_find_artifact_content_success(self, mock_pulp_client, httpx_mock) -> None:
         """Test _find_artifact_content successful path."""
-        from pulp_tool.services.upload_collect import _find_artifact_content
         from pulp_tool.models.pulp_api import TaskResponse
+        from pulp_tool.services.upload_collect import _find_artifact_content
 
         task_response = TaskResponse(
             pulp_href="/api/v3/tasks/123/", state="completed", created_resources=["/api/v3/content/file/files/12345/"]
@@ -230,8 +232,8 @@ class TestFindArtifactContent:
 
     def test_find_artifact_content_bare_list_json(self, mock_pulp_client, httpx_mock) -> None:
         """find_content JSON may be a list of content objects instead of paginated dict."""
-        from pulp_tool.services.upload_collect import _find_artifact_content
         from pulp_tool.models.pulp_api import TaskResponse
+        from pulp_tool.services.upload_collect import _find_artifact_content
 
         task_response = TaskResponse(
             pulp_href="/api/v3/tasks/123/", state="completed", created_resources=["/api/v3/content/file/files/12345/"]

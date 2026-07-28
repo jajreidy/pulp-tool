@@ -5,11 +5,12 @@ This module tests repository and distribution mixin methods that need coverage.
 """
 
 import httpx
+
 from pulp_tool.models.pulp_api import (
-    RepositoryRequest,
     DistributionRequest,
-    RepositoryResponse,
     DistributionResponse,
+    RepositoryRequest,
+    RepositoryResponse,
     RpmRepositoryRequest,
     RpmRepositoryResponse,
 )

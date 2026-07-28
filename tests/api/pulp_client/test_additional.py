@@ -1,8 +1,10 @@
 """PulpClient additional tests."""
 
 from unittest.mock import patch
+
 import httpx
 import pytest
+
 from pulp_tool.api import PulpClient
 
 

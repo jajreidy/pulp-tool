@@ -8,7 +8,9 @@ repository setup, distribution URL retrieval, and helper methods.
 from types import SimpleNamespace
 from typing import cast
 from unittest.mock import Mock, patch
+
 from httpx import HTTPError
+
 from pulp_tool.models.pulp_api import RpmDistributionRequest, RpmRepositoryRequest
 from pulp_tool.utils import PulpHelper
 from pulp_tool.utils.repository_manager import RepositoryApiOps
@@ -156,8 +158,8 @@ class TestPulpHelperDistributionOperations:
         """Test PulpHelper _get_distribution_urls_impl."""
         helper = PulpHelper(mock_pulp_client)
         with patch.object(helper._distribution_manager, "_get_single_distribution_url") as mock_get_url:
-            mock_get_url.side_effect = (
-                lambda build_id, repo_type, base_url: f"{base_url}{helper.namespace}/{build_id}/{repo_type}/"
+            mock_get_url.side_effect = lambda build_id, repo_type, base_url: (
+                f"{base_url}{helper.namespace}/{build_id}/{repo_type}/"
             )
             result = helper._distribution_manager._get_distribution_urls_impl("test-build")
         assert len(result) == 4

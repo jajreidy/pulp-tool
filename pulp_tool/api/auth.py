@@ -8,8 +8,8 @@ for secure API access with optimized token refresh logic.
 # Standard library imports
 import logging
 import traceback
+from collections.abc import Generator
 from datetime import datetime, timedelta
-from typing import Generator, Optional
 
 # Third-party imports
 import httpx
@@ -44,8 +44,8 @@ class OAuth2ClientCredentialsAuth(httpx.Auth):
         self._client_secret = client_secret
         self._token_url = token_url
 
-        self._access_token: Optional[str] = None
-        self._expire_at: Optional[datetime] = None
+        self._access_token: str | None = None
+        self._expire_at: datetime | None = None
 
     def auth_flow(self, request: httpx.Request) -> Generator[httpx.Request, httpx.Response, None]:
         """
@@ -116,12 +116,12 @@ class OAuth2ClientCredentialsAuth(httpx.Auth):
             raise
 
     @property
-    def access_token(self) -> Optional[str]:
+    def access_token(self) -> str | None:
         """Get the current access token (for debugging/inspection)."""
         return self._access_token
 
     @property
-    def expires_at(self) -> Optional[datetime]:
+    def expires_at(self) -> datetime | None:
         """Get the token expiration time (for debugging/inspection)."""
         return self._expire_at
 

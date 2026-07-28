@@ -4,9 +4,11 @@ Tests for BaseResourceMixin error handling and edge cases.
 This module tests error paths in BaseResourceMixin that need coverage.
 """
 
-import pytest
 from unittest.mock import Mock, patch
+
 import httpx
+import pytest
+
 from pulp_tool.api.base import BaseResourceMixin
 from pulp_tool.models.pulp_api import RepositoryResponse
 

@@ -1,12 +1,15 @@
 """Property-based tests for small pure helpers (Hypothesis)."""
 
 from __future__ import annotations
+
 import os
 import string
+
 from hypothesis import given, settings
 from hypothesis import strategies as st
+
 from pulp_tool.utils.correlation import ENV_CORRELATION, resolve_correlation_id
-from pulp_tool.utils.rpm_operations import parse_rpm_filename_to_nvra, parse_rpm_filename_to_nvr
+from pulp_tool.utils.rpm_operations import parse_rpm_filename_to_nvr, parse_rpm_filename_to_nvra
 from pulp_tool.utils.validation.build_id import sanitize_build_id_for_repository, strip_namespace_from_build_id
 
 
@@ -75,7 +78,7 @@ def test_sanitize_build_id_for_repository_no_invalid_chars(seg) -> None:
     """Sanitized id has no path separators or glob-like chars from the invalid set."""
     invalid = {"/", "\\", ":", "*", "?", '"', "<", ">", "|"}
     sanitized = sanitize_build_id_for_repository(seg)
-    assert not any((c in sanitized for c in invalid))
+    assert not any(c in sanitized for c in invalid)
     assert sanitized == sanitized.strip("-").lower() or sanitized == "default-build"
 
 

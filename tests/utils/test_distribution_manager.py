@@ -1,7 +1,9 @@
 """Tests for DistributionManager class."""
 
 from unittest.mock import Mock, patch
+
 import pytest
+
 from pulp_tool.utils.distribution_manager import DistributionManager
 
 

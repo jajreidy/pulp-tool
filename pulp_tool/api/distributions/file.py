@@ -5,7 +5,7 @@ This module provides file-specific distribution operations following Pulp's API 
 API Reference: https://docs.pulpproject.org/pulp_file/restapi.html#distributions
 """
 
-from typing import Any, Optional
+from typing import Any
 
 import httpx
 
@@ -16,7 +16,7 @@ from .base import BaseDistributionMixin
 class FileDistributionMixin(BaseDistributionMixin):
     """Mixin that provides file distribution operations for Pulp."""
 
-    def create_file_distribution(self, request: DistributionRequest) -> tuple[httpx.Response, Optional[str]]:
+    def create_file_distribution(self, request: DistributionRequest) -> tuple[httpx.Response, str | None]:
         """
         Create a file distribution.
 
@@ -55,7 +55,7 @@ class FileDistributionMixin(BaseDistributionMixin):
 
     def list_file_distributions(
         self, **query_params: Any
-    ) -> tuple[list[FileDistributionResponse], Optional[str], Optional[str], int]:
+    ) -> tuple[list[FileDistributionResponse], str | None, str | None, int]:
         """
         List file distributions with pagination.
 

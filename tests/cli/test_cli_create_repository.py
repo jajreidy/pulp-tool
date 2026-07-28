@@ -1,12 +1,13 @@
 """Tests for Click CLI commands."""
 
 from unittest.mock import Mock, patch
+
 from click.testing import CliRunner
+
 from pulp_tool.cli import cli
 
 
 class TestCreateRepositoryCommand:
-
     @patch("pulp_tool.cli.create_repository.PulpClient")
     @patch("pulp_tool.cli.create_repository.PulpHelper")
     def test_create_repository_success(self, mock_helper_class, mock_client_class) -> None:

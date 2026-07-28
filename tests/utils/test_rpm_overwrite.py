@@ -31,7 +31,6 @@ def _valid_rpm_path(name: str = "overwrite-test-pkg-1.0-1.x86_64.rpm", content: 
 
 
 class TestFilterRpmHrefsInRepositoryVersion:
-
     def test_filters_to_packages_returned_by_list(self) -> None:
         client = MagicMock()
         client.list_rpm_packages.return_value = ([_rpm_pkg("/p/a/"), _rpm_pkg("/p/b/")], None, None, 2)
@@ -53,7 +52,6 @@ class TestFilterRpmHrefsInRepositoryVersion:
 
 
 class TestRemoveRpmsMatchingLocalFilesFromRepository:
-
     def test_no_paths(self) -> None:
         client = MagicMock()
         assert remove_rpms_matching_local_files_from_repository(client, [], "/repo/", None) == 0

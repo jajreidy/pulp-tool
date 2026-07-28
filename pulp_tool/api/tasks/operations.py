@@ -11,7 +11,7 @@ as redundant documentation-only surface area.
 
 import logging
 import time
-from typing import Any, Optional
+from typing import Any
 
 from ...models.pulp_api import TaskResponse
 
@@ -62,7 +62,7 @@ class TaskMixin:
         self._check_response(response, "get task")
         return BaseResourceMixin._parse_response(self, response, TaskResponse, "get task", check_success=False)
 
-    def list_tasks(self, **query_params: Any) -> tuple[list[TaskResponse], Optional[str], Optional[str], int]:
+    def list_tasks(self, **query_params: Any) -> tuple[list[TaskResponse], str | None, str | None, int]:
         """
         List tasks with pagination.
 

@@ -1,7 +1,5 @@
 """Validation and check result models."""
 
-from typing import List, Dict
-
 from pydantic import Field
 
 from .base import KonfluxBaseModel
@@ -16,8 +14,8 @@ class RpmCheckResult(KonfluxBaseModel):
         found_artifacts: List of artifact information for RPMs already on Pulp
     """
 
-    missing_rpms: List[str] = Field(default_factory=list)
-    found_artifacts: List[Dict[str, str]] = Field(default_factory=list)
+    missing_rpms: list[str] = Field(default_factory=list)
+    found_artifacts: list[dict[str, str]] = Field(default_factory=list)
 
     @property
     def missing_count(self) -> int:
@@ -45,7 +43,7 @@ class ValidationResult(KonfluxBaseModel):
     """
 
     is_valid: bool
-    errors: List[str] = Field(default_factory=list)
+    errors: list[str] = Field(default_factory=list)
 
     @property
     def error_count(self) -> int:
@@ -72,8 +70,8 @@ class ArtifactValidationResult(KonfluxBaseModel):
         artifacts: Dictionary of individual artifacts to process
     """
 
-    artifact_json: Dict
-    artifacts: Dict
+    artifact_json: dict
+    artifacts: dict
 
 
 __all__ = [

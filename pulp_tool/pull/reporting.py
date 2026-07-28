@@ -8,7 +8,7 @@ and build metadata.
 
 import logging
 import os
-from typing import Any, Dict, Optional, Tuple, Union
+from typing import Any
 
 from ..models.artifacts import ArtifactFile, ArtifactMetadata, PulledArtifacts
 from ..models.context import PullContext
@@ -63,8 +63,8 @@ def _log_pull_summary(completed: int, failed: int, args: PullContext) -> None:
 
 
 def _extract_artifact_info(
-    artifact_data: Union[ArtifactFile, ArtifactMetadata, Dict[str, Any]],
-) -> Tuple[str, Dict[str, str]]:
+    artifact_data: ArtifactFile | ArtifactMetadata | dict[str, Any],
+) -> tuple[str, dict[str, str]]:
     """
     Extract file path and labels from artifact data.
 
@@ -106,7 +106,7 @@ def _format_file_size(size_bytes: int) -> str:
     return f"{size_bytes:.1f} {size_names[i]}"
 
 
-def _get_file_size_safe(file_path: str) -> Tuple[int, str]:
+def _get_file_size_safe(file_path: str) -> tuple[int, str]:
     """
     Get file size with error handling.
 
@@ -124,9 +124,7 @@ def _get_file_size_safe(file_path: str) -> Tuple[int, str]:
         return 0, "Unknown size"
 
 
-def _log_single_artifact(
-    artifact_name: str, artifact_data: Union[ArtifactFile, ArtifactMetadata, Dict[str, Any]]
-) -> int:
+def _log_single_artifact(artifact_name: str, artifact_data: ArtifactFile | ArtifactMetadata | dict[str, Any]) -> int:
     """
     Log information for a single artifact and return file size.
 
@@ -155,7 +153,7 @@ def _log_single_artifact(
     return file_size
 
 
-def _calculate_artifact_totals(pulled_artifacts: PulledArtifacts) -> Tuple[int, int]:
+def _calculate_artifact_totals(pulled_artifacts: PulledArtifacts) -> tuple[int, int]:
     """
     Calculate total file count and size for all artifacts.
 
@@ -192,8 +190,8 @@ def _format_download_summary(pulled_artifacts: PulledArtifacts, total_size: int)
         Formatted summary string
     """
     # Import logging utility
-    from ..utils.logging_utils import format_artifact_counts
     from ..utils.iteration_utils import count_artifacts
+    from ..utils.logging_utils import format_artifact_counts
 
     counts = count_artifacts(pulled_artifacts)
     counts_str = format_artifact_counts(counts)
@@ -204,7 +202,7 @@ def _format_download_summary(pulled_artifacts: PulledArtifacts, total_size: int)
     return f"Downloaded: {counts_str} ({_format_file_size(total_size)})"
 
 
-def _log_artifacts_downloaded(pulled_artifacts: PulledArtifacts) -> Tuple[int, int]:
+def _log_artifacts_downloaded(pulled_artifacts: PulledArtifacts) -> tuple[int, int]:
     """
     Log breakdown of downloaded artifacts and return totals.
 
@@ -260,7 +258,7 @@ def _log_storage_summary(total_files: int, pulled_artifacts: PulledArtifacts) ->
         logging.debug("  - %s", location)
 
 
-def _log_pulp_upload_info(upload_info: Optional[PulpResultsModel]) -> None:
+def _log_pulp_upload_info(upload_info: PulpResultsModel | None) -> None:
     """Log Pulp upload information."""
     if upload_info:
         # Repository information (DEBUG)
@@ -315,7 +313,7 @@ def generate_pull_report(
     completed: int,
     failed: int,
     args: PullContext,
-    upload_info: Optional[PulpResultsModel] = None,
+    upload_info: PulpResultsModel | None = None,
 ) -> None:
     """
     Generate and display a comprehensive report of what was pulled and where it was stored.

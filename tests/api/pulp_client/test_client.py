@@ -1,12 +1,14 @@
 """PulpClient tests (split module)."""
 
+import importlib.util
 from pathlib import Path
 from unittest.mock import AsyncMock, Mock, patch
-import importlib.util
+
 import httpx
 import pytest
 from httpx import HTTPError
-from pulp_tool.api import PulpClient, OAuth2ClientCredentialsAuth
+
+from pulp_tool.api import OAuth2ClientCredentialsAuth, PulpClient
 from pulp_tool.exceptions import PulpToolConfigError, PulpToolHTTPError
 
 

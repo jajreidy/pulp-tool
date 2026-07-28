@@ -1,10 +1,11 @@
 """Tests for service modules."""
 
 from unittest.mock import Mock, patch
+
+from pulp_tool.models.artifacts import ArtifactData, ArtifactJsonResponse
+from pulp_tool.models.context import PullContext, UploadRpmContext
 from pulp_tool.services.pull_service import PullService
 from pulp_tool.services.upload_service import UploadService
-from pulp_tool.models.context import PullContext, UploadRpmContext
-from pulp_tool.models.artifacts import ArtifactData, ArtifactJsonResponse
 
 
 class TestPullService:
@@ -58,8 +59,8 @@ class TestPullService:
         context = PullContext(artifact_location="/test/path.json")
         mock_client = Mock()
         mock_pulled_artifacts = Mock()
-        from pulp_tool.models.results import PulpResultsModel
         from pulp_tool.models.repository import RepositoryRefs
+        from pulp_tool.models.results import PulpResultsModel
         from pulp_tool.models.statistics import UploadCounts
 
         mock_upload_info = PulpResultsModel(

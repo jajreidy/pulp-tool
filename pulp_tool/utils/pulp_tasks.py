@@ -8,7 +8,7 @@ Centralizes ``create_file_content`` → ``check_response`` → extract ``task`` 
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Dict, Optional, Union
+from typing import TYPE_CHECKING, Any
 
 from ..models.pulp_api import TaskResponse
 
@@ -17,14 +17,14 @@ if TYPE_CHECKING:
 
 
 def create_file_content_and_wait(
-    client: "PulpClient",
+    client: PulpClient,
     repository: str,
-    content_or_path: Union[str, Path],
+    content_or_path: str | Path,
     *,
     build_id: str,
-    pulp_label: Dict[str, Any],
-    filename: Optional[str] = None,
-    arch: Optional[str] = None,
+    pulp_label: dict[str, Any],
+    filename: str | None = None,
+    arch: str | None = None,
     operation: str = "create file content",
 ) -> TaskResponse:
     """

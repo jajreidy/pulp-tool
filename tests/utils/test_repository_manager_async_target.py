@@ -4,8 +4,10 @@ import asyncio
 from types import SimpleNamespace
 from typing import cast
 from unittest.mock import Mock, patch
+
 import httpx
 import pytest
+
 from pulp_tool.models.pulp_api import RpmRepositoryRequest, TaskResponse
 from pulp_tool.utils.repository_manager import RepositoryApiOps, RepositoryManager, _resource_log_label
 
@@ -224,7 +226,7 @@ class TestRepositoryManagerCheckExistingDistribution:
             result = manager._check_existing_distribution(mock_methods, "test-build/rpms", "rpms")
             assert result is False
             debug_calls = [call[0][0] if call[0] else "" for call in mock_logging.debug.call_args_list]
-            assert any(("Distribution check method not available" in str(call) for call in debug_calls))
+            assert any("Distribution check method not available" in str(call) for call in debug_calls)
 
 
 def test_resource_log_label_empty_string() -> None:

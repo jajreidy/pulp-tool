@@ -1,12 +1,15 @@
 """Tests for content metadata and artifact models."""
 
-from typing import Any, Callable, cast
+from collections.abc import Callable
+from typing import Any, cast
+
 import pytest
 from pydantic import ValidationError
+
 from pulp_tool.models.artifacts import (
-    DownloadTask,
     ArtifactMetadata,
     ContentData,
+    DownloadTask,
     ExtraArtifactRef,
     PulpContentRow,
 )

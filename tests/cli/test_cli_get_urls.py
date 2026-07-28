@@ -2,7 +2,9 @@
 
 import tempfile
 from pathlib import Path
+
 from click.testing import CliRunner
+
 from pulp_tool.cli import cli, config_option, debug_option
 
 

@@ -3,7 +3,7 @@
 COMPARE_BRANCH ?= origin/main
 AUDIT_VENV ?= .audit-venv
 
-.PHONY: help install install-dev test test-container test-diff-coverage lint format check clean audit lock lock-check
+.PHONY: help install install-dev test test-container test-diff-coverage lint format check clean audit lock lock-check pre-commit-ci
 
 # Default target
 help:
@@ -14,9 +14,10 @@ help:
 	@echo "  make test-container - Optional local Dockerfile smoke-test (Konflux Tekton builds on PR/push)"
 	@echo "  make test-diff-coverage - make test + diff-cover 100% vs COMPARE_BRANCH (same gate as PR CI)"
 	@echo "  make lint         - Run all linters"
-	@echo "  make format       - Format code with Black"
+	@echo "  make format       - Format code with Ruff"
 	@echo "  make check        - Run all checks (lint + test)"
-	@echo "  make audit        - Run pip-audit in a throwaway venv (only this project's dev deps)"
+	@echo "  make pre-commit-ci - Run pre-commit commit + push stages (matches PR CI)"
+	@echo "  make audit        - Run pip-audit in a throwaway venv (dev deps from uv.lock; no editable install)"
 	@echo "  make clean        - Clean build artifacts"
 	@echo "  make lock         - Regenerate uv.lock from pyproject.toml (uv lock)"
 	@echo "  make lock-check   - Fail if pyproject.toml and uv.lock are out of sync"
@@ -30,6 +31,7 @@ install:
 install-dev:
 	pip install -e ".[dev]"
 	pre-commit install || echo "pre-commit not available, skipping"
+	pre-commit install --hook-type pre-push || echo "pre-push hooks skipped"
 	pre-commit install --hook-type commit-msg || echo "commit-msg hooks skipped"
 
 lock:
@@ -40,7 +42,7 @@ lock-check:
 
 # Testing
 test:
-	python3 -m pytest -v --tb=short --cov=pulp_tool --cov-report=term-missing --cov-report=html --cov-report=xml --cov-fail-under=85
+	python3 -m pytest
 
 # Same as GitHub Actions: 100% coverage on lines changed vs merge base (requires coverage.xml from test).
 # Requires diff-cover (included in pip install -e ".[dev]" / make install-dev).
@@ -67,35 +69,41 @@ test-integration:
 	python3 -m pytest -v -m integration
 
 # Linting
-lint: lint-black lint-flake8 lint-pylint lint-mypy
+lint: lint-ruff lint-pylint lint-mypy
 
-lint-black:
-	python3 -m black --check pulp_tool/ tests/
-
-lint-flake8:
-	python3 -m flake8 pulp_tool/ tests/
+lint-ruff:
+	python3 -m ruff check pulp_tool/ tests/
+	python3 -m ruff format --check pulp_tool/ tests/
 
 lint-pylint:
-	python3 -m pylint pulp_tool/ --errors-only
+	python3 -m pylint pulp_tool/ tests/ --errors-only
 
 lint-mypy:
 	python3 -m mypy pulp_tool/ tests/ --show-error-codes
 
 # Formatting
 format:
-	python3 -m black pulp_tool/ tests/
+	python3 -m ruff format pulp_tool/ tests/
+	python3 -m ruff check --fix pulp_tool/ tests/
 
 # Run all checks
 check: lint test
+
+# Same hooks as GitHub PR CI (commit stage + push stage).
+pre-commit-ci:
+	pre-commit run --all-files
+	pre-commit run --hook-stage pre-push --all-files
 
 # Pygments CVE-2026-4539: no wheel >2.19.2 on PyPI yet (transitive via pytest/diff-cover). Drop when pinning pygments>=2.19.3.
 AUDIT_IGNORES := --ignore-vuln CVE-2026-4539 --ignore-vuln GHSA-5239-wwwm-4pmq
 
 audit:
-	@echo "pip-audit: creating $(AUDIT_VENV), installing .[dev]..."
+	@echo "pip-audit: creating $(AUDIT_VENV), installing dev deps from uv.lock (no editable install)..."
 	@rm -rf "$(AUDIT_VENV)" && python3 -m venv "$(AUDIT_VENV)" && \
-	 "$(AUDIT_VENV)/bin/python" -m pip install -q -U pip && \
-	 "$(AUDIT_VENV)/bin/python" -m pip install -q -e ".[dev]" && \
+	 "$(AUDIT_VENV)/bin/python" -m pip install -q -U pip uv pip-audit && \
+	 "$(AUDIT_VENV)/bin/uv" export --frozen --extra dev --no-emit-project \
+	   -o "$(AUDIT_VENV)/requirements-audit.txt" && \
+	 "$(AUDIT_VENV)/bin/python" -m pip install -q -r "$(AUDIT_VENV)/requirements-audit.txt" && \
 	 "$(AUDIT_VENV)/bin/pip-audit" -l --desc on $(AUDIT_IGNORES)
 	@rm -rf "$(AUDIT_VENV)"
 	@echo "pip-audit: OK"

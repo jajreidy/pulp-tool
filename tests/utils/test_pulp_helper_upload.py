@@ -1,10 +1,11 @@
 """Tests for PulpHelper upload methods."""
 
 from unittest.mock import patch
-from pulp_tool.utils import PulpHelper
+
 from pulp_tool.models.context import UploadFilesContext, UploadRpmContext
-from pulp_tool.models.results import PulpResultsModel, RpmUploadResult
 from pulp_tool.models.repository import RepositoryRefs
+from pulp_tool.models.results import PulpResultsModel, RpmUploadResult
+from pulp_tool.utils import PulpHelper
 
 
 class TestPulpHelperUploadMethods:

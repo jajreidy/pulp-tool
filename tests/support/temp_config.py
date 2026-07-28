@@ -15,7 +15,7 @@ def tempfile_config():
     path = Path(tmpdir) / "config.toml"
     try:
         path.write_text(
-            '[cli]\nbase_url = "https://pulp.example.com"\n' 'api_root = "/pulp/api/v3"\n' 'domain = "test-domain"'
+            '[cli]\nbase_url = "https://pulp.example.com"\napi_root = "/pulp/api/v3"\ndomain = "test-domain"'
         )
         yield str(path)
     finally:

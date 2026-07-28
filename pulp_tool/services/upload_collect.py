@@ -10,12 +10,12 @@ import json
 import logging
 import traceback
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any
 
-from ..models.pulp_api import TaskResponse
-from ..models.context import UploadContext
-from ..models.results import PulpResultsModel
 from ..models.artifacts import ContentData, ExtraArtifactRef, FileInfoMap, FileInfoModel, PulpContentRow
+from ..models.context import UploadContext
+from ..models.pulp_api import TaskResponse
+from ..models.results import PulpResultsModel
 
 if TYPE_CHECKING:
     from ..api.pulp_client import PulpClient  # pragma: no cover
@@ -28,11 +28,10 @@ from ..utils.constants import (
 )
 from ..utils.pulp_tasks import create_file_content_and_wait
 from ..utils.response_utils import content_find_results_from_response
-
 from .upload_common import _distribution_urls_for_context
 
 
-def _serialize_results_to_json(results: Dict[str, Any]) -> str:
+def _serialize_results_to_json(results: dict[str, Any]) -> str:
     """Serialize results to JSON with error handling."""
     try:
         logging.debug("Results data before JSON serialization: %s", results)
@@ -54,7 +53,7 @@ def _serialize_results_to_json(results: Dict[str, Any]) -> str:
         raise
 
 
-def _save_results_to_folder(folder_path: str, json_content: str, context: UploadContext) -> Optional[Path]:
+def _save_results_to_folder(folder_path: str, json_content: str, context: UploadContext) -> Path | None:
     """
     Save results JSON to a local folder instead of uploading to Pulp.
 
@@ -79,15 +78,15 @@ def _save_results_to_folder(folder_path: str, json_content: str, context: Upload
         if context.sbom_results:
             _handle_sbom_results(None, context, json_content)  # type: ignore[arg-type]
         return output_file
-    except (OSError, IOError) as e:
+    except OSError as e:
         logging.error("Failed to save results JSON to folder %s: %s", folder_path, e)
         logging.error("Traceback: %s", traceback.format_exc())
         return None
 
 
 def _upload_and_get_results_url(
-    client: "PulpClient", context: UploadContext, artifact_repository_prn: str, json_content: str, date: str
-) -> Optional[str]:
+    client: PulpClient, context: UploadContext, artifact_repository_prn: str, json_content: str, date: str
+) -> str | None:
     """Upload results JSON and return the distribution URL."""
     labels = create_labels(context.build_id, "", context.namespace, context.parent_package, date)
 
@@ -121,7 +120,7 @@ def _upload_and_get_results_url(
         raise
 
 
-def _extract_results_url(client: "PulpClient", context: UploadContext, task_response: TaskResponse) -> str:
+def _extract_results_url(client: PulpClient, context: UploadContext, task_response: TaskResponse) -> str:
     """Extract results JSON URL from task response."""
     logging.debug("Task response for results JSON: state=%s", task_response.state)
 
@@ -151,8 +150,8 @@ def _extract_results_url(client: "PulpClient", context: UploadContext, task_resp
 
 
 def _gather_and_validate_content(
-    client: "PulpClient", context: UploadContext, extra_artifacts: Optional[List[ExtraArtifactRef]]
-) -> Optional[ContentData]:
+    client: PulpClient, context: UploadContext, extra_artifacts: list[ExtraArtifactRef] | None
+) -> ContentData | None:
     """Gather content data and validate it's not empty."""
     logging.info("Collecting results for build ID: %s", context.build_id)
     logging.info("Extra artifacts provided: %d", len(extra_artifacts) if extra_artifacts else 0)
@@ -168,7 +167,7 @@ def _gather_and_validate_content(
     return content_data
 
 
-def _build_artifact_map(client: "PulpClient", content_results: List[PulpContentRow]) -> FileInfoMap:
+def _build_artifact_map(client: PulpClient, content_results: list[PulpContentRow]) -> FileInfoMap:
     """Build map of artifact hrefs to file information."""
     logging.info("Building results structure from %d content items", len(content_results))
 
@@ -202,9 +201,9 @@ def _build_artifact_map(client: "PulpClient", content_results: List[PulpContentR
 
 
 def _populate_results_model(
-    client: "PulpClient",
+    client: PulpClient,
     results_model: PulpResultsModel,
-    content_results: List[PulpContentRow],
+    content_results: list[PulpContentRow],
     file_info_map: FileInfoMap,
     context: UploadContext,
 ) -> None:
@@ -223,9 +222,7 @@ def _populate_results_model(
     )
 
 
-def _add_distributions_to_results(
-    client: "PulpClient", context: UploadContext, results_model: PulpResultsModel
-) -> None:
+def _add_distributions_to_results(client: PulpClient, context: UploadContext, results_model: PulpResultsModel) -> None:
     """Add distribution URLs to results model."""
     repository_helper = PulpHelper(client, parent_package=context.parent_package)
     distribution_urls = _distribution_urls_for_context(repository_helper, context.build_id, context)
@@ -239,7 +236,7 @@ def _add_distributions_to_results(
         logging.warning("No distribution URLs found")
 
     if bool(getattr(context, "target_arch_repo", False)) and results_model.artifacts:
-        arch_urls: Dict[str, str] = {}
+        arch_urls: dict[str, str] = {}
         for info in results_model.artifacts.values():
             arch = (info.labels.get("arch") or "").strip()
             if arch in SUPPORTED_ARCHITECTURES:
@@ -253,12 +250,12 @@ def _add_distributions_to_results(
 
 
 def collect_results(
-    client: "PulpClient",
+    client: PulpClient,
     context: UploadContext,
     date: str,
     results_model: PulpResultsModel,
-    extra_artifacts: Optional[List[ExtraArtifactRef]] = None,
-) -> Optional[str]:
+    extra_artifacts: list[ExtraArtifactRef] | None = None,
+) -> str | None:
     """
     Collect results and upload JSON directly from memory.
 
@@ -294,7 +291,7 @@ def collect_results(
     return _upload_and_get_results_url(client, context, results_model.repositories.artifacts_prn, json_content, date)
 
 
-def _find_artifact_content(client: "PulpClient", task_response: TaskResponse) -> Optional[Tuple[str, str]]:
+def _find_artifact_content(client: PulpClient, task_response: TaskResponse) -> tuple[str, str] | None:
     """Find artifact content from task response and get file and sha256 from artifacts API."""
     logging.debug("Task response: state=%s, created_resources=%s", task_response.state, task_response.created_resources)
 
@@ -337,7 +334,7 @@ def _find_artifact_content(client: "PulpClient", task_response: TaskResponse) ->
     return (file_value, sha256_value)
 
 
-def _parse_oci_reference(oci_reference: str) -> Tuple[str, str]:
+def _parse_oci_reference(oci_reference: str) -> tuple[str, str]:
     """Parse OCI reference into URL and digest parts."""
     if "@" in oci_reference:
         image_url, digest = oci_reference.rsplit("@", 1)
@@ -367,7 +364,7 @@ def _format_sha256_digest(sha256_hex: str) -> str:
     return f"sha256:{sha256_hex}"
 
 
-def _handle_artifact_results(client: "PulpClient", context: UploadContext, task_response: TaskResponse) -> None:
+def _handle_artifact_results(client: PulpClient, context: UploadContext, task_response: TaskResponse) -> None:
     """Handle artifact results for Konflux integration."""
     repository_helper = PulpHelper(client, parent_package=context.parent_package)
     distribution_urls = repository_helper.get_distribution_urls(context.build_id)
@@ -408,9 +405,7 @@ def _handle_artifact_results(client: "PulpClient", context: UploadContext, task_
     _write_konflux_results(image_url, digest, image_url_path, image_digest_path)
 
 
-def _handle_sbom_results(
-    client: "PulpClient", context: UploadContext, json_content: str
-) -> None:  # pylint: disable=unused-argument
+def _handle_sbom_results(client: PulpClient, context: UploadContext, json_content: str) -> None:  # pylint: disable=unused-argument
     """Handle SBOM results for Konflux integration."""
     try:
         results = json.loads(json_content)
@@ -443,7 +438,7 @@ def _handle_sbom_results(
     except (ValueError, KeyError) as e:
         logging.error("Failed to process SBOM results: %s", e)
         logging.error("Traceback: %s", traceback.format_exc())
-    except IOError as e:
+    except OSError as e:
         logging.error("Failed to write SBOM results file: %s", e)
         logging.error("Traceback: %s", traceback.format_exc())
 

@@ -9,7 +9,6 @@ import hashlib
 import logging
 import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import Dict, List, Optional, Tuple, Union
 
 from .constants import DEFAULT_MAX_WORKERS
 
@@ -37,13 +36,13 @@ def calculate_sha256_checksum(file_path: str) -> str:
         with open(file_path, "rb") as f:
             for chunk in iter(lambda: f.read(4096), b""):
                 sha256_hash.update(chunk)
-    except IOError as e:
-        raise IOError(f"Error reading file {file_path}: {e}") from e
+    except OSError as e:
+        raise OSError(f"Error reading file {file_path}: {e}") from e
 
     return sha256_hash.hexdigest()
 
 
-def parse_rpm_filename_to_nvr(filename: str) -> Optional[Tuple[str, str, str]]:
+def parse_rpm_filename_to_nvr(filename: str) -> tuple[str, str, str] | None:
     """
     Parse RPM filename into name, version, and release (NVR).
 
@@ -100,7 +99,7 @@ def parse_rpm_filename_to_nvr(filename: str) -> Optional[Tuple[str, str, str]]:
     return (name, version, release)
 
 
-def parse_rpm_filename_to_nvra(filename: str) -> Optional[Tuple[str, str, str, str]]:
+def parse_rpm_filename_to_nvra(filename: str) -> tuple[str, str, str, str] | None:
     """
     Parse RPM filename into name, version, release, and architecture (NVRA).
 
@@ -132,10 +131,10 @@ def parse_rpm_filename_to_nvra(filename: str) -> Optional[Tuple[str, str, str, s
 
 def upload_rpms_parallel(
     client,
-    rpms_to_upload: Union[List[str], List[Tuple[str, Dict[str, str], str]]],
-    labels: Optional[Dict[str, str]] = None,
-    arch: Optional[str] = None,
-) -> Tuple[List[Tuple[str, str]], List[str]]:
+    rpms_to_upload: list[str] | list[tuple[str, dict[str, str], str]],
+    labels: dict[str, str] | None = None,
+    arch: str | None = None,
+) -> tuple[list[tuple[str, str]], list[str]]:
     """
     Upload RPMs in parallel and return (local_path, artifact_href) per successful upload.
 
@@ -175,7 +174,7 @@ def upload_rpms_parallel(
     first_item = rpms_to_upload[0]
     is_tuple_style = isinstance(first_item, (tuple, list))
 
-    rpm_infos: List[Tuple[str, Dict[str, str], str]]
+    rpm_infos: list[tuple[str, dict[str, str], str]]
     if not is_tuple_style:
         # Old style - validate required parameters
         if labels is None or arch is None:
@@ -191,8 +190,8 @@ def upload_rpms_parallel(
         rpm_infos = rpms_to_upload  # type: ignore
         logging.warning("Uploading %d RPM file(s)", len(rpms_to_upload))
 
-    path_href_pairs: List[Tuple[str, str]] = []
-    errors: List[str] = []
+    path_href_pairs: list[tuple[str, str]] = []
+    errors: list[str] = []
     with ThreadPoolExecutor(thread_name_prefix="upload_rpms", max_workers=DEFAULT_MAX_WORKERS) as executor:
         futures = {
             executor.submit(client.upload_content, rpm_path, rpm_labels, file_type="rpm", arch=rpm_arch): rpm_path

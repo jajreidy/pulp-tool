@@ -1,8 +1,8 @@
 """Tests for logging utilities."""
 
 from pulp_tool.utils.logging_utils import (
-    format_count_with_unit,
     format_artifact_counts,
+    format_count_with_unit,
 )
 
 

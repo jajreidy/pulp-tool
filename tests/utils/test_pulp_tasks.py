@@ -2,8 +2,9 @@
 
 import httpx
 import pytest
-from pulp_tool.utils.pulp_tasks import create_file_content_and_wait
+
 from pulp_tool.models.pulp_api import TaskResponse
+from pulp_tool.utils.pulp_tasks import create_file_content_and_wait
 
 
 def test_create_file_content_and_wait(mock_pulp_client, httpx_mock) -> None:

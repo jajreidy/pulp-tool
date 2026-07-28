@@ -5,18 +5,18 @@ This module provides the base functionality for all repository types,
 following Pulp's API structure.
 """
 
-from typing import Any, Optional
+from typing import Any
 
 import httpx
 
-from ..base import BaseResourceMixin
 from ...models.pulp_api import RepositoryRequest, RepositoryResponse
+from ..base import BaseResourceMixin
 
 
 class BaseRepositoryMixin(BaseResourceMixin):
     """Base mixin providing repository operations for Pulp."""
 
-    def create_repository(self, endpoint: str, request: RepositoryRequest) -> tuple[httpx.Response, Optional[str]]:
+    def create_repository(self, endpoint: str, request: RepositoryRequest) -> tuple[httpx.Response, str | None]:
         """
         Create a repository.
 
@@ -58,7 +58,7 @@ class BaseRepositoryMixin(BaseResourceMixin):
 
     def list_repositories(
         self, endpoint: str, **query_params: Any
-    ) -> tuple[list[RepositoryResponse], Optional[str], Optional[str], int]:
+    ) -> tuple[list[RepositoryResponse], str | None, str | None, int]:
         """
         List repositories with pagination.
 

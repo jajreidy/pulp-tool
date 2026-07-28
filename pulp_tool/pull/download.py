@@ -8,29 +8,29 @@ repositories for pull operations.
 import json
 import logging
 import traceback
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import httpx
 from pydantic import AnyHttpUrl, TypeAdapter, ValidationError
 
 from ..api import DistributionClient, PulpClient
-from ..models.artifacts import ArtifactData, ArtifactJsonResponse, DownloadTask
-from ..models.results import DownloadResult
-from ..models.context import PullContext
 from ..exceptions import PulpToolError
+from ..models.artifacts import ArtifactData, ArtifactJsonResponse, DownloadTask
+from ..models.context import PullContext
+from ..models.results import DownloadResult
 from ..utils import PulpHelper, determine_build_id, extract_metadata_from_artifact_json
 from ..utils.artifact_detection import categorize_artifacts_by_type
 from ..utils.config_manager import ConfigManager
 
 
 def _categorize_artifacts(
-    artifacts: Dict[str, Any],
-    distros: Dict[str, str],
-    content_types: Optional[List[str]] = None,
-    archs: Optional[List[str]] = None,
+    artifacts: dict[str, Any],
+    distros: dict[str, str],
+    content_types: list[str] | None = None,
+    archs: list[str] | None = None,
     *,
     embedded_urls_only: bool = True,
-) -> List[DownloadTask]:
+) -> list[DownloadTask]:
     """Categorize artifacts and prepare download information.
 
     Args:
@@ -67,7 +67,7 @@ def _categorize_artifacts(
     return download_tasks
 
 
-def load_artifact_metadata(artifact_location: str, distribution_client: Optional[DistributionClient]) -> Dict[str, Any]:
+def load_artifact_metadata(artifact_location: str, distribution_client: DistributionClient | None) -> dict[str, Any]:
     """
     Load artifact metadata from either a local file or HTTP URL.
 
@@ -92,7 +92,7 @@ def load_artifact_metadata(artifact_location: str, distribution_client: Optional
     # Local file path
     logging.debug("Loading artifact metadata from local file: %s", artifact_location)
     try:
-        with open(artifact_location, "r", encoding="utf-8") as f:
+        with open(artifact_location, encoding="utf-8") as f:
             return json.load(f)
     except FileNotFoundError:
         logging.error("Artifact file not found: %s", artifact_location)
@@ -105,7 +105,10 @@ def load_artifact_metadata(artifact_location: str, distribution_client: Optional
         raise
 
 
-def setup_repositories_if_needed(args: PullContext, artifact_json=None) -> Optional[PulpClient]:
+def setup_repositories_if_needed(
+    args: PullContext,
+    artifact_json: dict[str, Any] | ArtifactJsonResponse | None = None,
+) -> PulpClient | None:
     """
     Set up repositories using PulpClient if configuration is provided.
 
@@ -167,7 +170,7 @@ def setup_repositories_if_needed(args: PullContext, artifact_json=None) -> Optio
         return None
 
 
-def load_and_validate_artifacts(args: PullContext, distribution_client: Optional[DistributionClient]) -> ArtifactData:
+def load_and_validate_artifacts(args: PullContext, distribution_client: DistributionClient | None) -> ArtifactData:
     """Load artifact metadata and validate it matches the pull artifact results model.
 
     The payload is validated as :class:`~pulp_tool.models.artifacts.ArtifactJsonResponse`; pull
@@ -207,12 +210,12 @@ def load_and_validate_artifacts(args: PullContext, distribution_client: Optional
 
 
 def download_artifacts_concurrently(
-    artifacts: Dict[str, Any],
-    distros: Dict[str, str],
-    distribution_client: Optional[DistributionClient],
+    artifacts: dict[str, Any],
+    distros: dict[str, str],
+    distribution_client: DistributionClient | None,
     max_workers: int,
-    content_types: Optional[List[str]] = None,
-    archs: Optional[List[str]] = None,
+    content_types: list[str] | None = None,
+    archs: list[str] | None = None,
     *,
     embedded_urls_only: bool = True,
 ) -> DownloadResult:

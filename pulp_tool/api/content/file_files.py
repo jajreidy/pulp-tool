@@ -8,7 +8,7 @@ API Reference: https://docs.pulpproject.org/pulp_file/restapi.html#content-files
 import json
 import os
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
+from typing import Any
 
 import httpx
 
@@ -21,7 +21,7 @@ class FileContentMixin(BaseResourceMixin):
     """Mixin that provides file content operations for Pulp."""
 
     @staticmethod
-    def _build_file_relative_path(filename: str, arch: Optional[str] = None) -> str:
+    def _build_file_relative_path(filename: str, arch: str | None = None) -> str:
         """
         Build relative path for file content based on architecture.
 
@@ -42,12 +42,12 @@ class FileContentMixin(BaseResourceMixin):
     def create_file_content(
         self,
         repository: str,
-        content_or_path: Union[str, Path],
+        content_or_path: str | Path,
         *,
         build_id: str,
-        pulp_label: Dict[str, str],
-        filename: Optional[str] = None,
-        arch: Optional[str] = None,
+        pulp_label: dict[str, str],
+        filename: str | None = None,
+        arch: str | None = None,
     ) -> httpx.Response:
         """
         Create file content from either a file path or in-memory content.
@@ -114,7 +114,7 @@ class FileContentMixin(BaseResourceMixin):
         response = self.session.get(url, timeout=self.timeout, **self.request_params)
         return self._parse_response(response, FileResponse, "get file content")
 
-    def list_file_content(self, **query_params: Any) -> tuple[list[FileResponse], Optional[str], Optional[str], int]:
+    def list_file_content(self, **query_params: Any) -> tuple[list[FileResponse], str | None, str | None, int]:
         """
         List file content with pagination.
 
@@ -132,7 +132,7 @@ class FileContentMixin(BaseResourceMixin):
         endpoint = "api/v3/content/file/files/"
         return self._list_resources(endpoint, FileResponse, **query_params)
 
-    def find_content_by_build_id(self, build_id: str) -> List[FileResponse]:
+    def find_content_by_build_id(self, build_id: str) -> list[FileResponse]:
         """
         Find file content by build_id label.
 
@@ -149,7 +149,7 @@ class FileContentMixin(BaseResourceMixin):
         results, _, _, _ = self._list_resources(endpoint, FileResponse, **query_params)
         return results
 
-    def find_content_by_hrefs(self, hrefs: List[str]) -> List[FileResponse]:
+    def find_content_by_hrefs(self, hrefs: list[str]) -> list[FileResponse]:
         """
         Find file content by hrefs.
 
@@ -170,8 +170,8 @@ class FileContentMixin(BaseResourceMixin):
         self,
         repository: str,
         *,
-        add_content_units: Optional[List[str]] = None,
-        remove_content_units: Optional[List[str]] = None,
+        add_content_units: list[str] | None = None,
+        remove_content_units: list[str] | None = None,
     ) -> Any:
         """
         Add and/or remove content units on a repository (modify endpoint).
@@ -202,13 +202,16 @@ class FileContentMixin(BaseResourceMixin):
 
         modify_path = os.path.join(repository, "modify/")
         url = str(self.config["base_url"]) + modify_path  # type: ignore[attr-defined]
-        data: Dict[str, List[str]] = {}
+        data: dict[str, list[str]] = {}
         if adds:
             data["add_content_units"] = adds
         if removes:
             data["remove_content_units"] = removes
         response = self.session.post(  # type: ignore[attr-defined]
-            url, json=data, timeout=self.timeout, **self.request_params  # type: ignore[attr-defined]
+            url,
+            json=data,
+            timeout=self.timeout,
+            **self.request_params,  # type: ignore[attr-defined]
         )
         self._check_response(response, "modify repository content")  # type: ignore[attr-defined]
         task_href = response.json()["task"]
@@ -216,11 +219,13 @@ class FileContentMixin(BaseResourceMixin):
             return self.get_task(task_href)  # type: ignore[attr-defined]
         task_url = str(self.config["base_url"]) + task_href  # type: ignore[attr-defined]
         task_response = self.session.get(  # type: ignore[attr-defined]
-            task_url, timeout=self.timeout, **self.request_params  # type: ignore[attr-defined]
+            task_url,
+            timeout=self.timeout,
+            **self.request_params,  # type: ignore[attr-defined]
         )
         return self._parse_response(task_response, TaskResponse, "get task")  # type: ignore[attr-defined]
 
-    def add_content(self, repository: str, artifacts: List[str]) -> Any:
+    def add_content(self, repository: str, artifacts: list[str]) -> Any:
         """
         Add a list of artifacts to a repository.
 

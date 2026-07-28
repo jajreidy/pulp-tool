@@ -1,5 +1,5 @@
 ---
-name: Lint Python issues
+name: Lint
 
 on:
   push:
@@ -14,7 +14,8 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  python-lint-job:
+  python-lint:
+    name: Python (ruff, pylint, mypy)
     runs-on: ubuntu-latest
 
     steps:
@@ -44,32 +45,93 @@ jobs:
           pip install uv
           make lock-check
 
-      - name: Check code formatting with Black
-        id: black
-        run: black --check pulp_tool tests
-        continue-on-error: true
+      - name: Ruff lint
+        run: ruff check pulp_tool tests
 
-      - name: Lint with Flake8
-        id: flake8
-        run: flake8 pulp_tool tests --max-line-length=120
-        continue-on-error: true
+      - name: Ruff format
+        run: ruff format --check pulp_tool tests
 
-      - name: Lint with Pylint
-        id: pylint
+      - name: Pylint (errors only)
         run: pylint pulp_tool tests --errors-only
-        continue-on-error: true
 
-      - name: Type check with Mypy
-        id: mypy
+      - name: Mypy
         run: mypy pulp_tool tests --show-error-codes
-        continue-on-error: true
 
-      - name: Check for linting failures
-        if: steps.black.outcome == 'failure' || steps.flake8.outcome == 'failure' || steps.pylint.outcome == 'failure' || steps.mypy.outcome == 'failure'
+  test-diff-coverage:
+    name: Tests and diff coverage (100%)
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+
+    steps:
+      - name: Repository checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - name: Cache pip packages
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('**/pyproject.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
+      - name: Install dependencies
         run: |
-          echo "One or more linting checks failed:"
-          echo "  Black: ${{ steps.black.outcome }}"
-          echo "  Flake8: ${{ steps.flake8.outcome }}"
-          echo "  Pylint: ${{ steps.pylint.outcome }}"
-          echo "  Mypy: ${{ steps.mypy.outcome }}"
-          exit 1
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Run tests and diff coverage
+        run: make test-diff-coverage COMPARE_BRANCH=origin/${{ github.base_ref }}
+
+  repo-lint:
+    name: YAML, shell, spelling, Dockerfile
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Repository checkout
+        uses: actions/checkout@v7
+
+      - name: Install lint tools
+        run: |
+          python -m pip install --upgrade pip
+          pip install yamllint codespell
+          sudo apt-get update
+          sudo apt-get install -y shellcheck
+          mkdir -p "$HOME/.local/bin"
+          curl -sSfL https://github.com/hadolint/hadolint/releases/download/v2.14.0/hadolint-Linux-x86_64 \
+            -o "$HOME/.local/bin/hadolint"
+          chmod +x "$HOME/.local/bin/hadolint"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Yamllint
+        run: yamllint --strict .
+
+      - name: ShellCheck
+        run: shellcheck scripts/*.sh
+
+      - name: Codespell
+        run: codespell --skip=uv.lock,htmlcov,.git --ignore-words=.codespell-ignore-words.txt
+
+      - name: Hadolint
+        run: hadolint --ignore DL3041 --ignore DL3013 Dockerfile
+
+  tekton-lint:
+    name: Tekton embedded scripts (Checkton)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Repository checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Checkton
+        uses: chmeliik/checkton@v0.4.0
+        with:
+          fail-on-findings: true

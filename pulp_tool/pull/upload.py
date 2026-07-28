@@ -9,14 +9,14 @@ import logging
 import httpx
 
 from ..api import PulpClient
-from ..utils.error_handling import handle_generic_error
-from ..models.context import PullContext
-from ..models.results import PulpResultsModel
-from ..models.repository import RepositoryRefs
 from ..models.artifacts import PulledArtifacts
+from ..models.context import PullContext
+from ..models.repository import RepositoryRefs
+from ..models.results import PulpResultsModel
 from ..utils import PulpHelper, determine_build_id, extract_metadata_from_artifacts
-from ..utils.rpm_operations import upload_rpms_parallel
+from ..utils.error_handling import handle_generic_error
 from ..utils.pulp_tasks import create_file_content_and_wait
+from ..utils.rpm_operations import upload_rpms_parallel
 
 
 def _upload_sboms_and_logs(

@@ -2,9 +2,26 @@
 Utility modules for Konflux Pulp operations.
 """
 
-from .logger import setup_logging, WrappingFormatter, get_logger
+from ..models.repository import RepositoryRefs
+
+# Shared utility modules
+from . import (
+    artifact_detection,
+    config_manager,
+    config_utils,
+    constants,
+    error_handling,
+    iteration_utils,
+    logging_utils,
+    path_utils,
+    response_utils,
+)
+from .logger import WrappingFormatter, get_logger, setup_logging
 from .pulp_helper import PulpHelper
+from .pulp_tasks import create_file_content_and_wait
 from .session import create_session_with_retry
+from .uploads import create_labels, upload_artifacts_to_repository, upload_log, upload_rpms, upload_rpms_logs
+from .url import get_pulp_content_base_url
 from .validation.build_id import (
     determine_build_id,
     extract_build_id_from_artifact_json,
@@ -17,21 +34,6 @@ from .validation.build_id import (
 )
 from .validation.file import validate_file_path
 from .validation.repository import validate_repository_setup
-from .uploads import create_labels, upload_artifacts_to_repository, upload_rpms_logs, upload_log, upload_rpms
-from .pulp_tasks import create_file_content_and_wait
-from .url import get_pulp_content_base_url
-from ..models.repository import RepositoryRefs
-
-# Shared utility modules
-from . import error_handling
-from . import response_utils
-from . import logging_utils
-from . import iteration_utils
-from . import constants
-from . import artifact_detection
-from . import path_utils
-from . import config_manager
-from . import config_utils
 
 __all__ = [
     "setup_logging",

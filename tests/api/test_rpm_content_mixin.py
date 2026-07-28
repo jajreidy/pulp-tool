@@ -5,6 +5,7 @@ This module tests RpmPackageContentMixin methods that need coverage.
 """
 
 import httpx
+
 from pulp_tool.models.pulp_api import RpmPackageResponse
 
 

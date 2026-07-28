@@ -4,8 +4,6 @@ name: Unit-tests
 on:
   push:
     branches: [main]
-  pull_request:
-    branches: [main]
 
 permissions:
   contents: read
@@ -48,11 +46,6 @@ jobs:
 
       - name: Run tests with pytest
         run: pytest
-
-      - name: Check diff coverage for PRs
-        if: github.event_name == 'pull_request'
-        run: |
-          diff-cover coverage.xml --compare-branch=origin/${{ github.base_ref }} --fail-under=100
 
       - name: Upload coverage reports
         if: matrix.python-version == '3.12'

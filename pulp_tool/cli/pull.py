@@ -7,7 +7,6 @@ This module provides the pull command for downloading artifacts and optionally r
 import logging
 import os
 import sys
-from typing import Optional
 
 import click
 import httpx
@@ -33,7 +32,7 @@ from ..utils.error_handling import handle_generic_error, handle_http_error
 )
 @click.option(
     "--content-types",
-    help=("Comma-separated list of content types to pull (rpm,log,sbom). " "If not specified, all types are pulled."),
+    help=("Comma-separated list of content types to pull (rpm,log,sbom). If not specified, all types are pulled."),
 )
 @click.option(
     "--archs",
@@ -72,13 +71,13 @@ from ..utils.error_handling import handle_generic_error, handle_http_error
 @click.pass_context
 def pull(  # pylint: disable=too-many-positional-arguments
     ctx: click.Context,
-    artifact_location: Optional[str],
-    content_types: Optional[str],
-    archs: Optional[str],
-    cert_path: Optional[str],
-    key_path: Optional[str],
-    transfer_dest: Optional[str],
-    distribution_config: Optional[str],
+    artifact_location: str | None,
+    content_types: str | None,
+    archs: str | None,
+    cert_path: str | None,
+    key_path: str | None,
+    transfer_dest: str | None,
+    distribution_config: str | None,
 ) -> None:
     """Download artifacts and optionally re-upload to Pulp repositories."""
     # Get shared options from context
@@ -128,8 +127,8 @@ def pull(  # pylint: disable=too-many-positional-arguments
 
     # Get auth from --distribution-config, or fall back to --transfer-dest/--config
     # Source: --distribution-config if set, else config_path
-    username: Optional[str] = None
-    password: Optional[str] = None
+    username: str | None = None
+    password: str | None = None
     auth_config_path = distribution_config or config_path
     if auth_config_path:
         try:
@@ -199,7 +198,7 @@ def pull(  # pylint: disable=too-many-positional-arguments
         artifact_data = load_and_validate_artifacts(args, distribution_client)
 
         # Set up repositories if configuration is provided
-        pulp_client = setup_repositories_if_needed(args, artifact_data.artifact_json)  # type: ignore[arg-type]
+        pulp_client = setup_repositories_if_needed(args, artifact_data.artifact_json)
 
         # Process artifacts by type
         distros = artifact_data.get_distributions()

@@ -16,10 +16,11 @@ fi
 echo "Installing pulp-tool in development mode..."
 pip install -e ".[dev]"
 
-# Install pre-commit hooks
+# Install pre-commit hooks (commit + pre-push; matches GitHub PR CI)
 if command -v pre-commit &> /dev/null; then
     echo "Installing pre-commit hooks..."
     pre-commit install
+    pre-commit install --hook-type pre-push || true
 else
     echo "Warning: pre-commit not found. Install it with: pip install pre-commit"
 fi
@@ -31,4 +32,5 @@ echo "Next steps:"
 echo "  - Run tests: make test"
 echo "  - Run linters: make lint"
 echo "  - Format code: make format"
+echo "  - Full CI parity: make pre-commit-ci (after green tests)"
 echo "  - Run all checks: make check"

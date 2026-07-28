@@ -37,7 +37,6 @@ import logging
 import os
 import sys
 from pathlib import Path
-from typing import List, Optional
 
 import click
 import httpx
@@ -45,18 +44,26 @@ from pydantic import ValidationError
 
 from ..api import PulpClient
 from ..models.cli import FoundPackages, SearchByRequest, SearchByResultsJson
-from ..models.pulp_label_values import normalize_signed_by_value_for_pulp
 from ..models.pulp_api import RpmPackageResponse
+from ..models.pulp_label_values import normalize_signed_by_value_for_pulp
 from ..utils import setup_logging
+from ..utils.error_handling import handle_generic_error, handle_http_error
+from ..utils.rpm_operations import parse_rpm_filename_to_nvr, parse_rpm_filename_to_nvra
 from ..utils.rpm_pulp_search import (
     search_pulp_by_filenames as _search_pulp_by_filenames,
+)
+from ..utils.rpm_pulp_search import (
     search_pulp_by_filenames_with_signed_by as _search_pulp_by_filenames_with_signed_by,
+)
+from ..utils.rpm_pulp_search import (
     search_pulp_by_signed_by as _search_pulp_by_signed_by,
+)
+from ..utils.rpm_pulp_search import (
     search_pulp_for_rpms as _search_pulp_for_rpms,
+)
+from ..utils.rpm_pulp_search import (
     search_pulp_for_rpms_with_signed_by as _search_pulp_for_rpms_with_signed_by,
 )
-from ..utils.error_handling import handle_http_error, handle_generic_error
-from ..utils.rpm_operations import parse_rpm_filename_to_nvr, parse_rpm_filename_to_nvra
 
 SHA256_HEX_LENGTH = 64
 
@@ -68,18 +75,18 @@ SHA256_HEX_LENGTH = 64
 
 def _collect_list(
     items: tuple[str, ...],
-    csv: Optional[str],
+    csv: str | None,
     *,
     split_char: str = ",",
-    normalize: Optional[str] = None,
-) -> List[str]:
+    normalize: str | None = None,
+) -> list[str]:
     """Collect and deduplicate from repeated option and comma-separated string."""
 
     def _norm(s: str) -> str:
         s = s.strip()
         return s.lower() if normalize == "lower" else s
 
-    result: List[str] = []
+    result: list[str] = []
     seen: set[str] = set()
     for x in items:
         val = _norm(x)
@@ -95,20 +102,20 @@ def _collect_list(
     return result
 
 
-def _collect_filenames_from_csv(filenames: Optional[str]) -> List[str]:
+def _collect_filenames_from_csv(filenames: str | None) -> list[str]:
     """Collect and deduplicate filenames from --filenames option."""
     return _collect_list((), filenames)
 
 
-def _collect_checksums_from_csv(checksums: Optional[str]) -> List[str]:
+def _collect_checksums_from_csv(checksums: str | None) -> list[str]:
     """Collect and deduplicate checksums from --checksums option."""
     return _collect_list((), checksums, normalize="lower")
 
 
-def _filenames_to_nvras_deduplicated(filenames: List[str]) -> List[tuple[str, str, str, str]]:
+def _filenames_to_nvras_deduplicated(filenames: list[str]) -> list[tuple[str, str, str, str]]:
     """Convert filenames to NVRAs (name, version, release, arch), skip unparseable with warning, remove duplicates."""
     seen: set[tuple[str, str, str, str]] = set()
-    result: List[tuple[str, str, str, str]] = []
+    result: list[tuple[str, str, str, str]] = []
     for fname in filenames:
         nvra = parse_rpm_filename_to_nvra(fname)
         if nvra is None:
@@ -125,7 +132,7 @@ def _filenames_to_nvras_deduplicated(filenames: List[str]) -> List[tuple[str, st
 # -----------------------------------------------------------------------------
 
 
-def _log_packages_found(packages: List[RpmPackageResponse], max_log: int = 10) -> None:
+def _log_packages_found(packages: list[RpmPackageResponse], max_log: int = 10) -> None:
     """Log packages found in Pulp at DEBUG; truncate when many to avoid log spam."""
     if not packages:
         return
@@ -142,10 +149,10 @@ def _log_packages_found(packages: List[RpmPackageResponse], max_log: int = 10) -
         logging.debug("... and %d more package(s)", len(packages) - max_log)
 
 
-def _filenames_to_nvrs_deduplicated(filenames: List[str]) -> List[tuple[str, str, str]]:
+def _filenames_to_nvrs_deduplicated(filenames: list[str]) -> list[tuple[str, str, str]]:
     """Convert filenames to NVRs (name, version, release), skip unparseable, remove duplicates."""
     seen: set[tuple[str, str, str]] = set()
-    result: List[tuple[str, str, str]] = []
+    result: list[tuple[str, str, str]] = []
     for fname in filenames:
         nvr = parse_rpm_filename_to_nvr(fname)
         if nvr is None:
@@ -159,9 +166,9 @@ def _filenames_to_nvrs_deduplicated(filenames: List[str]) -> List[tuple[str, str
 def _search_pulp_by_filenames_incremental(
     client: PulpClient,
     results_data: dict,
-    signed_by: Optional[str],
-    initial_filenames: Optional[List[str]] = None,
-) -> tuple[List[RpmPackageResponse], dict]:
+    signed_by: str | None,
+    initial_filenames: list[str] | None = None,
+) -> tuple[list[RpmPackageResponse], dict]:
     """
     Search Pulp by filename incrementally: one NVR per GET, remove found from results
     after each response, stop when no RPM artifacts remain (early termination).
@@ -173,7 +180,7 @@ def _search_pulp_by_filenames_incremental(
     When artifacts are empty (e.g. explicit --filenames), use initial_filenames.
     Returns (packages, filtered_results_data).
     """
-    all_packages: List[RpmPackageResponse] = []
+    all_packages: list[RpmPackageResponse] = []
     current_data = results_data
     searched_nvrs: set[tuple[str, str, str]] = set()
     while True:
@@ -213,7 +220,7 @@ def _search_pulp_by_filenames_incremental(
 # -----------------------------------------------------------------------------
 
 
-def _packages_to_json(packages: List[RpmPackageResponse]) -> str:
+def _packages_to_json(packages: list[RpmPackageResponse]) -> str:
     """Convert packages to JSON output."""
     data = [
         {
@@ -238,12 +245,12 @@ def _packages_to_json(packages: List[RpmPackageResponse]) -> str:
 
 def _run_direct_search(
     config: str,
-    checksums: List[str],
-    filenames: List[str],
-    signed_by: List[str],
+    checksums: list[str],
+    filenames: list[str],
+    signed_by: list[str],
     *,
-    correlation_namespace: Optional[str] = None,
-    correlation_build_id: Optional[str] = None,
+    correlation_namespace: str | None = None,
+    correlation_build_id: str | None = None,
 ) -> None:
     """Search by checksum, filename, and/or signed_by from CLI options and print JSON results."""
     try:
@@ -334,15 +341,15 @@ def _run_results_json_mode(
     config: str,
     results_json: Path,
     output_results: Path,
-    checksums: List[str],
+    checksums: list[str],
     use_checksum_from_file: bool,
-    filenames: List[str],
+    filenames: list[str],
     use_filename_from_file: bool,
-    signed_by: List[str],
+    signed_by: list[str],
     keep_files: bool = False,
     *,
-    correlation_namespace: Optional[str] = None,
-    correlation_build_id: Optional[str] = None,
+    correlation_namespace: str | None = None,
+    correlation_build_id: str | None = None,
 ) -> None:
     """Load results.json, remove RPMs found in Pulp, write filtered output."""
     try:
@@ -508,12 +515,12 @@ def _run_results_json_mode(
 def search_by(
     ctx: click.Context,
     use_checksum_from_file: bool,
-    checksums: Optional[str],
+    checksums: str | None,
     use_filename_from_file: bool,
-    filenames: Optional[str],
-    signed_by_key: Optional[str],
-    results_json: Optional[Path],
-    output_results: Optional[Path],
+    filenames: str | None,
+    signed_by_key: str | None,
+    results_json: Path | None,
+    output_results: Path | None,
     keep_files: bool,
 ) -> None:
     """Search for RPM packages in Pulp by checksum, filename, and/or signed_by."""
@@ -563,7 +570,7 @@ def search_by(
 
     if not checksum_list and not filename_list and not signed_by_list:
         click.echo(
-            "Error: At least one of --checksum/--checksums, --filename/--filenames, " "or --signed-by must be provided",
+            "Error: At least one of --checksum/--checksums, --filename/--filenames, or --signed-by must be provided",
             err=True,
         )
         sys.exit(1)

@@ -3,8 +3,10 @@
 import json
 import re
 from unittest.mock import Mock, patch
+
 import httpx
 import pytest
+
 from pulp_tool.models.pulp_api import TaskResponse
 from pulp_tool.services.upload_service import (
     _extract_results_url,

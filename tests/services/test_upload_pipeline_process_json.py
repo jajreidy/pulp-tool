@@ -3,7 +3,9 @@
 import json
 import logging
 from unittest.mock import Mock, patch
+
 import pytest
+
 from pulp_tool.models import RepositoryRefs
 from pulp_tool.models.context import UploadRpmContext
 from pulp_tool.services.upload_service import (

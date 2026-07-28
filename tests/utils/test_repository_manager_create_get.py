@@ -3,10 +3,12 @@
 from types import SimpleNamespace
 from typing import cast
 from unittest.mock import Mock, call, patch
+
 import httpx
 import pytest
-from pulp_tool.models.repository import RepositoryRefs
+
 from pulp_tool.models.pulp_api import DistributionRequest, RepositoryRequest, TaskResponse
+from pulp_tool.models.repository import RepositoryRefs
 from pulp_tool.utils.repository_manager import RepositoryApiOps, RepositoryManager
 
 
@@ -107,8 +109,8 @@ class TestRepositoryManagerCreateOrGetRepository:
 
     def test_create_or_get_repository_invalid_full_name_empty(self) -> None:
         """Test create_or_get_repository raises ValueError when full_name is empty (line 163)."""
-        from pulp_tool.utils.repository_manager import RepositoryManager
         from pulp_tool.api import PulpClient
+        from pulp_tool.utils.repository_manager import RepositoryManager
 
         mock_client = Mock(spec=PulpClient)
         mock_client.namespace = "test-namespace"
@@ -119,8 +121,8 @@ class TestRepositoryManagerCreateOrGetRepository:
 
     def test_create_or_get_repository_invalid_full_name_whitespace(self) -> None:
         """Test create_or_get_repository raises ValueError when build_name is whitespace (line 160)."""
-        from pulp_tool.utils.repository_manager import RepositoryManager
         from pulp_tool.api import PulpClient
+        from pulp_tool.utils.repository_manager import RepositoryManager
 
         mock_client = Mock(spec=PulpClient)
         mock_client.namespace = "test-namespace"
@@ -268,7 +270,7 @@ class TestRepositoryManagerCreateOrGetRepository:
         mock_client = Mock()
         mock_client.namespace = "test-namespace"
         manager = RepositoryManager(mock_client)
-        from pulp_tool.models.pulp_api import RepositoryRequest, DistributionRequest
+        from pulp_tool.models.pulp_api import DistributionRequest, RepositoryRequest
 
         new_repo = RepositoryRequest(name="test-repo", autopublish=True)
         new_distro = DistributionRequest(name="test-repo", base_path="test-repo")

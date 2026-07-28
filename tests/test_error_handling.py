@@ -8,10 +8,12 @@ edge cases, and exception scenarios across the pulp-tool package.
 import os
 import tempfile
 from unittest.mock import Mock, patch
-import pytest
+
 import httpx
-from httpx import HTTPError, ConnectError, TimeoutException
-from pulp_tool.api import PulpClient, OAuth2ClientCredentialsAuth
+import pytest
+from httpx import ConnectError, HTTPError, TimeoutException
+
+from pulp_tool.api import OAuth2ClientCredentialsAuth, PulpClient
 from pulp_tool.utils import PulpHelper, validate_file_path
 
 
@@ -136,18 +138,16 @@ class TestOAuth2ErrorHandling:
         auth = OAuth2ClientCredentialsAuth(
             client_id="test-client", client_secret="test-secret", token_url="https://test.com/token"
         )
-        with patch("httpx.post", side_effect=HTTPError("401 Unauthorized")):
-            with pytest.raises(HTTPError):
-                auth._retrieve_token()
+        with patch("httpx.post", side_effect=HTTPError("401 Unauthorized")), pytest.raises(HTTPError):
+            auth._retrieve_token()
 
     def test_retrieve_token_connection_error(self) -> None:
         """Test _retrieve_token method with connection error."""
         auth = OAuth2ClientCredentialsAuth(
             client_id="test-client", client_secret="test-secret", token_url="https://test.com/token"
         )
-        with patch("httpx.post", side_effect=ConnectError("Connection failed")):
-            with pytest.raises(ConnectError):
-                auth._retrieve_token()
+        with patch("httpx.post", side_effect=ConnectError("Connection failed")), pytest.raises(ConnectError):
+            auth._retrieve_token()
 
     def test_retrieve_token_timeout(self) -> None:
         """Test _retrieve_token method with timeout."""
@@ -210,9 +210,8 @@ class TestPulpHelperErrorHandling:
     def test_get_distribution_urls_config_error(self, mock_pulp_client) -> None:
         """Test get_distribution_urls method with missing base_url in config."""
         helper = PulpHelper(mock_pulp_client)
-        with patch.dict(mock_pulp_client.config, {}, clear=True):
-            with pytest.raises(KeyError):
-                helper.get_distribution_urls("test-build-123")
+        with patch.dict(mock_pulp_client.config, {}, clear=True), pytest.raises(KeyError):
+            helper.get_distribution_urls("test-build-123")
 
 
 class TestUtilityErrorHandling:

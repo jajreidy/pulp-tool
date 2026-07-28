@@ -8,7 +8,7 @@ Accepted
 
 ## Context
 
-The project needs a single baseline for typing (`typing` / `collections.abc`), asyncio, and toolchains (mypy, Black, pytest).
+The project needs a single baseline for typing (`typing` / `collections.abc`), asyncio, and toolchains (mypy, Ruff, pytest).
 
 ## Decision
 

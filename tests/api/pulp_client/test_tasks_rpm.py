@@ -2,12 +2,12 @@
 
 import re
 from unittest.mock import patch
+
 import httpx
 import pytest
 
 
 class TestPulpClient:
-
     def test_get_task(self, mock_pulp_client, httpx_mock) -> None:
         """Test _get_task method."""
         httpx_mock.get("https://pulp.example.com/pulp/api/v3/tasks/12345/").mock(

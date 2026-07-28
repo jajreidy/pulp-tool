@@ -10,16 +10,16 @@ import asyncio
 import logging
 import traceback
 from dataclasses import dataclass
-from typing import Any, Dict, Optional, Tuple, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import httpx
 
-from ..models.repository import RepositoryRefs
 from ..models.pulp_api import (
     DistributionRequest,
     RepositoryRequest,
     TaskResponse,
 )
+from ..models.repository import RepositoryRefs
 
 if TYPE_CHECKING:
     from ..api.pulp_client import PulpClient  # pragma: no cover
@@ -31,8 +31,8 @@ from .constants import (
     SUPPORTED_ARCHITECTURES,
 )
 from .validation import (
-    strip_namespace_from_build_id,
     sanitize_build_id_for_repository,
+    strip_namespace_from_build_id,
     validate_build_id,
     validate_repository_setup,
 )
@@ -61,7 +61,7 @@ class RepositoryApiOps:
     def get_distro(self, name: str) -> httpx.Response:
         return self.client.repository_operation("get_distro", self.repo_type, name=name)
 
-    def update_distro(self, distribution_href: str, publication: Optional[str]) -> httpx.Response:
+    def update_distro(self, distribution_href: str, publication: str | None) -> httpx.Response:
         return self.client.repository_operation(
             "update_distro",
             self.repo_type,
@@ -95,7 +95,7 @@ class RepositoryManager:
     and their distributions.
     """
 
-    def __init__(self, pulp_client: "PulpClient", parent_package: Optional[str] = None) -> None:
+    def __init__(self, pulp_client: PulpClient, parent_package: str | None = None) -> None:
         """
         Initialize the repository manager.
 
@@ -107,7 +107,7 @@ class RepositoryManager:
         self.namespace = pulp_client.namespace
         self.parent_package = parent_package
         # Cache for distribution base paths: (build_id, repo_type) -> base_path
-        self._distribution_cache: Dict[Tuple[str, str], str] = {}
+        self._distribution_cache: dict[tuple[str, str], str] = {}
 
     def _validate_full_name(self, full_name: str, build_name: str, repo_type: str) -> None:
         """
@@ -129,7 +129,7 @@ class RepositoryManager:
     def setup_repositories(
         self,
         build_id: str,
-        signed_by: Optional[str] = None,
+        signed_by: str | None = None,
         skip_artifacts_repo: bool = False,
         target_arch_repo: bool = False,
         skip_logs_repo: bool = False,
@@ -251,11 +251,11 @@ class RepositoryManager:
 
     def create_or_get_repository(
         self,
-        build_id: Optional[str],
+        build_id: str | None,
         repo_api_type: str,
-        new_repository: Optional[RepositoryRequest] = None,
-        new_distribution: Optional[DistributionRequest] = None,
-    ) -> Tuple[str, Optional[str]]:
+        new_repository: RepositoryRequest | None = None,
+        new_distribution: DistributionRequest | None = None,
+    ) -> tuple[str, str | None]:
         """
         Create or get a repository and distribution of the specified type.
 
@@ -284,7 +284,6 @@ class RepositoryManager:
             logging.debug("Repository operation completed: %s", new_repository.name)
 
         else:
-
             # Check for empty/None build ID before sanitization
             if not build_id or not isinstance(build_id, str) or not build_id.strip():
                 raise ValueError(f"Invalid build ID: {build_id}")
@@ -335,7 +334,7 @@ class RepositoryManager:
         """
         return RepositoryApiOps(self.client, repo_type)
 
-    def _parse_repository_response(self, response: httpx.Response, repo_type: str, operation: str) -> Dict[str, Any]:
+    def _parse_repository_response(self, response: httpx.Response, repo_type: str, operation: str) -> dict[str, Any]:
         """Parse repository response JSON with error handling."""
         try:
             return response.json()
@@ -347,7 +346,7 @@ class RepositoryManager:
 
     def _get_existing_repository(
         self, methods: RepositoryApiOps, full_name: str, repo_type: str
-    ) -> Optional[Tuple[str, Optional[str]]]:
+    ) -> tuple[str, str | None] | None:
         """Check if repository exists and return its details.
 
         Returns None if repository doesn't exist (404), allowing the caller to create it.
@@ -374,7 +373,7 @@ class RepositoryManager:
 
     def _create_new_repository(
         self, methods: RepositoryApiOps, new_repository: RepositoryRequest, repo_type: str
-    ) -> Tuple[str, Optional[str]]:
+    ) -> tuple[str, str | None]:
         """Create a new repository and return its details."""
         logging.warning(
             "Creating new repository %s: %s",
@@ -403,7 +402,7 @@ class RepositoryManager:
 
     def _wait_for_distribution_task(
         self, methods: RepositoryApiOps, task_id: str, repo_type: str, build_id: str
-    ) -> Optional[str]:
+    ) -> str | None:
         """
         Wait for distribution creation task to complete and return the base_path.
 
@@ -455,12 +454,12 @@ class RepositoryManager:
     async def _setup_repositories_impl_async(
         self,
         build_id: str,
-        signed_by: Optional[str] = None,
+        signed_by: str | None = None,
         skip_artifacts_repo: bool = False,
         target_arch_repo: bool = False,
         skip_logs_repo: bool = False,
         skip_sbom_repo: bool = False,
-    ) -> Dict[str, str]:
+    ) -> dict[str, str]:
         """
         Async version: Setup all required repositories using asyncio.gather for concurrency.
 
@@ -494,7 +493,7 @@ class RepositoryManager:
 
         # Use asyncio.gather to run all repository setups concurrently
         # Each operation runs in the event loop without blocking
-        async def create_repo(repo_type: str) -> Tuple[str, Tuple[str, Optional[str]]]:
+        async def create_repo(repo_type: str) -> tuple[str, tuple[str, str | None]]:
             """Helper to create repository and return type with result."""
             loop = asyncio.get_event_loop()
             build_name = strip_namespace_from_build_id(build_id)
@@ -562,10 +561,10 @@ class RepositoryManager:
         new_repository: RepositoryRequest,
         new_distribution: DistributionRequest,
         repo_type: str,
-        build_id: Optional[str] = None,
+        build_id: str | None = None,
         *,
-        distribution_cache_type: Optional[str] = None,
-    ) -> Tuple[str, Optional[str]]:
+        distribution_cache_type: str | None = None,
+    ) -> tuple[str, str | None]:
         """
         Create or get a repository and distribution of the specified type.
 
@@ -681,9 +680,9 @@ class RepositoryManager:
         new_distribution: DistributionRequest,
         repo_type: str,
         is_new_repository: bool = False,
-        build_id: Optional[str] = None,
+        build_id: str | None = None,
         *,
-        distribution_cache_type: Optional[str] = None,
+        distribution_cache_type: str | None = None,
     ) -> str:
         """Create a distribution for a repository and return the task ID.
 
@@ -731,12 +730,12 @@ class RepositoryManager:
     def _setup_repositories_impl(
         self,
         build_id: str,
-        signed_by: Optional[str] = None,
+        signed_by: str | None = None,
         skip_artifacts_repo: bool = False,
         target_arch_repo: bool = False,
         skip_logs_repo: bool = False,
         skip_sbom_repo: bool = False,
-    ) -> Dict[str, str]:
+    ) -> dict[str, str]:
         """
         Setup all required repositories and return their identifiers.
 
@@ -766,7 +765,7 @@ class RepositoryManager:
             )
         )
 
-    def get_distribution_cache(self) -> Dict[Tuple[str, str], str]:
+    def get_distribution_cache(self) -> dict[tuple[str, str], str]:
         """Get the distribution cache for sharing with DistributionManager."""
         return self._distribution_cache
 

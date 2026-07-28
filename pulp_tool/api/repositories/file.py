@@ -5,7 +5,7 @@ This module provides file-specific repository operations following Pulp's API st
 API Reference: https://docs.pulpproject.org/pulp_file/restapi.html#repositories
 """
 
-from typing import Any, Optional
+from typing import Any
 
 import httpx
 
@@ -16,7 +16,7 @@ from .base import BaseRepositoryMixin
 class FileRepositoryMixin(BaseRepositoryMixin):
     """Mixin that provides file repository operations for Pulp."""
 
-    def create_file_repository(self, request: RepositoryRequest) -> tuple[httpx.Response, Optional[str]]:
+    def create_file_repository(self, request: RepositoryRequest) -> tuple[httpx.Response, str | None]:
         """
         Create a file repository.
 
@@ -55,7 +55,7 @@ class FileRepositoryMixin(BaseRepositoryMixin):
 
     def list_file_repositories(
         self, **query_params: Any
-    ) -> tuple[list[FileRepositoryResponse], Optional[str], Optional[str], int]:
+    ) -> tuple[list[FileRepositoryResponse], str | None, str | None, int]:
         """
         List file repositories with pagination.
 

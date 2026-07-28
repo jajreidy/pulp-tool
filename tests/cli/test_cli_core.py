@@ -1,8 +1,10 @@
 """Tests for Click CLI commands."""
 
 from unittest.mock import patch
+
 import pytest
 from click.testing import CliRunner
+
 from pulp_tool.cli import cli, main
 
 

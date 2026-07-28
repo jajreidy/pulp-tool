@@ -8,8 +8,9 @@ code duplication across the codebase.
 import logging
 import sys
 import traceback
+from collections.abc import Callable
 from functools import wraps
-from typing import Any, Callable, Optional, TypeVar
+from typing import Any, TypeVar
 
 import httpx
 
@@ -124,7 +125,7 @@ def log_and_exit(message: str, exit_code: int = 1) -> None:
     sys.exit(exit_code)
 
 
-def try_parse_json(content: str, operation: str, *, default: Optional[Any] = None, raise_on_error: bool = True) -> Any:
+def try_parse_json(content: str, operation: str, *, default: Any | None = None, raise_on_error: bool = True) -> Any:
     """
     Attempt to parse JSON content with error handling.
 

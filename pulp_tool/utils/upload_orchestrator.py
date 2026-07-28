@@ -11,19 +11,18 @@ import glob
 import logging
 import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import Any, Dict, List, Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
-from ..models.context import UploadRpmContext, UploadFilesContext
-from ..models.repository import RepositoryRefs
 from ..models.artifacts import ExtraArtifactRef
+from ..models.context import UploadFilesContext, UploadRpmContext
+from ..models.repository import RepositoryRefs
 from ..models.results import PulpResultsModel, RpmUploadResult
-
-from .constants import ARCHITECTURE_THREAD_PREFIX, ARCH_DETECT_WARNING_MSG, SUPPORTED_ARCHITECTURES
-from .error_handling import handle_generic_error
-from .uploads import upload_log, upload_rpms, upload_rpms_logs, create_labels, RPM_FILE_PATTERN
-from .validation import validate_file_path
 from .artifact_detection import detect_arch_from_filepath, group_rpm_paths_by_arch
+from .constants import ARCH_DETECT_WARNING_MSG, ARCHITECTURE_THREAD_PREFIX, SUPPORTED_ARCHITECTURES
+from .error_handling import handle_generic_error
 from .pulp_tasks import create_file_content_and_wait
+from .uploads import RPM_FILE_PATTERN, create_labels, upload_log, upload_rpms, upload_rpms_logs
+from .validation import validate_file_path
 
 if TYPE_CHECKING:
     from ..api.pulp_client import PulpClient
@@ -41,7 +40,7 @@ class UploadOrchestrator:
     def __init__(self) -> None:
         """Initialize the upload orchestrator."""
 
-    def _find_existing_architectures(self, rpm_path: str) -> List[str]:
+    def _find_existing_architectures(self, rpm_path: str) -> list[str]:
         """
         Find architectures that have existing directories.
 
@@ -63,19 +62,19 @@ class UploadOrchestrator:
     def _submit_architecture_tasks(
         self,
         executor: ThreadPoolExecutor,
-        existing_archs: List[str],
+        existing_archs: list[str],
         rpm_path: str,
         args: UploadRpmContext,
-        client: "PulpClient",
+        client: PulpClient,
         rpm_href: str,
         logs_prn: str,
         date_str: str,
         results_model: PulpResultsModel,
-        distribution_urls: Dict[str, str],
+        distribution_urls: dict[str, str],
         *,
-        pulp_helper: Optional[PulpHelper] = None,
+        pulp_helper: PulpHelper | None = None,
         target_arch_repo: bool = False,
-    ) -> Dict[Any, str]:
+    ) -> dict[Any, str]:
         """
         Submit architecture upload tasks to the executor.
 
@@ -118,7 +117,7 @@ class UploadOrchestrator:
             future_to_arch[future] = arch
         return future_to_arch
 
-    def _collect_architecture_results(self, future_to_arch: Dict[Any, str]) -> Dict[str, RpmUploadResult]:
+    def _collect_architecture_results(self, future_to_arch: dict[Any, str]) -> dict[str, RpmUploadResult]:
         """
         Collect results from architecture upload futures.
 
@@ -131,7 +130,7 @@ class UploadOrchestrator:
         Raises:
             Exception: If any architecture upload fails
         """
-        processed_archs: Dict[str, RpmUploadResult] = {}
+        processed_archs: dict[str, RpmUploadResult] = {}
         for future in as_completed(future_to_arch):
             arch = future_to_arch[future]
             try:
@@ -152,17 +151,17 @@ class UploadOrchestrator:
 
     def process_architecture_uploads(
         self,
-        client: "PulpClient",
+        client: PulpClient,
         args: UploadRpmContext,
         repositories: RepositoryRefs,
         *,
         date_str: str,
         rpm_href: str,
         results_model: PulpResultsModel,
-        distribution_urls: Dict[str, str],
-        pulp_helper: Optional[PulpHelper] = None,
+        distribution_urls: dict[str, str],
+        pulp_helper: PulpHelper | None = None,
         target_arch_repo: bool = False,
-    ) -> Dict[str, RpmUploadResult]:
+    ) -> dict[str, RpmUploadResult]:
         """
         Process uploads for all supported architectures.
 
@@ -219,12 +218,12 @@ class UploadOrchestrator:
 
     def process_uploads(
         self,
-        client: "PulpClient",
+        client: PulpClient,
         args: UploadRpmContext,
         repositories: RepositoryRefs,
         *,
-        pulp_helper: Optional[PulpHelper] = None,
-    ) -> Optional[str]:
+        pulp_helper: PulpHelper | None = None,
+    ) -> str | None:
         """
         Process all upload operations.
 
@@ -242,7 +241,7 @@ class UploadOrchestrator:
             URL of the uploaded results JSON, or None if upload failed
         """
         # Import here to avoid circular import
-        from ..services.upload_service import upload_sbom, collect_results, process_uploads_from_results_json
+        from ..services.upload_service import collect_results, process_uploads_from_results_json, upload_sbom
         from .pulp_helper import PulpHelper as PulpHelperCls
 
         if args.results_json:
@@ -277,7 +276,7 @@ class UploadOrchestrator:
         )
 
         # Collect all created resources from add_content operations
-        created_resources: List[str] = []
+        created_resources: list[str] = []
         for upload in processed_uploads.values():
             created_resources.extend(upload.created_resources)
 
@@ -296,7 +295,7 @@ class UploadOrchestrator:
                 for arch, rpm_list in rpms_by_arch.items():
                     logging.warning("Uploading %d root-level RPM(s) for architecture %s", len(rpm_list), arch)
                     if args.target_arch_repo:
-                        assert pulp_helper is not None  # enforced at start when target_arch_repo is set
+                        assert pulp_helper is not None  # noqa: S101  # enforced at start when target_arch_repo is set
                         root_rpm_href = pulp_helper.ensure_rpm_repository_for_arch(args.build_id, arch)
                     else:
                         root_rpm_href = repositories.rpms_href
@@ -350,8 +349,8 @@ class UploadOrchestrator:
         return results_json_url
 
     def process_file_uploads(
-        self, client: "PulpClient", context: UploadFilesContext, repositories: RepositoryRefs
-    ) -> Optional[str]:
+        self, client: PulpClient, context: UploadFilesContext, repositories: RepositoryRefs
+    ) -> str | None:
         """
         Process upload of individual files to Pulp repositories.
 
@@ -367,7 +366,7 @@ class UploadOrchestrator:
             URL of the uploaded results JSON, or None if upload failed
         """
         # Import here to avoid circular import
-        from ..services.upload_service import upload_sbom, collect_results
+        from ..services.upload_service import collect_results, upload_sbom
         from .pulp_helper import PulpHelper as PulpHelperCls
 
         # Create unified results model

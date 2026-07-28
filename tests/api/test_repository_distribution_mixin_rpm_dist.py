@@ -5,11 +5,12 @@ This module tests repository and distribution mixin methods that need coverage.
 """
 
 import httpx
+
 from pulp_tool.models.pulp_api import (
-    RepositoryRequest,
     DistributionRequest,
-    RepositoryResponse,
     DistributionResponse,
+    RepositoryRequest,
+    RepositoryResponse,
     RpmDistributionRequest,
     RpmDistributionResponse,
 )
@@ -101,7 +102,6 @@ class TestBaseRepositoryMixinDirect:
         from pulp_tool.api.repositories.base import BaseRepositoryMixin
 
         class TestClient(BaseRepositoryMixin):
-
             def __init__(self, client) -> None:
                 self.config = client.config
                 self.session = client.session
@@ -128,7 +128,6 @@ class TestBaseRepositoryMixinDirect:
         from pulp_tool.api.repositories.base import BaseRepositoryMixin
 
         class TestClient(BaseRepositoryMixin):
-
             def __init__(self, client) -> None:
                 self.config = client.config
                 self.session = client.session
@@ -159,7 +158,6 @@ class TestBaseRepositoryMixinDirect:
         from pulp_tool.api.repositories.base import BaseRepositoryMixin
 
         class TestClient(BaseRepositoryMixin):
-
             def __init__(self, client) -> None:
                 self.config = client.config
                 self.session = client.session
@@ -181,7 +179,6 @@ class TestBaseRepositoryMixinDirect:
         from pulp_tool.api.repositories.base import BaseRepositoryMixin
 
         class TestClient(BaseRepositoryMixin):
-
             def __init__(self, client) -> None:
                 self.config = client.config
                 self.session = client.session
@@ -203,7 +200,6 @@ class TestBaseDistributionMixinDirect:
         from pulp_tool.api.distributions.base import BaseDistributionMixin
 
         class TestClient(BaseDistributionMixin):
-
             def __init__(self, client) -> None:
                 self.config = client.config
                 self.session = client.session
@@ -235,7 +231,6 @@ class TestBaseDistributionMixinDirect:
         from pulp_tool.api.distributions.base import BaseDistributionMixin
 
         class TestClient(BaseDistributionMixin):
-
             def __init__(self, client) -> None:
                 self.config = client.config
                 self.session = client.session
@@ -268,7 +263,6 @@ class TestBaseDistributionMixinDirect:
         from pulp_tool.api.distributions.base import BaseDistributionMixin
 
         class TestClient(BaseDistributionMixin):
-
             def __init__(self, client) -> None:
                 self.config = client.config
                 self.session = client.session
@@ -297,7 +291,6 @@ class TestBaseDistributionMixinDirect:
         from pulp_tool.api.distributions.base import BaseDistributionMixin
 
         class TestClient(BaseDistributionMixin):
-
             def __init__(self, client) -> None:
                 self.config = client.config
                 self.session = client.session

@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Lint toolchain expansion:** Ruff (replaces Black and Flake8), yamllint, ShellCheck, hadolint, codespell, and Checkton (Tekton embedded scripts) in pre-commit and/or CI; pip-audit added to pre-commit via `make audit`; `.yamllint.yml` and `.codespell-ignore-words.txt`
 - **`docs/releasing.md`:** maintainer guide for PyPI releases (trusted publishing setup, semver tagging on `main`, workflow steps, verification, troubleshooting); linked from `CONTRIBUTING.md`, `README.md`, and `.github/workflows/release.yml`
 - **PyPI release workflow (`.github/workflows/release.yml`):** builds and publishes `pulp-tool` on semver `v*` tags that point at `main`; uses `hynek/build-and-inspect-python-package` for wheel/sdist inspection and PyPI [trusted publishing](https://docs.pypi.org/trusted-publishers/) via `pypa/gh-action-pypi-publish`; maintainer steps in [docs/releasing.md](docs/releasing.md)
 - **`make lock-check`:** fails when `pyproject.toml` and `uv.lock` are out of sync (`uv lock --check`); CI runs it in `python-diff-lint.yml`
@@ -58,6 +59,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Comprehensive test suite with 85%+ coverage
 
 ### Changed
+- **Lint toolchain:** replace Black and Flake8 with Ruff (lint + format, S security ruleset); expand CI lint workflow (`python-diff-lint.yml`) with yamllint, ShellCheck, hadolint, codespell, Checkton, and **`make test-diff-coverage`** on pull requests; consolidate pytest options in `pyproject.toml` (`Makefile`, `scripts/check-all.sh`, `scripts/run-tests.sh` defer to `[tool.pytest.ini_options]`); update `CONTRIBUTING.md`, `README.md`, and troubleshooting skill
 - **Documentation audit:** align README, `docs/cli-reference.md`, `CONTRIBUTING.md`, `SECURITY.md`, `scripts/README.md`, and `docs/ARCHITECTURE.md` with current CLI flags, config keys, PyPI trusted publishing, and Makefile targets
 - **`docs/cli-reference.md`:** normalize `search-by` section to the same options-table layout as other commands; document `--keep-files`
 - **`setup.py`:** thin `setup()` shim only; dependency ranges and package metadata live in **`pyproject.toml`**
@@ -103,6 +105,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CONTRIBUTING: recommend `make install-dev`, pre-commit run twice, `make test` and 100% diff coverage for new code
 
 ### Removed
+- **Lint tooling:** `.flake8`, Black and Flake8 dev dependencies; deprecated `safety check` and non-blocking bandit steps from `security-scan.yml` (pip-audit and Ruff S rules remain blocking)
 - Unused status/capability helpers (`pulp_tool.utils.pulp_capabilities`, `StatusResponse` / `VersionInfo` models), test-only RPM batch/NVRA helpers, unused `_parse_list_response`, and unused `get_rpm_by_unsigned_checksums` API
 - Unused model properties and classes (`UploadResult`, `FileSizeStats`, per-type count helpers on `PulledArtifacts`/`ContentData`, `RpmPackageResponse` NVRA/NEVRA helpers)
 - **`pulp_tool.utils.predicates`** and test-only helpers trimmed from `logging_utils`, `path_utils`, and `iteration_utils` (production call sites unchanged)
@@ -112,6 +115,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Makefile targets: `docs`, `docs-clean`, `docs-serve`
 
 ### Fixed
+- **`make audit` / pre-commit pip-audit:** install dev dependencies from `uv.lock` (`uv export --extra dev --no-emit-project`) instead of `pip install -e ".[dev]"`, so setuptools-scm does not regenerate tracked `pulp_tool/_version.py` during commits
 - **Konflux `--artifact-results` digest:** write `sha256:<hex>` from the uploaded artifact (via Pulp artifact API) instead of leaving the digest file empty when the pulp-content URL has no OCI `@sha256:` suffix
 - **Partial RPM uploads:** increment `uploaded_counts.rpms` by successful uploads only; record failures in `upload_errors`; raise when any RPM in a batch fails instead of exiting 0 with incomplete repo content
 - **Missing `--sbom-path`:** raise `FileNotFoundError` when the SBOM file is explicitly requested but absent (upload no longer continues silently)

@@ -2,11 +2,12 @@
 
 import pytest
 from pydantic import ValidationError
-from pulp_tool.models.repository import RepositoryRefs
+
 from pulp_tool.models.artifacts import (
     ArtifactFile,
     PulledArtifacts,
 )
+from pulp_tool.models.repository import RepositoryRefs
 from pulp_tool.models.results import DownloadResult
 from pulp_tool.models.statistics import DownloadStats, UploadCounts
 

@@ -5,7 +5,7 @@ This module provides RPM-specific repository operations following Pulp's API str
 API Reference: https://docs.pulpproject.org/pulp_rpm/restapi.html#repositories
 """
 
-from typing import Any, Optional
+from typing import Any
 
 import httpx
 
@@ -16,7 +16,7 @@ from .base import BaseRepositoryMixin
 class RpmRepositoryMixin(BaseRepositoryMixin):
     """Mixin that provides RPM repository operations for Pulp."""
 
-    def create_rpm_repository(self, request: RpmRepositoryRequest) -> tuple[httpx.Response, Optional[str]]:
+    def create_rpm_repository(self, request: RpmRepositoryRequest) -> tuple[httpx.Response, str | None]:
         """
         Create an RPM repository.
 
@@ -71,7 +71,7 @@ class RpmRepositoryMixin(BaseRepositoryMixin):
 
     def list_rpm_repositories(
         self, **query_params: Any
-    ) -> tuple[list[RpmRepositoryResponse], Optional[str], Optional[str], int]:
+    ) -> tuple[list[RpmRepositoryResponse], str | None, str | None, int]:
         """
         List RPM repositories with pagination.
 

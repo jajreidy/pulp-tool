@@ -1,12 +1,12 @@
 """Result models for upload and download operations."""
 
 from threading import Lock
-from typing import Any, List, Dict
+from typing import Any
 
 from pydantic import AnyHttpUrl, Field, PrivateAttr, TypeAdapter
 
-from .base import KonfluxBaseModel
 from .artifacts import ArtifactMetadata, PulledArtifacts
+from .base import KonfluxBaseModel
 from .repository import RepositoryRefs
 from .statistics import UploadCounts
 
@@ -20,8 +20,8 @@ class RpmUploadResult(KonfluxBaseModel):
         created_resources: List of content hrefs created from add_content task
     """
 
-    uploaded_rpms: List[str] = Field(default_factory=list)
-    created_resources: List[str] = Field(default_factory=list)
+    uploaded_rpms: list[str] = Field(default_factory=list)
+    created_resources: list[str] = Field(default_factory=list)
 
 
 class DownloadResult(KonfluxBaseModel):
@@ -87,16 +87,16 @@ class PulpResultsModel(KonfluxBaseModel):
     repositories: RepositoryRefs
 
     # Results structure (matches pulp_results.json)
-    artifacts: Dict[str, ArtifactMetadata] = Field(default_factory=dict)
-    distributions: Dict[str, AnyHttpUrl] = Field(default_factory=dict)
+    artifacts: dict[str, ArtifactMetadata] = Field(default_factory=dict)
+    distributions: dict[str, AnyHttpUrl] = Field(default_factory=dict)
 
     # Progress tracking
     uploaded_counts: UploadCounts = Field(default_factory=UploadCounts)
-    upload_errors: List[str] = Field(default_factory=list)
+    upload_errors: list[str] = Field(default_factory=list)
 
     _lock: Lock = PrivateAttr(default_factory=Lock)
 
-    def add_artifact(self, key: str, url: str, sha256: str, labels: Dict[str, str]) -> None:
+    def add_artifact(self, key: str, url: str, sha256: str, labels: dict[str, str]) -> None:
         """
         Add an artifact to the results.
 
@@ -146,7 +146,7 @@ class PulpResultsModel(KonfluxBaseModel):
         with self._lock:
             self.upload_errors.append(error)  # pylint: disable=no-member  # Pydantic field
 
-    def to_json_dict(self) -> Dict[str, Any]:
+    def to_json_dict(self) -> dict[str, Any]:
         """
         Export artifacts and distributions only (for pulp_results.json).
 

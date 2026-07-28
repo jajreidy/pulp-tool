@@ -1,6 +1,6 @@
 """Shared helpers for model tests."""
 
-from typing import Dict, cast
+from typing import cast
 
 from pydantic import AnyHttpUrl
 
@@ -11,7 +11,7 @@ def _http_url(url: str) -> AnyHttpUrl:
     return cast(AnyHttpUrl, url)
 
 
-def _dist_map(urls: Dict[str, str]) -> Dict[str, AnyHttpUrl]:
+def _dist_map(urls: dict[str, str]) -> dict[str, AnyHttpUrl]:
     """Dict literal for ArtifactJsonResponse.distributions (values are coerced at runtime)."""
 
-    return cast(Dict[str, AnyHttpUrl], urls)
+    return cast(dict[str, AnyHttpUrl], urls)

@@ -7,7 +7,7 @@ downloaded artifacts.
 """
 
 import logging
-from typing import Any, Dict, Optional, TYPE_CHECKING, Union
+from typing import TYPE_CHECKING, Any, Optional
 
 from ...models.artifacts import ArtifactJsonResponse, ArtifactMetadata
 
@@ -103,9 +103,7 @@ def validate_build_id(build_id: str) -> bool:
     return True
 
 
-def _extract_field_from_artifact(
-    artifact_info: Union[ArtifactMetadata, Dict[str, Any]], field_name: str
-) -> Optional[str]:
+def _extract_field_from_artifact(artifact_info: ArtifactMetadata | dict[str, Any], field_name: str) -> str | None:
     """
     Extract a field from artifact labels (helper function).
 
@@ -126,8 +124,8 @@ def _extract_field_from_artifact(
 
 
 def extract_metadata_from_artifact_json(
-    artifact_json: Union[Dict[str, Any], ArtifactJsonResponse], field_name: str, fallback: Optional[str] = None
-) -> Optional[str]:
+    artifact_json: dict[str, Any] | ArtifactJsonResponse, field_name: str, fallback: str | None = None
+) -> str | None:
     """
     Extract any metadata field from artifact JSON.
 
@@ -179,8 +177,8 @@ def extract_metadata_from_artifact_json(
 
 
 def extract_metadata_from_artifacts(
-    pulled_artifacts: "PulledArtifacts", field_name: str, fallback: Optional[str] = None
-) -> Optional[str]:
+    pulled_artifacts: "PulledArtifacts", field_name: str, fallback: str | None = None
+) -> str | None:
     """
     Extract any metadata field from artifact labels.
 
@@ -218,7 +216,7 @@ def extract_metadata_from_artifacts(
     return fallback
 
 
-def extract_build_id_from_artifact_json(artifact_json: Union[Dict[str, Any], ArtifactJsonResponse]) -> str:
+def extract_build_id_from_artifact_json(artifact_json: dict[str, Any] | ArtifactJsonResponse) -> str:
     """
     Extract build_id from artifact_json metadata.
 
@@ -250,7 +248,7 @@ def extract_build_id_from_artifacts(pulled_artifacts: "PulledArtifacts") -> str:
 
 def determine_build_id(
     args: Any,
-    artifact_json: Optional[Union[Dict[str, Any], ArtifactJsonResponse]] = None,
+    artifact_json: dict[str, Any] | ArtifactJsonResponse | None = None,
     pulled_artifacts: Optional["PulledArtifacts"] = None,
 ) -> str:
     """

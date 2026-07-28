@@ -1,8 +1,8 @@
 """Context and configuration models for Konflux Pulp operations."""
 
-from typing import Optional, Dict, Callable, List
+from collections.abc import Callable
 
-from pydantic import Field, ConfigDict, field_validator
+from pydantic import ConfigDict, Field, field_validator
 
 from .base import KonfluxBaseModel
 from .pulp_label_values import normalize_signed_by_value_for_pulp
@@ -32,11 +32,11 @@ class UploadContext(KonfluxBaseModel):
     build_id: str
     date_str: str
     namespace: str
-    parent_package: Optional[str] = None
-    config: Optional[str] = None
+    parent_package: str | None = None
+    config: str | None = None
     debug: int = 0
-    artifact_results: Optional[str] = None
-    sbom_results: Optional[str] = None
+    artifact_results: str | None = None
+    sbom_results: str | None = None
     skip_logs_repo: bool = False
     skip_sbom_repo: bool = False
 
@@ -61,17 +61,17 @@ class UploadRpmContext(UploadContext):
             repo is used (signed_by is label-only; no rpms-signed path segment).
     """
 
-    rpm_path: Optional[str] = None
-    sbom_path: Optional[str] = None
-    results_json: Optional[str] = None
-    files_base_path: Optional[str] = None
-    signed_by: Optional[str] = None
+    rpm_path: str | None = None
+    sbom_path: str | None = None
+    results_json: str | None = None
+    files_base_path: str | None = None
+    signed_by: str | None = None
     overwrite: bool = False
     target_arch_repo: bool = False
 
     @field_validator("signed_by")
     @classmethod
-    def normalize_signed_by_for_pulp(cls, v: Optional[str]) -> Optional[str]:
+    def normalize_signed_by_for_pulp(cls, v: str | None) -> str | None:
         """Strip and map signed_by to a pulp-safe label value when needed."""
         if v is None:
             return None
@@ -99,20 +99,20 @@ class PullContext(KonfluxBaseModel):
         archs: Optional list of architectures to filter
     """
 
-    artifact_location: Optional[str] = None
-    namespace: Optional[str] = None
-    key_path: Optional[str] = None
-    config: Optional[str] = None
-    transfer_dest: Optional[str] = None
-    build_id: Optional[str] = None
+    artifact_location: str | None = None
+    namespace: str | None = None
+    key_path: str | None = None
+    config: str | None = None
+    transfer_dest: str | None = None
+    build_id: str | None = None
     debug: int = 0
     max_workers: int = Field(default=10, ge=1, le=100)
-    content_types: Optional[List[str]] = None
-    archs: Optional[List[str]] = None
+    content_types: list[str] | None = None
+    archs: list[str] | None = None
 
     @field_validator("content_types")
     @classmethod
-    def validate_content_types(cls, v: Optional[List[str]]) -> Optional[List[str]]:
+    def validate_content_types(cls, v: list[str] | None) -> list[str] | None:
         """Validate that content_types only contains valid values."""
         if v is None:
             return v
@@ -149,7 +149,7 @@ class ArchUploadConfig(KonfluxBaseModel):
     file_repository_prn: str
     build_id: str
     date_str: str
-    labels: Dict[str, str]
+    labels: dict[str, str]
 
 
 class UploadCallbacks(KonfluxBaseModel):
@@ -182,11 +182,11 @@ class UploadFilesContext(UploadContext):
         arch: Optional architecture for RPMs (if not provided, will try to detect)
     """
 
-    rpm_files: List[str] = Field(default_factory=list)
-    file_files: List[str] = Field(default_factory=list)
-    log_files: List[str] = Field(default_factory=list)
-    sbom_files: List[str] = Field(default_factory=list)
-    arch: Optional[str] = None
+    rpm_files: list[str] = Field(default_factory=list)
+    file_files: list[str] = Field(default_factory=list)
+    log_files: list[str] = Field(default_factory=list)
+    sbom_files: list[str] = Field(default_factory=list)
+    arch: str | None = None
 
 
 __all__ = [

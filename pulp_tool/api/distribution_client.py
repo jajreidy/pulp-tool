@@ -8,7 +8,6 @@ distribution repositories.
 # Standard library imports
 import logging
 import traceback
-from typing import Optional, Tuple
 
 # Third-party imports
 import httpx
@@ -22,10 +21,10 @@ class DistributionClient:
 
     def __init__(
         self,
-        cert: Optional[str] = None,
-        key: Optional[str] = None,
-        username: Optional[str] = None,
-        password: Optional[str] = None,
+        cert: str | None = None,
+        key: str | None = None,
+        username: str | None = None,
+        password: str | None = None,
     ) -> None:
         """Initialize the distribution client with SSL certificates or username/password.
 
@@ -50,7 +49,7 @@ class DistributionClient:
         has_basic = username is not None and password is not None
         if not has_cert and not has_basic:
             raise ValueError(
-                "Provide either (cert, key) for client certificate auth, " "or (username, password) for Basic Auth."
+                "Provide either (cert, key) for client certificate auth, or (username, password) for Basic Auth."
             )
         if has_cert and has_basic:
             raise ValueError("Provide either (cert, key) or (username, password), not both.")
@@ -63,8 +62,8 @@ class DistributionClient:
         Uses a 5-minute timeout to allow for downloading large RPM files.
         Uses cert/key for client cert auth, or Basic Auth when username/password provided.
         """
-        cert_tuple: Optional[Tuple[str, str]] = None
-        auth: Optional[Tuple[str, str]] = None
+        cert_tuple: tuple[str, str] | None = None
+        auth: tuple[str, str] | None = None
         if self.cert and self.key:
             cert_tuple = (self.cert, self.key)
         elif self.username is not None and self.password is not None:
@@ -120,7 +119,7 @@ class DistributionClient:
                     f.write(chunk)
         return file_full_filename
 
-    def pull_data_async(self, download_info: Tuple[str, str, str, str]) -> Tuple[str, str]:
+    def pull_data_async(self, download_info: tuple[str, str, str, str]) -> tuple[str, str]:
         """Download artifact data asynchronously.
 
         Args:

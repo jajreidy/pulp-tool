@@ -5,7 +5,7 @@ This module handles retrieving and constructing distribution URLs.
 """
 
 import logging
-from typing import Dict, Optional, Tuple, TYPE_CHECKING
+from typing import TYPE_CHECKING
 
 from .constants import REPOSITORY_TYPES
 from .validation import sanitize_build_id_for_repository, strip_namespace_from_build_id, validate_build_id
@@ -23,7 +23,7 @@ class DistributionManager:
     """
 
     def __init__(
-        self, pulp_client: "PulpClient", namespace: str, distribution_cache: Optional[Dict[Tuple[str, str], str]] = None
+        self, pulp_client: "PulpClient", namespace: str, distribution_cache: dict[tuple[str, str], str] | None = None
     ) -> None:
         """
         Initialize the distribution manager.
@@ -35,7 +35,7 @@ class DistributionManager:
         """
         self.client = pulp_client
         self.namespace = namespace
-        self._distribution_cache: Dict[Tuple[str, str], str] = (
+        self._distribution_cache: dict[tuple[str, str], str] = (
             distribution_cache if distribution_cache is not None else {}
         )
 
@@ -61,7 +61,7 @@ class DistributionManager:
         skip_logs_repo: bool = False,
         skip_sbom_repo: bool = False,
         skip_artifacts_repo: bool = False,
-    ) -> Dict[str, str]:
+    ) -> dict[str, str]:
         """
         Get distribution URLs for all repository types.
 
@@ -107,7 +107,7 @@ class DistributionManager:
         logging.debug("Retrieved %d distribution URLs", len(distribution_urls))
         return distribution_urls
 
-    def _get_single_distribution_url(self, build_id: str, repo_type: str, base_url: str) -> Optional[str]:
+    def _get_single_distribution_url(self, build_id: str, repo_type: str, base_url: str) -> str | None:
         """
         Get distribution URL for a single repository type.
 
@@ -150,7 +150,7 @@ class DistributionManager:
         skip_logs_repo: bool = False,
         skip_sbom_repo: bool = False,
         skip_artifacts_repo: bool = False,
-    ) -> Dict[str, str]:
+    ) -> dict[str, str]:
         """
         Get distribution URLs for all repository types.
 

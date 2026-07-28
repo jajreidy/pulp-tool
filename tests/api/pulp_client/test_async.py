@@ -6,10 +6,12 @@ Uses asyncio.run() so tests work without pytest-asyncio.
 """
 
 import asyncio
-import pytest
-import httpx
 from unittest.mock import Mock, patch
-from pulp_tool.api import PulpClient, OAuth2ClientCredentialsAuth
+
+import httpx
+import pytest
+
+from pulp_tool.api import OAuth2ClientCredentialsAuth, PulpClient
 
 
 class TestPulpClientAsync:

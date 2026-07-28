@@ -7,10 +7,10 @@ This module provides centralized configuration loading and validation.
 import logging
 import tomllib
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any
 
-from .constants import DEFAULT_CONFIG_PATH
 from .config_utils import load_config_content
+from .constants import DEFAULT_CONFIG_PATH
 
 
 class ConfigManager:
@@ -21,7 +21,7 @@ class ConfigManager:
     from TOML files or base64-encoded config content with proper error handling and validation.
     """
 
-    def __init__(self, config_path: Optional[str] = None) -> None:
+    def __init__(self, config_path: str | None = None) -> None:
         """
         Initialize the configuration manager.
 
@@ -35,14 +35,14 @@ class ConfigManager:
         # If config_path is provided and not base64, expand it
         if config_path is None:
             # Use default path - always expand it
-            self.config_path: Optional[Path] = Path(DEFAULT_CONFIG_PATH).expanduser()
+            self.config_path: Path | None = Path(DEFAULT_CONFIG_PATH).expanduser()
         elif self._is_base64():
             # Base64 config - no file path
             self.config_path = None
         else:
             # File path - expand it
             self.config_path = Path(self.config_source).expanduser()
-        self._config: Optional[Dict[str, Any]] = None
+        self._config: dict[str, Any] | None = None
 
     def _is_base64(self) -> bool:
         """Check if config_source is base64."""
@@ -50,7 +50,7 @@ class ConfigManager:
 
         return is_base64_config(self.config_source)
 
-    def load(self) -> Dict[str, Any]:
+    def load(self) -> dict[str, Any]:
         """
         Load configuration from file or base64 content.
 
@@ -116,7 +116,7 @@ class ConfigManager:
 
         return value if value is not None else default
 
-    def get_section(self, section: str) -> Dict[str, Any]:
+    def get_section(self, section: str) -> dict[str, Any]:
         """
         Get an entire configuration section.
 

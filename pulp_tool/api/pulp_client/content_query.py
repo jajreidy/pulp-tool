@@ -5,8 +5,9 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+from collections.abc import Sequence
 from functools import lru_cache
-from typing import Any, Dict, List, Optional, Sequence, Tuple
+from typing import Any
 
 import httpx
 
@@ -15,13 +16,12 @@ from ...utils.artifact_detection import rpm_packages_letter_and_basename
 from ...utils.constants import DEFAULT_CHUNK_SIZE, SUPPORTED_ARCHITECTURES
 from ...utils.rpm_operations import parse_rpm_filename_to_nvr
 from ...utils.validation import sanitize_build_id_for_repository, validate_build_id
-
 from .helpers import EMPTY_RESPONSE_REQUEST, dedupe_results_by_pulp_href
 
 
-def _normalize_signed_by_query_values(values: Sequence[Optional[str]]) -> List[str]:
+def _normalize_signed_by_query_values(values: Sequence[str | None]) -> list[str]:
     """Apply the same signed_by substitution as upload so ``pulp_label_select`` queries work server-side."""
-    result: List[str] = []
+    result: list[str] = []
     for v in values:
         if v is None:
             continue
@@ -37,7 +37,7 @@ def _normalize_signed_by_query_string(signed_by: str) -> str:
     return normalize_signed_by_value_for_pulp(s) if s else s
 
 
-def _filter_rpm_results_by_signed_by_labels(results: List[Any], signed_by_values: List[str]) -> List[Any]:
+def _filter_rpm_results_by_signed_by_labels(results: list[Any], signed_by_values: list[str]) -> list[Any]:
     """
     Keep RPM JSON rows whose pulp_labels.signed_by equals one of signed_by_values (exact, stripped).
 
@@ -48,7 +48,7 @@ def _filter_rpm_results_by_signed_by_labels(results: List[Any], signed_by_values
     wanted = {v.strip() for v in signed_by_values if v is not None and str(v).strip()}
     if not wanted:
         return list(results)
-    out: List[Any] = []
+    out: list[Any] = []
     for item in results:
         labels = item.get("pulp_labels")
         if not isinstance(labels, dict):
@@ -62,7 +62,7 @@ def _filter_rpm_results_by_signed_by_labels(results: List[Any], signed_by_values
     return out
 
 
-def _signed_by_values_require_client_label_filter(signed_by_values: Sequence[Optional[str]]) -> bool:
+def _signed_by_values_require_client_label_filter(signed_by_values: Sequence[str | None]) -> bool:
     """True if any value must not be embedded in ``pulp_label_select=`` (comma or parentheses)."""
     for v in signed_by_values:
         if v is None:
@@ -98,7 +98,7 @@ class PulpClientContentQueryMixin:
             return "file.file"
         return "unknown"
 
-    def _rpm_distribution_base_url_from_labels(self, labels: Dict[str, str]) -> str:
+    def _rpm_distribution_base_url_from_labels(self, labels: dict[str, str]) -> str:
         """Build RPM distribution base URL when using ``--target-arch-repo`` (per-arch base paths)."""
         base_url_str = str(self.config["base_url"]).rstrip("/")
         pulp_content = f"{base_url_str}/api/pulp-content/"
@@ -123,8 +123,8 @@ class PulpClientContentQueryMixin:
     def _build_rpm_distribution_url(
         self,
         relative_path: str,
-        distribution_urls: Dict[str, str],
-        labels: Optional[Dict[str, str]] = None,
+        distribution_urls: dict[str, str],
+        labels: dict[str, str] | None = None,
         *,
         target_arch_repo: bool = False,
     ) -> str:
@@ -154,7 +154,7 @@ class PulpClientContentQueryMixin:
 
     @staticmethod
     def _build_file_distribution_url(
-        relative_path: str, labels: Dict[str, str], distribution_urls: Dict[str, str]
+        relative_path: str, labels: dict[str, str], distribution_urls: dict[str, str]
     ) -> str:
         """Build distribution URL for file artifacts (logs, SBOM, etc.)."""
         # Check if relative_path contains arch prefix
@@ -187,8 +187,8 @@ class PulpClientContentQueryMixin:
         self,
         relative_path: str,
         is_rpm: bool,
-        labels: Dict[str, str],
-        distribution_urls: Dict[str, str],
+        labels: dict[str, str],
+        distribution_urls: dict[str, str],
         *,
         target_arch_repo: bool = False,
     ) -> str:
@@ -236,7 +236,7 @@ class PulpClientContentQueryMixin:
         self._check_response(response, "find content")
         return response
 
-    def get_file_locations(self, artifacts: List[Dict[str, str]]) -> httpx.Response:
+    def get_file_locations(self, artifacts: list[dict[str, str]]) -> httpx.Response:
         """
         Get file locations for artifacts using the Pulp artifacts API.
 
@@ -260,7 +260,7 @@ class PulpClientContentQueryMixin:
         """Build URL for RPM packages endpoint."""
         return self._url("api/v3/content/rpm/packages/")
 
-    def get_rpm_by_pkgIDs(self, pkg_ids: List[str]) -> httpx.Response:
+    def get_rpm_by_pkgIDs(self, pkg_ids: list[str]) -> httpx.Response:
         """
         Get RPMs by package IDs.
 
@@ -276,7 +276,7 @@ class PulpClientContentQueryMixin:
             url, params=params, chunk_param="pkgId__in", timeout=self.timeout, **self.request_params
         )
 
-    async def async_get_rpm_by_pkgIDs(self, pkg_ids: List[str]) -> httpx.Response:
+    async def async_get_rpm_by_pkgIDs(self, pkg_ids: list[str]) -> httpx.Response:
         """
         Get RPMs by package IDs asynchronously.
 
@@ -290,7 +290,7 @@ class PulpClientContentQueryMixin:
         params = {"pkgId__in": ",".join(pkg_ids)}
         return await self.async_get(url, params=params)
 
-    def get_rpm_by_filenames(self, filenames: List[str]) -> httpx.Response:
+    def get_rpm_by_filenames(self, filenames: list[str]) -> httpx.Response:
         """
         Get RPMs by filename (e.g. package-1.0-1.el10.x86_64.rpm).
 
@@ -306,7 +306,7 @@ class PulpClientContentQueryMixin:
         """
         return self._run_async(self.async_get_rpm_by_filenames(filenames))
 
-    async def async_get_rpm_by_filenames(self, filenames: List[str]) -> httpx.Response:
+    async def async_get_rpm_by_filenames(self, filenames: list[str]) -> httpx.Response:
         """
         Get RPMs by filename asynchronously. Parses filenames to NVR and queries by name+version+release.
         """
@@ -319,10 +319,10 @@ class PulpClientContentQueryMixin:
             )
         return await self.async_get_rpm_by_nvr([(n, v, r) for n, v, r in nvrs])
 
-    def _filenames_to_nvrs(self, filenames: List[str]) -> List[Tuple[str, str, str]]:
+    def _filenames_to_nvrs(self, filenames: list[str]) -> list[tuple[str, str, str]]:
         """Parse filenames to NVRs, skipping unparseable with warning. Deduplicates."""
-        seen: set[Tuple[str, str, str]] = set()
-        result: List[Tuple[str, str, str]] = []
+        seen: set[tuple[str, str, str]] = set()
+        result: list[tuple[str, str, str]] = []
         for fname in filenames:
             nvr = parse_rpm_filename_to_nvr(fname)
             if nvr is None:
@@ -333,7 +333,7 @@ class PulpClientContentQueryMixin:
                 result.append(nvr)
         return result
 
-    async def async_get_rpm_by_nvr(self, nvrs: List[Tuple[str, str, str]]) -> httpx.Response:
+    async def async_get_rpm_by_nvr(self, nvrs: list[tuple[str, str, str]]) -> httpx.Response:
         """
         Get RPMs by name+version+release. Single NVR uses simple params; multiple use q expression.
         """
@@ -355,7 +355,7 @@ class PulpClientContentQueryMixin:
         chunk_size = 1
         chunks = [nvrs[i : i + chunk_size] for i in range(0, len(nvrs), chunk_size)]
 
-        async def fetch_chunk(chunk: List[Tuple[str, str, str]]) -> list:
+        async def fetch_chunk(chunk: list[tuple[str, str, str]]) -> list:
             nvr_parts = [f'(name="{n}" AND version="{v}" AND release="{r}")' for n, v, r in chunk]
             q_expr = " OR ".join(nvr_parts)
             params = {"q": q_expr}
@@ -366,7 +366,7 @@ class PulpClientContentQueryMixin:
             return response.json().get("results", [])
 
         tasks = [fetch_chunk(chunk) for chunk in chunks]
-        raw: List[Any] = []
+        raw: list[Any] = []
         for chunk_results in await asyncio.gather(*tasks):
             raw.extend(chunk_results)
         all_results = dedupe_results_by_pulp_href(raw)
@@ -378,7 +378,7 @@ class PulpClientContentQueryMixin:
             request=EMPTY_RESPONSE_REQUEST,
         )
 
-    def get_rpm_by_signed_by(self, signed_by_values: List[str]) -> httpx.Response:
+    def get_rpm_by_signed_by(self, signed_by_values: list[str]) -> httpx.Response:
         """
         Get RPMs by signed_by pulp label (pulp_labels.signed_by).
 
@@ -392,7 +392,7 @@ class PulpClientContentQueryMixin:
         """
         return self._run_async(self.async_get_rpm_by_signed_by(signed_by_values))
 
-    async def async_get_rpm_by_signed_by(self, signed_by_values: List[str]) -> httpx.Response:
+    async def async_get_rpm_by_signed_by(self, signed_by_values: list[str]) -> httpx.Response:
         """
         Get RPMs by signed_by asynchronously.
 
@@ -431,7 +431,7 @@ class PulpClientContentQueryMixin:
             params = {"q": q_expr}
             return await self.async_get(url, params=params)
 
-        async def fetch_chunk(chunk: List[str]) -> list:
+        async def fetch_chunk(chunk: list[str]) -> list:
             q_parts = [f'pulp_label_select="signed_by={v}"' for v in chunk]
             q_expr = " OR ".join(q_parts)
             params = {"q": q_expr}
@@ -442,7 +442,7 @@ class PulpClientContentQueryMixin:
             return response.json().get("results", [])
 
         tasks = [fetch_chunk(chunk) for chunk in chunks]
-        raw: List[Any] = []
+        raw: list[Any] = []
         for chunk_results in await asyncio.gather(*tasks):
             raw.extend(chunk_results)
         all_results = dedupe_results_by_pulp_href(raw)
@@ -454,7 +454,7 @@ class PulpClientContentQueryMixin:
             request=EMPTY_RESPONSE_REQUEST,
         )
 
-    async def _async_get_rpm_by_signed_by_paginate_filter_labels(self, signed_by_values: List[str]) -> httpx.Response:
+    async def _async_get_rpm_by_signed_by_paginate_filter_labels(self, signed_by_values: list[str]) -> httpx.Response:
         """
         List RPM packages with pagination (no ``pulp_label_select``), filter by exact signed_by labels.
 
@@ -462,8 +462,8 @@ class PulpClientContentQueryMixin:
         """
         url = self._build_rpm_packages_url()
         params: dict[str, str | int] = {"limit": 100}
-        all_matching: List[Any] = []
-        next_url: Optional[str] = None
+        all_matching: list[Any] = []
+        next_url: str | None = None
 
         while True:
             req_url = next_url if next_url else url
@@ -489,7 +489,7 @@ class PulpClientContentQueryMixin:
             request=EMPTY_RESPONSE_REQUEST,
         )
 
-    def get_rpm_by_checksums_and_signed_by(self, checksums: List[str], signed_by: str) -> httpx.Response:
+    def get_rpm_by_checksums_and_signed_by(self, checksums: list[str], signed_by: str) -> httpx.Response:
         """
         Get RPMs by checksums AND signed_by in a single query (server-side filter).
 
@@ -497,7 +497,7 @@ class PulpClientContentQueryMixin:
         """
         return self._run_async(self.async_get_rpm_by_checksums_and_signed_by(checksums, signed_by))
 
-    async def async_get_rpm_by_checksums_and_signed_by(self, checksums: List[str], signed_by: str) -> httpx.Response:
+    async def async_get_rpm_by_checksums_and_signed_by(self, checksums: list[str], signed_by: str) -> httpx.Response:
         """Get RPMs by checksums and signed_by in a single query."""
         url = self._build_rpm_packages_url()
         if not checksums:
@@ -541,7 +541,7 @@ class PulpClientContentQueryMixin:
             params = {"q": q_expr}
             return await self.async_get(url, params=params)
 
-        async def fetch_chunk(chunk: List[str]) -> list:
+        async def fetch_chunk(chunk: list[str]) -> list:
             pkg_parts = [f'pkgId="{c}"' for c in chunk]
             identity_expr = " OR ".join(pkg_parts)
             q_expr = f"({identity_expr}) AND {signed_by_filter}"
@@ -553,7 +553,7 @@ class PulpClientContentQueryMixin:
             return response.json().get("results", [])
 
         tasks = [fetch_chunk(chunk) for chunk in chunks]
-        raw: List[Any] = []
+        raw: list[Any] = []
         for chunk_results in await asyncio.gather(*tasks):
             raw.extend(chunk_results)
         all_results = dedupe_results_by_pulp_href(raw)
@@ -564,13 +564,13 @@ class PulpClientContentQueryMixin:
             request=EMPTY_RESPONSE_REQUEST,
         )
 
-    def get_rpm_by_filenames_and_signed_by(self, filenames: List[str], signed_by: str) -> httpx.Response:
+    def get_rpm_by_filenames_and_signed_by(self, filenames: list[str], signed_by: str) -> httpx.Response:
         """
         Get RPMs by filenames AND signed_by. Parses filenames to NVR and queries by name+version+release.
         """
         return self._run_async(self.async_get_rpm_by_filenames_and_signed_by(filenames, signed_by))
 
-    async def async_get_rpm_by_filenames_and_signed_by(self, filenames: List[str], signed_by: str) -> httpx.Response:
+    async def async_get_rpm_by_filenames_and_signed_by(self, filenames: list[str], signed_by: str) -> httpx.Response:
         """Get RPMs by filenames and signed_by. Parses to NVR, then tries combined query; falls back on 400/500."""
         nvrs = self._filenames_to_nvrs(filenames)
         if not nvrs:
@@ -606,7 +606,7 @@ class PulpClientContentQueryMixin:
             return await self._fetch_rpm_by_nvr_and_signed_by_fallback(nvr_list, signed_by_q)
 
     async def _fetch_rpm_by_nvr_and_signed_by_combined(
-        self, nvrs: List[Tuple[str, str, str]], signed_by: str
+        self, nvrs: list[tuple[str, str, str]], signed_by: str
     ) -> httpx.Response:
         """Single-query path: q=(name+version+release) OR ... AND pulp_label_select="signed_by=key"."""
         url = self._build_rpm_packages_url()
@@ -620,7 +620,7 @@ class PulpClientContentQueryMixin:
             params = {"name": n, "version": v, "release": r, "q": signed_by_filter}
             return await self.async_get(url, params=params)
 
-        async def fetch_chunk(chunk: List[Tuple[str, str, str]]) -> list:
+        async def fetch_chunk(chunk: list[tuple[str, str, str]]) -> list:
             nvr_parts = [f'(name="{n}" AND version="{v}" AND release="{r}")' for n, v, r in chunk]
             identity_expr = " OR ".join(nvr_parts)
             q_expr = f"({identity_expr}) AND {signed_by_filter}"
@@ -638,7 +638,7 @@ class PulpClientContentQueryMixin:
             return response.json().get("results", [])
 
         tasks = [fetch_chunk(chunk) for chunk in chunks]
-        raw: List[Any] = []
+        raw: list[Any] = []
         for chunk_results in await asyncio.gather(*tasks):
             raw.extend(chunk_results)
         all_results = dedupe_results_by_pulp_href(raw)
@@ -650,7 +650,7 @@ class PulpClientContentQueryMixin:
         )
 
     async def _fetch_rpm_by_nvr_and_signed_by_fallback(
-        self, nvrs: List[Tuple[str, str, str]], signed_by: str
+        self, nvrs: list[tuple[str, str, str]], signed_by: str
     ) -> httpx.Response:
         """Fallback: when NVRs >= 5, get by signed_by first and filter by NVR (1 call vs N+1).
         Otherwise get by NVR, get by signed_by, intersect by pulp_href."""
@@ -671,14 +671,14 @@ class PulpClientContentQueryMixin:
         )
 
     async def _fetch_rpm_by_signed_by_then_filter_nvr(
-        self, nvrs: List[Tuple[str, str, str]], signed_by: str
+        self, nvrs: list[tuple[str, str, str]], signed_by: str
     ) -> httpx.Response:
         """Fetch all packages by signed_by (paginated), filter by NVR locally. Reduces N+1 to 1 call."""
         url = self._build_rpm_packages_url()
         nvr_set = set(nvrs)
         params: dict[str, str | int] = {"q": f'pulp_label_select="signed_by={signed_by}"', "limit": 100}
-        all_results: List[Any] = []
-        next_url: Optional[str] = None
+        all_results: list[Any] = []
+        next_url: str | None = None
 
         while True:
             req_url = next_url if next_url else url

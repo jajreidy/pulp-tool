@@ -1,6 +1,6 @@
 """Shared helpers for pulp_client mixins (synthetic httpx responses, RPM result dedupe)."""
 
-from typing import Any, Dict, List
+from typing import Any
 
 import httpx
 
@@ -8,9 +8,9 @@ import httpx
 EMPTY_RESPONSE_REQUEST = httpx.Request("GET", "https://placeholder/")
 
 
-def dedupe_results_by_pulp_href(results: List[Any]) -> List[Any]:
+def dedupe_results_by_pulp_href(results: list[Any]) -> list[Any]:
     """Deduplicate RPM result dicts by pulp_href. Later entries overwrite earlier."""
-    seen: Dict[str, Any] = {}
+    seen: dict[str, Any] = {}
     for r in results:
         href = r.get("pulp_href") if isinstance(r, dict) else None
         if href:

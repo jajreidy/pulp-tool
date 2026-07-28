@@ -4,8 +4,10 @@ import os
 import tempfile
 from pathlib import Path
 from unittest.mock import Mock, patch
+
 import httpx
 from click.testing import CliRunner
+
 from pulp_tool.cli import cli
 
 

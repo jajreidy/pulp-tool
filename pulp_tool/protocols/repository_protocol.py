@@ -5,7 +5,7 @@ This module defines protocols for repository operations, enabling
 better type checking and abstraction.
 """
 
-from typing import Optional, Protocol
+from typing import Protocol
 
 from ..models.repository import RepositoryRefs
 
@@ -42,7 +42,7 @@ class RepositoryProtocol(Protocol):
         """
         ...
 
-    def create_or_get_repository(self, build_id: str, repo_type: str) -> tuple[str, Optional[str]]:
+    def create_or_get_repository(self, build_id: str, repo_type: str) -> tuple[str, str | None]:
         """
         Create or get a repository and distribution.
 

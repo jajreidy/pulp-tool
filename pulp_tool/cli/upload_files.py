@@ -7,8 +7,7 @@ This module provides the upload-files command for uploading individual files
 
 import logging
 import sys
-from datetime import datetime, timezone
-from typing import Optional
+from datetime import UTC, datetime
 
 import click
 import httpx
@@ -77,9 +76,9 @@ def upload_files(  # pylint: disable=too-many-arguments,too-many-positional-argu
     file_files: tuple,
     log_files: tuple,
     sbom_files: tuple,
-    arch: Optional[str],
-    artifact_results: Optional[str],
-    sbom_results: Optional[str],
+    arch: str | None,
+    artifact_results: str | None,
+    sbom_results: str | None,
 ) -> None:
     """Upload individual files (RPMs, logs, SBOMs, and generic files) to Pulp repositories."""
     # Get shared options from context
@@ -112,7 +111,7 @@ def upload_files(  # pylint: disable=too-many-arguments,too-many-positional-argu
             correlation_namespace=namespace or None,
             correlation_build_id=build_id or None,
         )
-        date_str = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+        date_str = datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S")
 
         # Convert tuples to lists
         rpm_files_list = list(rpm_files)

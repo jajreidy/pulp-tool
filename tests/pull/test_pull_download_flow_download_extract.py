@@ -2,10 +2,11 @@
 Tests for pulp_tool.pull module (download and extract).
 """
 
-from typing import Tuple
 from unittest.mock import MagicMock, Mock, patch
+
 import httpx
 import pytest
+
 from pulp_tool.models.artifacts import ArtifactFile
 from pulp_tool.pull import download_artifacts_concurrently
 from pulp_tool.pull.reporting import _extract_artifact_info
@@ -39,9 +40,9 @@ class TestDownloadArtifactsConcurrently:
             "logs": "https://example.com/logs/",
         }
         mock_client = Mock()
-        future1: Future[Tuple[str, str]] = Future()
-        future2: Future[Tuple[str, str]] = Future()
-        future3: Future[Tuple[str, str]] = Future()
+        future1: Future[tuple[str, str]] = Future()
+        future2: Future[tuple[str, str]] = Future()
+        future3: Future[tuple[str, str]] = Future()
         future1.set_result(("test.rpm", str(tmp_path / "test.rpm")))
         future2.set_result(("test.sbom", str(tmp_path / "test.sbom")))
         future3.set_result(("test.log", str(tmp_path / "test.log")))
@@ -74,7 +75,7 @@ class TestDownloadArtifactsConcurrently:
         }
         distros = {"rpms": "https://example.com/rpms/"}
         mock_client = Mock()
-        future1: Future[Tuple[str, str]] = Future()
+        future1: Future[tuple[str, str]] = Future()
         future1.set_result(("test.rpm", str(tmp_path / "test.rpm")))
         (tmp_path / "test.rpm").write_text("rpm content")
         with (
@@ -94,6 +95,7 @@ class TestDownloadArtifactsConcurrently:
         """Test download with ArtifactMetadata instances (lines 238-239)."""
         import concurrent.futures
         from concurrent.futures import Future
+
         from pulp_tool.models.artifacts import ArtifactMetadata
 
         artifacts = {
@@ -103,7 +105,7 @@ class TestDownloadArtifactsConcurrently:
         }
         distros = {"rpms": "https://example.com/rpms/"}
         mock_client = Mock()
-        future1: Future[Tuple[str, str]] = Future()
+        future1: Future[tuple[str, str]] = Future()
         future1.set_result(("test.rpm", str(tmp_path / "test.rpm")))
         (tmp_path / "test.rpm").write_text("rpm content")
         with (
@@ -130,8 +132,8 @@ class TestDownloadArtifactsConcurrently:
         }
         distros = {"rpms": "https://example.com/rpms/"}
         mock_client = Mock()
-        future1: Future[Tuple[str, str]] = Future()
-        future2: Future[Tuple[str, str]] = Future()
+        future1: Future[tuple[str, str]] = Future()
+        future2: Future[tuple[str, str]] = Future()
         future1.set_result(("test.rpm", str(tmp_path / "test.rpm")))
         future2.set_exception(httpx.HTTPError("Network error"))
         (tmp_path / "test.rpm").write_text("rpm content")

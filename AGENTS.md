@@ -19,7 +19,7 @@ Do **not** read all of [CONTRIBUTING.md](CONTRIBUTING.md) up front unless you ar
 
 ## Build, test, lint
 
-Copy-paste **`make` / pre-commit** flow, **`make lock`** for dependencies, and PR reminders: **[README.md § Development](README.md#development)**.
+Copy-paste **`make` / pre-commit** flow (`make pre-commit-ci` matches GitHub PR CI), **`make lock`** for dependencies, and PR reminders: **[README.md § Development](README.md#development)**.
 
 ---
 

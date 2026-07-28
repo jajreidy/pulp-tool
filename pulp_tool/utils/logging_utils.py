@@ -1,9 +1,7 @@
 """Logging helpers for artifact count summaries."""
 
-from typing import Dict, Optional
 
-
-def format_count_with_unit(count: int, unit: str, *, singular: Optional[str] = None) -> str:
+def format_count_with_unit(count: int, unit: str, *, singular: str | None = None) -> str:
     """
     Format a count with proper pluralization.
 
@@ -22,7 +20,7 @@ def format_count_with_unit(count: int, unit: str, *, singular: Optional[str] = N
     return f"{count} {plural}"
 
 
-def format_artifact_counts(counts: Dict[str, int]) -> str:
+def format_artifact_counts(counts: dict[str, int]) -> str:
     """
     Format artifact counts as a comma-separated string.
 

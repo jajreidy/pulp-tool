@@ -2,6 +2,7 @@
 
 import logging
 from unittest.mock import Mock, patch
+
 from pulp_tool.models import PulpResultsModel, RepositoryRefs
 from pulp_tool.models.context import UploadContext, UploadRpmContext
 from pulp_tool.services.upload_service import _add_distributions_to_results, _populate_results_model

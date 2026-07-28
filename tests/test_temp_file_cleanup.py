@@ -4,8 +4,8 @@ Tests to verify temporary file cleanup fixtures work correctly.
 These tests demonstrate proper temporary file handling patterns.
 """
 
-from pathlib import Path
 import tempfile
+from pathlib import Path
 
 
 class TestTempFileFixtures:

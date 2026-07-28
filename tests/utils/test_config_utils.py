@@ -1,7 +1,9 @@
 """Tests for config_utils module."""
 
 import base64
+
 import pytest
+
 from pulp_tool.utils.config_utils import (
     decode_base64_config,
     is_base64_config,

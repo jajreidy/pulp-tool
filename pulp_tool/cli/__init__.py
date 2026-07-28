@@ -7,8 +7,9 @@ Subcommands are registered from ``[project.entry-points."pulp_tool.commands"]``
 """
 
 import sys
+from collections.abc import Callable
 from importlib.metadata import entry_points
-from typing import Any, Callable, Optional, TypeVar
+from typing import Any, TypeVar
 
 import click
 
@@ -81,9 +82,9 @@ def debug_option() -> Callable[[F], F]:
 @click.pass_context
 def cli(
     ctx: click.Context,
-    config: Optional[str],
-    build_id: Optional[str],
-    namespace: Optional[str],
+    config: str | None,
+    build_id: str | None,
+    namespace: str | None,
     debug: int,
     max_workers: int,
 ) -> None:

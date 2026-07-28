@@ -1,7 +1,9 @@
 """Tests for pulp_tool.utils.rpm_pulp_search."""
 
 from unittest.mock import MagicMock
+
 import httpx
+
 from pulp_tool.models.pulp_api import RpmPackageResponse
 from pulp_tool.utils.rpm_pulp_search import parse_rpm_response, search_rpms_by_filenames_for_overwrite
 

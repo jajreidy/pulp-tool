@@ -17,14 +17,28 @@ Mandatory post-change workflow and merge gates live in the always-on **`llm-deve
 
 ## Lint quick reference
 
+Matches GitHub Actions (`.github/workflows/python-diff-lint.yml`, `security-scan.yml`):
+
 ```bash
-make lint && make format
-pre-commit run --all-files   # loop until clean
-make test                    # full suite; loop until green
-git fetch origin && make test-diff-coverage
+make lint && make format          # Python only (ruff, pylint, mypy)
+make audit                        # pip-audit (dev deps from uv.lock)
+pre-commit run --all-files        # commit stage — loop until clean
+git fetch origin
+pre-commit run --hook-stage pre-push --all-files   # test-diff-coverage + checkton
+make pre-commit-ci                # commit + pre-push stages
+make test                         # full suite; loop until green
 ```
 
-Per-tool detail: `Makefile`, `.pre-commit-config.yaml`, `pyproject.toml`, `.flake8`.
+| Tool | Config / script |
+|------|-----------------|
+| Ruff (E/W/F/I/S) | `pyproject.toml` `[tool.ruff]` |
+| Pylint, Mypy | `pyproject.toml` |
+| yamllint | `.yamllint.yml` |
+| hadolint | `scripts/run-hadolint.sh` (DL3041/DL3013 ignored) |
+| Checkton | `scripts/run-checkton.sh` |
+| codespell | `.codespell-ignore-words.txt` |
+
+Per-tool targets: `Makefile`, `.pre-commit-config.yaml`.
 
 ## Other references
 

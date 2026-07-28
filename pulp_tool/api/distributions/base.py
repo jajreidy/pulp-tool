@@ -5,18 +5,18 @@ This module provides the base functionality for all distribution types,
 following Pulp's API structure.
 """
 
-from typing import Any, Optional
+from typing import Any
 
 import httpx
 
-from ..base import BaseResourceMixin
 from ...models.pulp_api import DistributionRequest, DistributionResponse
+from ..base import BaseResourceMixin
 
 
 class BaseDistributionMixin(BaseResourceMixin):
     """Base mixin providing distribution operations for Pulp."""
 
-    def create_distribution(self, endpoint: str, request: DistributionRequest) -> tuple[httpx.Response, Optional[str]]:
+    def create_distribution(self, endpoint: str, request: DistributionRequest) -> tuple[httpx.Response, str | None]:
         """
         Create a distribution.
 
@@ -58,7 +58,7 @@ class BaseDistributionMixin(BaseResourceMixin):
 
     def list_distributions(
         self, endpoint: str, **query_params: Any
-    ) -> tuple[list[DistributionResponse], Optional[str], Optional[str], int]:
+    ) -> tuple[list[DistributionResponse], str | None, str | None, int]:
         """
         List distributions with pagination.
 
