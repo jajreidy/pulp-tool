@@ -57,6 +57,7 @@ Prefer Makefile targets over invoking tools directly.
 | Yamllint truthy on `on:` | Add `# yamllint disable-line rule:truthy` (see release workflow) |
 | Hadolint DL3041/DL3013 on Dockerfile | Ignored in pre-commit/CI (UBI microdnf + pip install pattern) |
 | checkton: docker/podman required | Install podman/docker, or rely on CI tekton-lint job |
+| checkton: `unknown revision or path not in the working tree` / `main` | Run `git fetch origin main` (or set `CHECKTON_DIFF_BASE` to an existing ref). `scripts/run-checkton.sh` fetches only when defaulting the base ref and exits with instructions if `origin/main` is missing. CI tekton-lint runs on pull requests only (needs PR base/head SHAs). |
 | test-diff-coverage on push hook | Run `git fetch origin` so `origin/main` exists |
 
 ## Config files
