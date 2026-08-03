@@ -45,7 +45,7 @@ jobs:
               ;;
           esac
 
-      - uses: hynek/build-and-inspect-python-package@v2.14.0
+      - uses: hynek/build-and-inspect-python-package@v3.0.1
         with:
           python-version: '3.12'
 
