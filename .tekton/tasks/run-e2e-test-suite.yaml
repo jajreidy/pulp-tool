@@ -17,7 +17,7 @@ spec:
         value: $(workspaces.repository.path)/source
   steps:
     - name: pre-test-setup
-      image: registry.fedoraproject.org/fedora:45@sha256:10593dd8683e738d0d9ef53ae3af57c6940ac02efcb5a104dc4655390dc64698
+      image: registry.fedoraproject.org/fedora:45@sha256:bf65a952bdc2bc05af6de8454519a68772d574552cf807caaaf55560603ebc77
       script: |
         #!/usr/bin/env sh
         set -euo pipefail
@@ -27,7 +27,7 @@ spec:
         "${PULP_TOOL_PATH}/e2e/pre-test.py" --build-dir "${TEST_WORKSPACE}"
 
     - name: pulp-tool-test
-      image: registry.fedoraproject.org/fedora:45@sha256:10593dd8683e738d0d9ef53ae3af57c6940ac02efcb5a104dc4655390dc64698
+      image: registry.fedoraproject.org/fedora:45@sha256:bf65a952bdc2bc05af6de8454519a68772d574552cf807caaaf55560603ebc77
       env:
         - name: PULP_RESULTS
           value: /etc/pulp-results/pulp-results.json
@@ -50,7 +50,7 @@ spec:
           mountPath: /etc/pulp-results
           readOnly: true
     - name: post-test-validation
-      image: registry.fedoraproject.org/fedora:45@sha256:10593dd8683e738d0d9ef53ae3af57c6940ac02efcb5a104dc4655390dc64698
+      image: registry.fedoraproject.org/fedora:45@sha256:bf65a952bdc2bc05af6de8454519a68772d574552cf807caaaf55560603ebc77
       script: |
         #!/usr/bin/env sh
         set -euo pipefail
