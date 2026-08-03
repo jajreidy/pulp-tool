@@ -124,6 +124,7 @@ jobs:
   tekton-lint:
     name: Tekton embedded scripts (Checkton)
     runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
 
     steps:
       - name: Repository checkout

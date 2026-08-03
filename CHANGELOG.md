@@ -115,6 +115,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Makefile targets: `docs`, `docs-clean`, `docs-serve`
 
 ### Fixed
+- **Checkton CI (`tekton-lint`):** run the job on pull requests only; branch `push` events left Checkton without PR base/head SHAs, so it fell back to `git rev-parse main` and failed when `main` was not fetched. **`scripts/run-checkton.sh`** fetches `origin/main`, sets `CHECKTON_DIFF_BASE` / `CHECKTON_DIFF_HEAD`, and uses Podman `:Z` volume labeling for local SELinux.
 - **`make audit` / pre-commit pip-audit:** install dev dependencies from `uv.lock` (`uv export --extra dev --no-emit-project`) instead of `pip install -e ".[dev]"`, so setuptools-scm does not regenerate tracked `pulp_tool/_version.py` during commits
 - **Konflux `--artifact-results` digest:** write `sha256:<hex>` from the uploaded artifact (via Pulp artifact API) instead of leaving the digest file empty when the pulp-content URL has no OCI `@sha256:` suffix
 - **Partial RPM uploads:** increment `uploaded_counts.rpms` by successful uploads only; record failures in `upload_errors`; raise when any RPM in a batch fails instead of exiting 0 with incomplete repo content
