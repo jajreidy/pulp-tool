@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING, Any
 
 import httpx
 
+from ..exceptions import PulpToolHTTPError
 from ..models.pulp_api import (
     DistributionRequest,
     RepositoryRequest,
@@ -73,6 +74,14 @@ class RepositoryApiOps:
         return self.client.wait_for_finished_task(task_id)
 
 
+@dataclass(frozen=True)
+class ExistingDistributionInfo:
+    """Existing Pulp distribution fields needed for idempotent create recovery."""
+
+    base_path: str
+    repository: str | None = None
+
+
 def _resource_log_label(full_name: str) -> str:
     """
     Short label for log messages: last path segment of the Pulp repository/distribution name.
@@ -85,6 +94,16 @@ def _resource_log_label(full_name: str) -> str:
     if not full_name:
         return full_name
     return full_name.rstrip("/").rsplit("/", 1)[-1]
+
+
+def _is_distribution_uniqueness_error(error_text: str) -> bool:
+    """Return True when an error indicates the distribution name or base_path already exists."""
+    if not error_text:
+        return False
+    lower = error_text.lower()
+    if "unique" not in lower:
+        return False
+    return "base_path" in lower or "name" in lower or "must be unique" in lower
 
 
 class RepositoryManager:
@@ -400,8 +419,96 @@ class RepositoryManager:
         else:
             raise ValueError(f"Unexpected response format for {repo_type} repository creation: {new_repository.name}")
 
+    def _get_existing_distribution(
+        self, methods: RepositoryApiOps, full_name: str, repo_type: str
+    ) -> ExistingDistributionInfo | None:
+        """Return base_path and repository for an existing distribution, or None if not found."""
+        try:
+            distro_response = methods.get_distro(full_name)
+            if distro_response.status_code == 404:
+                return None
+            self.client.check_response(distro_response, f"get {repo_type} distribution")
+            response_data = self._parse_repository_response(distro_response, repo_type, "distribution lookup")
+            results = response_data.get("results", [])
+            if not results:
+                return None
+            row = results[0]
+            base_path = row.get("base_path")
+            if not base_path:
+                return None
+            return ExistingDistributionInfo(base_path=str(base_path), repository=row.get("repository"))
+        except (httpx.HTTPError, ValueError, KeyError) as e:
+            logging.warning("Could not look up existing distribution %s: %s", full_name, e)
+            return None
+
+    def _get_existing_distribution_base_path(
+        self, methods: RepositoryApiOps, full_name: str, repo_type: str
+    ) -> str | None:
+        """Return the base_path of an existing distribution, or None if not found."""
+        existing = self._get_existing_distribution(methods, full_name, repo_type)
+        return existing.base_path if existing else None
+
+    def _resolve_existing_distribution_base_path(
+        self,
+        methods: RepositoryApiOps,
+        distribution_name: str,
+        repo_type: str,
+        expected_repository: str | None,
+    ) -> str:
+        """Load an existing distribution and verify it belongs to the expected repository."""
+        existing = self._get_existing_distribution(methods, distribution_name, repo_type)
+        if existing is None or not existing.base_path:
+            raise ValueError(
+                f"Distribution {distribution_name!r} reported as existing but could not be loaded from Pulp"
+            )
+        if not expected_repository:
+            raise ValueError(
+                f"Cannot verify existing distribution {distribution_name!r}: expected repository is unknown"
+            )
+        if not existing.repository:
+            raise ValueError(
+                f"Existing distribution {distribution_name!r} has no repository; expected {expected_repository!r}"
+            )
+        if existing.repository != expected_repository:
+            raise ValueError(
+                f"Existing distribution {distribution_name!r} is attached to repository "
+                f"{existing.repository!r}, expected {expected_repository!r}"
+            )
+        return existing.base_path
+
+    def _cache_distribution_base_path(
+        self,
+        build_id: str | None,
+        repo_type: str,
+        distribution_name: str,
+        methods: RepositoryApiOps,
+        *,
+        distribution_cache_type: str | None = None,
+        fallback_base_path: str | None = None,
+        expected_repository: str | None = None,
+    ) -> None:
+        """Store distribution base_path in the in-memory cache when build_id is known."""
+        if not build_id:
+            return
+        cache_key = (build_id, distribution_cache_type or repo_type)
+        resolved_base_path: str | None
+        if expected_repository:
+            resolved_base_path = self._resolve_existing_distribution_base_path(
+                methods, distribution_name, repo_type, expected_repository
+            )
+        else:
+            resolved_base_path = self._get_existing_distribution_base_path(methods, distribution_name, repo_type)
+        self._distribution_cache[cache_key] = resolved_base_path or fallback_base_path or distribution_name
+
     def _wait_for_distribution_task(
-        self, methods: RepositoryApiOps, task_id: str, repo_type: str, build_id: str
+        self,
+        methods: RepositoryApiOps,
+        task_id: str,
+        repo_type: str,
+        build_id: str,
+        *,
+        distribution_name: str | None = None,
+        expected_repository: str | None = None,
     ) -> str | None:
         """
         Wait for distribution creation task to complete and return the base_path.
@@ -416,11 +523,24 @@ class RepositoryManager:
             error_msg = (
                 task_response.error.get("description", "Unknown error") if task_response.error else "Unknown error"
             )
+            lookup_name = distribution_name or build_id
+            if lookup_name and _is_distribution_uniqueness_error(str(error_msg)):
+                existing_base_path = self._resolve_existing_distribution_base_path(
+                    methods, lookup_name, repo_type, expected_repository
+                )
+                logging.warning(
+                    "Distribution creation task failed with uniqueness conflict for %s (%s); "
+                    "using existing distribution base_path=%s",
+                    repo_type,
+                    lookup_name,
+                    existing_base_path,
+                )
+                return existing_base_path
             logging.error("Task failed for %s distribution (build_id=%s): %s", repo_type, build_id, error_msg)
             raise ValueError(f"Distribution creation task failed: {error_msg}")
 
         # Extract the distribution base_path from created resources
-        base_path = None
+        base_path: str | None = None
         if task_response.created_resources:
             logging.debug("Distribution creation completed. Created resources:")
             for resource_href in task_response.created_resources:
@@ -612,7 +732,14 @@ class RepositoryManager:
         # If distribution was created, wait for it to complete and cache the base_path
         cache_key_type = distribution_cache_type or repo_type
         if task_id:
-            base_path = self._wait_for_distribution_task(methods, task_id, repo_type, build_id or new_repository.name)
+            base_path = self._wait_for_distribution_task(
+                methods,
+                task_id,
+                repo_type,
+                build_id or new_repository.name,
+                distribution_name=new_distribution.name,
+                expected_repository=repository_prn,
+            )
             if build_id and base_path:
                 # Cache the base_path so we don't need to query it later
                 self._distribution_cache[(build_id, cache_key_type)] = base_path
@@ -655,7 +782,9 @@ class RepositoryManager:
             logging.error("Traceback: %s", traceback.format_exc())
             return False  # Continue with creation if check fails
 
-    def _new_distribution_task(self, methods: RepositoryApiOps, new_distribution: DistributionRequest, repo_type: str):
+    def _new_distribution_task(
+        self, methods: RepositoryApiOps, new_distribution: DistributionRequest, repo_type: str
+    ) -> str:
         """Create a distribution for a repository and return the task ID.
 
          Args:
@@ -664,11 +793,27 @@ class RepositoryManager:
             repo_type: Type of repository ('rpms', 'logs', 'sbom', 'artifacts', 'rpm', 'file')
 
         Returns:
-            Task ID for the new distribution
+            Task ID for the new distribution, or empty string if it already exists
         """
         # Logging is handled by the caller (_create_distribution_task) to avoid duplicate messages
         distro_response = methods.distro(new_distribution)
-        self.client.check_response(distro_response, f"create {repo_type} distribution")
+        try:
+            self.client.check_response(distro_response, f"create {repo_type} distribution")
+        except PulpToolHTTPError as exc:
+            if exc.response is not None and exc.response.status_code == 400:
+                if _is_distribution_uniqueness_error(exc.response.text):
+                    self._resolve_existing_distribution_base_path(
+                        methods,
+                        new_distribution.name,
+                        repo_type,
+                        new_distribution.repository,
+                    )
+                    logging.warning(
+                        "Distribution %s already exists (HTTP 400); skipping create",
+                        new_distribution.name,
+                    )
+                    return ""
+            raise
 
         response_data = self._parse_repository_response(distro_response, repo_type, "distribution creation")
 
@@ -690,16 +835,25 @@ class RepositoryManager:
             methods: Dictionary of repository methods
             new_distribution: DistributionRequest model for the distribution to create
             repo_type: Type of repository ('rpms', 'logs', 'sbom', 'artifacts', 'rpm', 'file')
-            is_new_repository: If True, always create distribution without checking existence
+            is_new_repository: Retained for call-site compatibility; existence is always checked
             build_id: Base name for the repository (may include namespace prefix)
 
         Returns:
             Task ID if distribution was created, empty string if it already exists
         """
-        # For new repositories, always create a distribution without checking
-        # For existing repositories, check if distribution already exists
-        if not is_new_repository and self._check_existing_distribution(methods, new_distribution.name, repo_type):
-            return ""  # Return empty string instead of None to match return type
+        # Always check for an existing distribution (covers re-runs and 504 retries where
+        # the first POST succeeded server-side but the client retried).
+        if self._check_existing_distribution(methods, new_distribution.name, repo_type):
+            self._cache_distribution_base_path(
+                build_id,
+                repo_type,
+                new_distribution.name,
+                methods,
+                distribution_cache_type=distribution_cache_type,
+                fallback_base_path=new_distribution.base_path,
+                expected_repository=new_distribution.repository,
+            )
+            return ""
 
         # Validate base_path before creating distribution
         base_path_value = getattr(new_distribution, "base_path", None)
@@ -719,6 +873,17 @@ class RepositoryManager:
             base_path_value,
         )
         distro_task = self._new_distribution_task(methods, new_distribution, repo_type)
+        if not distro_task:
+            self._cache_distribution_base_path(
+                build_id,
+                repo_type,
+                new_distribution.name,
+                methods,
+                distribution_cache_type=distribution_cache_type,
+                fallback_base_path=new_distribution.base_path,
+                expected_repository=new_distribution.repository,
+            )
+            return ""
 
         # Cache the base_path for future URL construction
         if build_id:
