@@ -277,3 +277,91 @@ class TestPulpHelperInternalMethods:
         methods = cast(RepositoryApiOps, SimpleNamespace(wait_for_finished_task=Mock(return_value=mock_task_response)))
         with pytest.raises(ValueError, match="Distribution creation task failed"):
             helper._repository_manager._wait_for_distribution_task(methods, "task-123", "rpms", "test-build")
+
+    def test_wait_for_distribution_task_uniqueness_conflict(self, mock_pulp_client) -> None:
+        """Uniqueness task failure uses existing distribution instead of raising."""
+        from pulp_tool.models.pulp_api import TaskResponse
+
+        helper = PulpHelper(mock_pulp_client)
+        uniqueness_error = (
+            "{'base_path': [ErrorDetail(string='This field must be unique.', code='unique')], "
+            "'name': [ErrorDetail(string='This field must be unique.', code='unique')]}"
+        )
+        mock_task_response = TaskResponse(
+            pulp_href="/pulp/api/v3/tasks/12345/",
+            state="failed",
+            error={"description": uniqueness_error},
+            created_resources=[],
+        )
+        mock_distro_response = Mock()
+        mock_distro_response.status_code = 200
+        mock_distro_response.json.return_value = {
+            "results": [
+                {
+                    "name": "test-build/rpms",
+                    "base_path": "test-build/rpms",
+                    "repository": "expected-prn",
+                }
+            ]
+        }
+        mock_pulp_client.check_response = Mock()
+        methods = cast(
+            RepositoryApiOps,
+            SimpleNamespace(
+                wait_for_finished_task=Mock(return_value=mock_task_response),
+                get_distro=Mock(return_value=mock_distro_response),
+            ),
+        )
+        result = helper._repository_manager._wait_for_distribution_task(
+            methods,
+            "task-123",
+            "rpms",
+            "test-build",
+            distribution_name="test-build/rpms",
+            expected_repository="expected-prn",
+        )
+        assert result == "test-build/rpms"
+
+    def test_wait_for_distribution_task_uniqueness_wrong_repository(self, mock_pulp_client) -> None:
+        """Uniqueness task failure raises when existing distribution belongs elsewhere."""
+        from pulp_tool.models.pulp_api import TaskResponse
+
+        helper = PulpHelper(mock_pulp_client)
+        uniqueness_error = (
+            "{'base_path': [ErrorDetail(string='This field must be unique.', code='unique')], "
+            "'name': [ErrorDetail(string='This field must be unique.', code='unique')]}"
+        )
+        mock_task_response = TaskResponse(
+            pulp_href="/pulp/api/v3/tasks/12345/",
+            state="failed",
+            error={"description": uniqueness_error},
+            created_resources=[],
+        )
+        mock_distro_response = Mock()
+        mock_distro_response.status_code = 200
+        mock_distro_response.json.return_value = {
+            "results": [
+                {
+                    "name": "test-build/rpms",
+                    "base_path": "test-build/rpms",
+                    "repository": "other-prn",
+                }
+            ]
+        }
+        mock_pulp_client.check_response = Mock()
+        methods = cast(
+            RepositoryApiOps,
+            SimpleNamespace(
+                wait_for_finished_task=Mock(return_value=mock_task_response),
+                get_distro=Mock(return_value=mock_distro_response),
+            ),
+        )
+        with pytest.raises(ValueError, match="attached to repository"):
+            helper._repository_manager._wait_for_distribution_task(
+                methods,
+                "task-123",
+                "rpms",
+                "test-build",
+                distribution_name="test-build/rpms",
+                expected_repository="expected-prn",
+            )
