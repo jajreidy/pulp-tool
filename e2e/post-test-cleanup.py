@@ -6,28 +6,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-RPM_REPOS = {
-    "aarch64",
-    "noarch",
-    "x86_64",
-    "test-build-files/rpms",
-    "test-build-123/rpms",
-    "test-build-456/rpms",
-    "test-build-456/rpms-signed",
-    "test-repo",
-    "test-repo-json",
-    "test-upload-results/rpms",
-}
-
-FILE_REPOS = {
-    "test-build-files/artifacts",
-    "test-build-files/logs",
-    "test-build-files/sbom",
-    "test-build-123/artifacts",
-    "test-build-456/sbom",
-    "test-build-789/artifacts",
-    "test-upload-results/artifacts",
-}
+from names import file_repo_names_for_cleanup, resolve_run_id, rpm_repo_names_for_cleanup
 
 
 def destroy_resource(config_path: Path, repo_type: str, resource: str, name: str, dry_run: bool = False) -> bool:
@@ -68,27 +47,33 @@ def destroy_resource(config_path: Path, repo_type: str, resource: str, name: str
     return True
 
 
-def cleanup_repos(config_path: Path, dry_run: bool = False) -> int:
+def cleanup_repos(config_path: Path, run_id: str | None, dry_run: bool = False) -> int:
     """Clean up all test repositories and distributions.
 
     Args:
         config_path: Path to Pulp CLI config file
+        run_id: Optional run suffix used during test execution
         dry_run: If True, only show what would be destroyed without executing
 
     Returns:
         Exit code (0 for success, 1 if any failures occurred)
     """
+    rpm_repos = rpm_repo_names_for_cleanup(run_id)
+    file_repos = file_repo_names_for_cleanup(run_id)
+
     if dry_run:
         print("=== DRY RUN MODE: No resources will be destroyed ===\n")
+    elif run_id:
+        print(f"=== Cleaning up test resources (run id: {run_id}) ===\n")
     else:
         print("=== Cleaning up test resources ===\n")
 
-    total_resources = (len(RPM_REPOS) + len(FILE_REPOS)) * 2  # repos + distributions
+    total_resources = (len(rpm_repos) + len(file_repos)) * 2  # repos + distributions
     current = 0
     failures = 0
 
     if not dry_run:
-        for repo in RPM_REPOS:
+        for repo in rpm_repos:
             current += 1
             print(f"[{current}/{total_resources}] Destroying rpm repository: {repo}")
             if not destroy_resource(config_path, "rpm", "repository", repo, dry_run):
@@ -99,7 +84,7 @@ def cleanup_repos(config_path: Path, dry_run: bool = False) -> int:
             if not destroy_resource(config_path, "rpm", "distribution", repo, dry_run):
                 failures += 1
 
-        for repo in FILE_REPOS:
+        for repo in file_repos:
             current += 1
             print(f"[{current}/{total_resources}] Destroying file repository: {repo}")
             if not destroy_resource(config_path, "file", "repository", repo, dry_run):
@@ -143,6 +128,11 @@ def parse_args() -> argparse.Namespace:
         help="Path to Pulp CLI config file (cli.toml)",
     )
     parser.add_argument(
+        "--run-id",
+        default=None,
+        help="Run suffix used during e2e tests (default: E2E_RUN_ID env var)",
+    )
+    parser.add_argument(
         "--dry-run",
         action="store_true",
         help="Show what would be destroyed without actually destroying anything",
@@ -159,7 +149,8 @@ def main() -> int:
         return 1
 
     config_path = args.config.resolve()
-    return cleanup_repos(config_path, dry_run=args.dry_run)
+    run_id = resolve_run_id(args.run_id)
+    return cleanup_repos(config_path, run_id, dry_run=args.dry_run)
 
 
 if __name__ == "__main__":

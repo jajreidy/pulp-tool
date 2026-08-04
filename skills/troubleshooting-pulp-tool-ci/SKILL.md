@@ -58,6 +58,9 @@ Prefer Makefile targets over invoking tools directly.
 | Hadolint DL3041/DL3013 on Dockerfile | Ignored in pre-commit/CI (UBI microdnf + pip install pattern) |
 | checkton: docker/podman required | Install podman/docker, or rely on CI tekton-lint job |
 | checkton: `unknown revision or path not in the working tree` / `main` | Run `git fetch origin main` (or set `CHECKTON_DIFF_BASE` to an existing ref). `scripts/run-checkton.sh` fetches only when defaulting the base ref and exits with instructions if `origin/main` is missing. CI tekton-lint runs on pull requests only (needs PR base/head SHAs). |
+| checkton left repo on detached HEAD after pre-push | Do not set `CHECKTON_DIFF_HEAD` locally. `scripts/run-checkton.sh` omits it by default so Checkton does not `git checkout` the bind-mounted workspace (CI sets PR head/base SHAs explicitly). |
+| checkton left repo on detached HEAD after pre-push | Do not set `CHECKTON_DIFF_HEAD` locally. `scripts/run-checkton.sh` omits it by default so Checkton does not `git checkout` the bind-mounted workspace (CI sets PR head/base SHAs explicitly). |
+| checkton left repo on detached HEAD after pre-push | Do not set `CHECKTON_DIFF_HEAD` locally. `scripts/run-checkton.sh` omits it by default so Checkton does not `git checkout` the bind-mounted workspace (CI sets PR head/base SHAs explicitly). |
 | test-diff-coverage on push hook | Run `git fetch origin` so `origin/main` exists |
 
 ## Config files

@@ -82,6 +82,29 @@ class ExistingDistributionInfo:
     repository: str | None = None
 
 
+def _repository_resource_id(repository_ref: str | None) -> str | None:
+    """Extract the Pulp resource id from a PRN or pulp_href."""
+    if not repository_ref:
+        return None
+    ref = str(repository_ref).strip().rstrip("/")
+    if not ref:
+        return None
+    if ref.startswith("prn:"):
+        return ref.rsplit(":", 1)[-1]
+    return ref.rsplit("/", 1)[-1]
+
+
+def _repository_identifiers_match(actual: str | None, expected: str | None) -> bool:
+    """Return True when two repository references point at the same Pulp resource."""
+    if not actual or not expected:
+        return False
+    if actual == expected:
+        return True
+    actual_id = _repository_resource_id(actual)
+    expected_id = _repository_resource_id(expected)
+    return bool(actual_id and expected_id and actual_id == expected_id)
+
+
 def _resource_log_label(full_name: str) -> str:
     """
     Short label for log messages: last path segment of the Pulp repository/distribution name.
@@ -470,10 +493,11 @@ class RepositoryManager:
                 f"Existing distribution {distribution_name!r} has no repository; expected {expected_repository!r}"
             )
         if existing.repository != expected_repository:
-            raise ValueError(
-                f"Existing distribution {distribution_name!r} is attached to repository "
-                f"{existing.repository!r}, expected {expected_repository!r}"
-            )
+            if not _repository_identifiers_match(existing.repository, expected_repository):
+                raise ValueError(
+                    f"Existing distribution {distribution_name!r} is attached to repository "
+                    f"{existing.repository!r}, expected {expected_repository!r}"
+                )
         return existing.base_path
 
     def _cache_distribution_base_path(

@@ -33,7 +33,6 @@ EOF
         echo "checkton: warning: git fetch origin main failed; using existing ${CHECKTON_DIFF_BASE}" >&2
     fi
 fi
-CHECKTON_DIFF_HEAD="${CHECKTON_DIFF_HEAD:-HEAD}"
 
 if [[ "${ENGINE}" == podman ]]; then
     WORKSPACE_MOUNT="${REPO_ROOT}:/github/workspace:Z"
@@ -41,12 +40,22 @@ else
     WORKSPACE_MOUNT="${REPO_ROOT}:/github/workspace"
 fi
 
+# Checkton action.sh runs `git checkout "$CHECKTON_DIFF_HEAD"` on the bind-mounted
+# workspace and restores via commit SHA on exit, which leaves a detached HEAD locally.
+# Omit CHECKTON_DIFF_HEAD unless explicitly set (GitHub Actions PR job sets SHAs).
+# differential-checkton.sh falls back to `git rev-parse HEAD` when unset.
+CHECKTON_ENV=(
+    -e GITHUB_WORKSPACE=/github/workspace
+    -e CHECKTON_DIFFERENTIAL=true
+    -e CHECKTON_DIFF_BASE="${CHECKTON_DIFF_BASE}"
+    -e CHECKTON_FAIL_ON_FINDINGS=true
+)
+if [[ -n "${CHECKTON_DIFF_HEAD:-}" ]]; then
+    CHECKTON_ENV+=(-e "CHECKTON_DIFF_HEAD=${CHECKTON_DIFF_HEAD}")
+fi
+
 exec "${ENGINE}" run --rm \
     -v "${WORKSPACE_MOUNT}" \
     -w /github/workspace \
-    -e GITHUB_WORKSPACE=/github/workspace \
-    -e CHECKTON_DIFFERENTIAL=true \
-    -e CHECKTON_DIFF_BASE="${CHECKTON_DIFF_BASE}" \
-    -e CHECKTON_DIFF_HEAD="${CHECKTON_DIFF_HEAD}" \
-    -e CHECKTON_FAIL_ON_FINDINGS=true \
+    "${CHECKTON_ENV[@]}" \
     "${CHECKTON_IMAGE}"

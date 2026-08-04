@@ -7,28 +7,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-RPM_REPOS = {
-    "aarch64": ["test.3-1.0.0-1.aarch64.rpm"],
-    "noarch": ["test.3-1.0.0-1.noarch.rpm"],
-    "x86_64": ["test.3-1.0.0-1.x86_64.rpm"],
-    "test-build-files/rpms": ["test.4-1.0.0-1.x86_64.rpm"],
-    "test-build-123/rpms": ["test.0-1.0.0-1.aarch64.rpm", "test.0-1.0.0-1.noarch.rpm", "test.0-1.0.0-1.x86_64.rpm"],
-    "test-build-456/rpms": ["test.1-1.0.0-1.aarch64.rpm", "test.1-1.0.0-1.noarch.rpm", "test.1-1.0.0-1.x86_64.rpm"],
-    "test-build-456/rpms-signed": [],
-    "test-repo": ["duck-0.6-1.noarch.rpm"],
-    "test-repo-json": ["duck-0.8-1.noarch.rpm", "giraffe-0.67-2.noarch.rpm"],
-    "test-upload-results/rpms": ["test.2-1.0.0-1.noarch.rpm"],
-}
-
-FILE_REPOS = {
-    "test-build-files/artifacts": ["pulp_results.json", "test.md"],
-    "test-build-files/logs": ["x86_64/build.log"],
-    "test-build-files/sbom": ["sbom.json"],
-    "test-build-123/artifacts": ["pulp_results.json"],
-    "test-build-456/sbom": ["sbom.json"],
-    "test-build-789/artifacts": ["pulp_results.json"],
-    "test-upload-results/artifacts": ["pulp_results.json"],
-}
+from names import file_repos_for_run, resolve_run_id, rpm_repos_for_run
 
 
 def verify_content(config_path: Path, repo_type: str, name: str, expected_content: list[str]) -> bool:
@@ -116,27 +95,35 @@ def verify_content(config_path: Path, repo_type: str, name: str, expected_conten
         return False
 
 
-def verify_repos(config_path: Path) -> int:
+def verify_repos(config_path: Path, run_id: str | None) -> int:
     """Verify all test repositories contain expected content.
 
     Args:
         config_path: Path to Pulp CLI config file
+        run_id: Optional run suffix used during test execution
 
     Returns:
         Exit code (0 for success, 1 if any failures occurred)
     """
-    print("=== Verifying repository content ===\n")
+    rpm_repos = rpm_repos_for_run(run_id)
+    file_repos = file_repos_for_run(run_id)
+
+    if run_id:
+        print(f"=== Verifying repository content (run id: {run_id}) ===\n")
+    else:
+        print("=== Verifying repository content ===\n")
+
     failures = 0
 
-    for repo_name, expected_content in RPM_REPOS.items():
+    for repo_name, expected_content in rpm_repos.items():
         if not verify_content(config_path, "rpm", repo_name, expected_content):
             failures += 1
 
-    for repo_name, expected_content in FILE_REPOS.items():
+    for repo_name, expected_content in file_repos.items():
         if not verify_content(config_path, "file", repo_name, expected_content):
             failures += 1
 
-    total_repos = len(RPM_REPOS) + len(FILE_REPOS)
+    total_repos = len(rpm_repos) + len(file_repos)
     verified = total_repos - failures
 
     print(f"\n=== Verification complete: {verified}/{total_repos} repositories verified ===")
@@ -156,6 +143,11 @@ def parse_args() -> argparse.Namespace:
         required=True,
         help="Path to Pulp CLI config file (cli.toml)",
     )
+    parser.add_argument(
+        "--run-id",
+        default=None,
+        help="Run suffix used during e2e tests (default: E2E_RUN_ID env var)",
+    )
     return parser.parse_args()
 
 
@@ -168,7 +160,8 @@ def main() -> int:
         return 1
 
     config_path = args.config.resolve()
-    return verify_repos(config_path)
+    run_id = resolve_run_id(args.run_id)
+    return verify_repos(config_path, run_id)
 
 
 if __name__ == "__main__":

@@ -1,6 +1,7 @@
 """Targeted tests for ``upload_collect`` branches required for 100% PR diff coverage."""
 
 import json
+from pathlib import Path
 from typing import Any
 from unittest.mock import Mock, patch
 
@@ -8,7 +9,7 @@ import httpx
 import pytest
 
 from pulp_tool.models.artifacts import ContentData, FileInfoModel, PulpContentRow
-from pulp_tool.models.context import UploadContext
+from pulp_tool.models.context import UploadContext, UploadRpmContext
 from pulp_tool.models.pulp_api import TaskResponse
 from pulp_tool.models.repository import RepositoryRefs
 from pulp_tool.models.results import PulpResultsModel
@@ -236,6 +237,46 @@ class TestHandleSbomResults:
         uc._handle_sbom_results(Mock(), ctx, body)
         assert out.read_text() == "https://sbom/x"
 
+    def test_writes_sbom_url_for_scoped_artifact_key(self, tmp_path) -> None:
+        out = tmp_path / "sbom.url"
+        ctx = _minimal_context(sbom_results=str(out))
+        body = json.dumps(
+            {
+                "artifacts": {
+                    "test-build-456/run1/sbom.json": {
+                        "labels": {"build_id": "test-build-456/run1", "arch": ""},
+                        "url": "https://pulp.example/sbom/sbom.json",
+                    }
+                }
+            }
+        )
+        uc._handle_sbom_results(Mock(), ctx, body)
+        assert out.read_text() == "https://pulp.example/sbom/sbom.json"
+
+    def test_fallback_from_sbom_distribution_when_artifact_url_missing(self, tmp_path) -> None:
+        out = tmp_path / "sbom.url"
+        ctx = UploadRpmContext(
+            build_id="b1",
+            date_str="2024-01-01",
+            namespace="ns",
+            parent_package="pkg",
+            sbom_results=str(out),
+            sbom_path="/tmp/custom-sbom.json",
+        )
+        body = json.dumps(
+            {
+                "artifacts": {
+                    "test-build-456/sbom.json": {
+                        "labels": {"build_id": "test-build-456", "arch": ""},
+                        "url": None,
+                    }
+                },
+                "distributions": {"sbom": "https://pulp.example/content/ns/test-build-456/sbom/"},
+            }
+        )
+        uc._handle_sbom_results(Mock(), ctx, body)
+        assert out.read_text() == "https://pulp.example/content/ns/test-build-456/sbom/custom-sbom.json"
+
     def test_invalid_json_logs_error(self) -> None:
         ctx = _minimal_context(sbom_results="/tmp/x")
         with patch("pulp_tool.services.upload_collect.logging") as log_mock:
@@ -246,7 +287,33 @@ class TestHandleSbomResults:
         out = tmp_path / "sbom.url"
         ctx = _minimal_context(sbom_results=str(out))
         body = json.dumps({"artifacts": {"sbom.json": {"labels": {}, "url": "https://u"}}})
-        with patch("builtins.open", side_effect=OSError("denied")):
+        with patch.object(Path, "write_text", side_effect=OSError("denied")):
             with patch("pulp_tool.services.upload_collect.logging") as log_mock:
                 uc._handle_sbom_results(Mock(), ctx, body)
         log_mock.error.assert_called()
+
+    def test_resolve_sbom_skips_arch_labeled_sbom_artifact(self) -> None:
+        """SBOM-named artifacts with arch labels are ignored (first lookup loop)."""
+        ctx = _minimal_context()
+        results = {
+            "artifacts": {
+                "build/sbom.json": {"labels": {"arch": "x86_64"}, "url": "https://skip-me"},
+                "cyclonedx.json": {"labels": {}, "url": "https://legacy-sbom"},
+            }
+        }
+        artifact_key, url = uc._resolve_sbom_results_url(results, ctx)
+        assert artifact_key == "cyclonedx.json"
+        assert url == "https://legacy-sbom"
+
+    def test_resolve_sbom_skips_arch_labeled_json_in_legacy_loop(self) -> None:
+        """Generic .json artifacts with arch labels are ignored (legacy lookup loop)."""
+        ctx = _minimal_context()
+        results = {
+            "artifacts": {
+                "pkg.json": {"labels": {"arch": "aarch64"}, "url": "https://skip-me"},
+                "results.json": {"labels": {}, "url": "https://picked"},
+            }
+        }
+        artifact_key, url = uc._resolve_sbom_results_url(results, ctx)
+        assert artifact_key == "results.json"
+        assert url == "https://picked"

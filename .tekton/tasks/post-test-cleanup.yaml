@@ -4,23 +4,40 @@ kind: Task
 metadata:
   name: post-test-cleanup
 spec:
+  params:
+    - name: cleanup-image
+      description: >-
+        Stable base image for post-test cleanup. Installs python3 and pulp-cli
+        at runtime so cleanup can run even when build-e2e-image fails.
+      type: string
+      default: registry.access.redhat.com/ubi10/ubi-minimal:10.2
+    - name: e2e-run-id
+      description: Unique suffix for build-scoped Pulp resources (PipelineRun UID from the pipeline)
+      type: string
   workspaces:
     - name: repository
   stepTemplate:
+    image: $(params.cleanup-image)
     env:
       - name: PULP_CLI_CONFIG
         value: /etc/pulp-access/cli.toml
       - name: PULP_TOOL_PATH
         value: $(workspaces.repository.path)/source
+      - name: E2E_RUN_ID
+        value: $(params.e2e-run-id)
   steps:
     - name: post-test-cleanup
-      image: registry.fedoraproject.org/fedora:45@sha256:bf65a952bdc2bc05af6de8454519a68772d574552cf807caaaf55560603ebc77
       script: |
         #!/usr/bin/env sh
-        set -euo pipefail
-        dnf install -y python3 pulp-cli
+        set -eu
 
-        "${PULP_TOOL_PATH}/e2e/post-test-cleanup.py" --config "${PULP_CLI_CONFIG}"
+        microdnf install -y python3 python3-pip
+        microdnf clean all
+        pip3 install --no-cache-dir --root-user-action=ignore pulp-cli
+
+        python3 "${PULP_TOOL_PATH}/e2e/post-test-cleanup.py" \
+          --config "${PULP_CLI_CONFIG}" \
+          --run-id "${E2E_RUN_ID}"
 
       volumeMounts:
         - name: cli-toml-volume
