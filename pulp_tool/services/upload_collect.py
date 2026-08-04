@@ -405,21 +405,46 @@ def _handle_artifact_results(client: PulpClient, context: UploadContext, task_re
     _write_konflux_results(image_url, digest, image_url_path, image_digest_path)
 
 
+def _resolve_sbom_results_url(results: dict[str, Any], context: UploadContext) -> tuple[str | None, str | None]:
+    """Return SBOM artifact key and distribution URL from serialized results JSON."""
+    artifacts = results.get("artifacts") or {}
+
+    for artifact_name, artifact_info in artifacts.items():
+        if "sbom" not in artifact_name.lower():
+            continue
+        labels = artifact_info.get("labels") or {}
+        if labels.get("arch"):
+            continue
+        url = (artifact_info.get("url") or "").strip()
+        if url:
+            return artifact_name, url
+
+    for artifact_name, artifact_info in artifacts.items():
+        if not any(artifact_name.endswith(ext) for ext in (".json", ".spdx", ".spdx.json")):
+            continue
+        labels = artifact_info.get("labels") or {}
+        if labels.get("arch"):
+            continue
+        url = (artifact_info.get("url") or "").strip()
+        if url:
+            return artifact_name, url
+
+    sbom_dist = (results.get("distributions") or {}).get("sbom")
+    if not sbom_dist:
+        return None, None
+
+    sbom_path = getattr(context, "sbom_path", None)
+    basename = Path(sbom_path).name if sbom_path else "sbom.json"
+    dist_base = str(sbom_dist).rstrip("/")
+    return basename, f"{dist_base}/{basename}"
+
+
 def _handle_sbom_results(client: PulpClient, context: UploadContext, json_content: str) -> None:  # pylint: disable=unused-argument
     """Handle SBOM results for Konflux integration."""
     try:
         results = json.loads(json_content)
 
-        sbom_file = None
-        sbom_url = None
-
-        for artifact_name, artifact_info in results.get("artifacts", {}).items():
-            if any(artifact_name.endswith(ext) for ext in [".json", ".spdx", ".spdx.json"]):
-                labels = artifact_info.get("labels", {})
-                if not labels.get("arch"):
-                    sbom_file = artifact_name
-                    sbom_url = artifact_info.get("url", "")
-                    break
+        sbom_file, sbom_url = _resolve_sbom_results_url(results, context)
 
         if not sbom_url:
             logging.info("No SBOM file found in results JSON (this is normal if no SBOM was uploaded)")
@@ -429,8 +454,9 @@ def _handle_sbom_results(client: PulpClient, context: UploadContext, json_conten
             logging.debug("No sbom_results path configured, skipping SBOM results file write")
             return
 
-        with open(context.sbom_results, "w", encoding="utf-8") as f:
-            f.write(sbom_url)
+        sbom_results_path = Path(context.sbom_results)
+        sbom_results_path.parent.mkdir(parents=True, exist_ok=True)
+        sbom_results_path.write_text(sbom_url, encoding="utf-8")
 
         logging.info("SBOM results written to %s: %s", context.sbom_results, sbom_file)
         logging.debug("SBOM URL: %s", sbom_url)

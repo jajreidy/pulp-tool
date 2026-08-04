@@ -3,7 +3,7 @@
 COMPARE_BRANCH ?= origin/main
 AUDIT_VENV ?= .audit-venv
 
-.PHONY: help install install-dev test test-container test-diff-coverage lint format check clean audit lock lock-check pre-commit-ci
+.PHONY: help install install-dev test test-container test-e2e-container test-diff-coverage lint format check clean audit lock lock-check pre-commit-ci
 
 # Default target
 help:
@@ -12,6 +12,7 @@ help:
 	@echo "  make install-dev  - Install package with dev dependencies"
 	@echo "  make test         - Run tests with coverage"
 	@echo "  make test-container - Optional local Dockerfile smoke-test (Konflux Tekton builds on PR/push)"
+	@echo "  make test-e2e-container - Optional local Dockerfile.e2e smoke-test (e2e Tekton runner image)"
 	@echo "  make test-diff-coverage - make test + diff-cover 100% vs COMPARE_BRANCH (same gate as PR CI)"
 	@echo "  make lint         - Run all linters"
 	@echo "  make format       - Format code with Ruff"
@@ -53,6 +54,13 @@ test-container:
 	$$ENGINE run --rm pulp-tool:test python3 --version && \
 	$$ENGINE run --rm pulp-tool:test pulp-tool --version && \
 	$$ENGINE run --rm pulp-tool:test pulp-tool --help
+
+test-e2e-container:
+	@command -v podman >/dev/null 2>&1 && ENGINE=podman || ENGINE=docker; \
+	$$ENGINE build -f Dockerfile.e2e -t pulp-e2e:test . && \
+	$$ENGINE run --rm pulp-e2e:test python3 --version && \
+	$$ENGINE run --rm pulp-e2e:test pulp --help && \
+	$$ENGINE run --rm pulp-e2e:test python3 -c "import rpm_rs; print('rpm-rs OK')"
 
 test-diff-coverage: test
 	@command -v diff-cover >/dev/null 2>&1 || { echo "diff-cover not found. Run: make install-dev"; exit 1; }

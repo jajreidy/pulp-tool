@@ -15,7 +15,26 @@ from httpx import HTTPError
 from pulp_tool.exceptions import PulpToolHTTPError
 from pulp_tool.models.pulp_api import RpmDistributionRequest, RpmRepositoryRequest
 from pulp_tool.utils import PulpHelper
-from pulp_tool.utils.repository_manager import RepositoryApiOps, _is_distribution_uniqueness_error
+from pulp_tool.utils.repository_manager import (
+    RepositoryApiOps,
+    _is_distribution_uniqueness_error,
+    _repository_identifiers_match,
+    _repository_resource_id,
+)
+
+
+class TestRepositoryIdentifierHelpers:
+    """Tests for PRN/href normalization helpers."""
+
+    def test_repository_resource_id_empty(self) -> None:
+        assert _repository_resource_id(None) is None
+        assert _repository_resource_id("") is None
+        assert _repository_resource_id("   ") is None
+
+    def test_repository_identifiers_match_empty_or_exact(self) -> None:
+        assert _repository_identifiers_match(None, "prn:x") is False
+        assert _repository_identifiers_match("prn:x", None) is False
+        assert _repository_identifiers_match("same-ref", "same-ref") is True
 
 
 class TestPulpHelperDistributionOperations:
@@ -56,6 +75,30 @@ class TestPulpHelperDistributionOperations:
             methods, "test-build/rpms", "rpms", "expected-prn"
         )
         assert base_path == "test-build/rpms"
+
+    def test_resolve_existing_distribution_base_path_href_matches_prn(self, mock_pulp_client) -> None:
+        """Validated lookup accepts pulp_href when expected value is a PRN."""
+        helper = PulpHelper(mock_pulp_client)
+        repo_uuid = "019fcd4f-4293-7b90-9ddf-f7c8ead7a1c1"
+        mock_response = Mock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "results": [
+                {
+                    "base_path": "test-build/artifacts",
+                    "repository": f"/api/pulp/example/api/v3/repositories/file/file/{repo_uuid}/",
+                }
+            ]
+        }
+        mock_pulp_client.check_response = Mock()
+        methods = cast(RepositoryApiOps, SimpleNamespace(get_distro=Mock(return_value=mock_response)))
+        base_path = helper._repository_manager._resolve_existing_distribution_base_path(
+            methods,
+            "test-build/artifacts",
+            "artifacts",
+            f"prn:file.filerepository:{repo_uuid}",
+        )
+        assert base_path == "test-build/artifacts"
 
     def test_resolve_existing_distribution_base_path_wrong_repository(self, mock_pulp_client) -> None:
         """Validated lookup fails when repository does not match."""

@@ -16,6 +16,21 @@ import tomllib
 from pathlib import Path
 from typing import Dict, List
 
+from names import (
+    BUILD_ID_UPLOAD_FILES,
+    BUILD_ID_UPLOAD_FULL,
+    BUILD_ID_UPLOAD_MINIMAL,
+    BUILD_ID_UPLOAD_RESULTS,
+    BUILD_ID_UPLOAD_TARGET_ARCH,
+    BASE_PATH_CREATE_REPOSITORY,
+    BASE_PATH_CREATE_REPOSITORY_JSON,
+    REPO_CREATE_REPOSITORY,
+    REPO_CREATE_REPOSITORY_JSON,
+    resolve_run_id,
+    scoped_base_path,
+    scoped_build_id,
+)
+
 
 # ANSI color codes
 class Colors:
@@ -48,6 +63,7 @@ class E2ETestSuite:
         skip_setup: bool = False,
         real_server: bool = False,
         dry_run: bool = True,
+        run_id: str | None = None,
     ):
         self.config_file = config_file
         self.rpm_dir_arg = rpm_dir
@@ -56,6 +72,7 @@ class E2ETestSuite:
         self.skip_setup = skip_setup
         self.real_server = real_server
         self.dry_run = dry_run
+        self.run_id = resolve_run_id(run_id)
         self.stats = TestStats()
         self.rpm_dirs: Dict[int, Path] = {}
         self.current_rpm_index = 0
@@ -65,6 +82,14 @@ class E2ETestSuite:
 
         self.base_url = config["cli"]["base_url"]
         self.namespace = config["cli"]["domain"]
+
+    def bid(self, base_build_id: str) -> str:
+        """Return build id scoped to this e2e run when isolating concurrent executions."""
+        return scoped_build_id(base_build_id, self.run_id)
+
+    def bpath(self, base_path: str) -> str:
+        """Return distribution base_path scoped to this e2e run when isolating concurrent executions."""
+        return scoped_base_path(base_path, self.run_id)
 
     def log_info(self, message: str):
         """Log informational message"""
@@ -224,12 +249,13 @@ class E2ETestSuite:
         rpm_file = list((self.rpm_dirs[2] / "noarch").rglob("*.rpm"))[0]
         with open(rpm_file, "rb") as f:
             digest = hashlib.file_digest(f, "sha256")
+        upload_build_id = self.bid(BUILD_ID_UPLOAD_RESULTS)
         upload_results_data = {
             "artifacts": {
                 "test.2-1.0.0-1.noarch.rpm": {
                     "labels": {
                         "date": "2026-06-03 13:31:09",
-                        "build_id": "test-upload-results",
+                        "build_id": upload_build_id,
                         "arch": "noarch",
                         "namespace": self.namespace,
                     },
@@ -237,7 +263,9 @@ class E2ETestSuite:
                     "sha256": str(digest.hexdigest()),
                 }
             },
-            "distributions": {"rpms": f"{self.base_url}/api/pulp-content/{self.namespace}/test-upload-results/rpms/"},
+            "distributions": {
+                "rpms": f"{self.base_url}/api/pulp-content/{self.namespace}/{upload_build_id}/rpms/"
+            },
         }
         self.upload_results_json.write_text(json.dumps(upload_results_data, indent=2))
 
@@ -363,7 +391,7 @@ class E2ETestSuite:
             "--config",
             str(self.config_file),
             "--build-id",
-            "test-build-123",
+            self.bid(BUILD_ID_UPLOAD_MINIMAL),
             "--namespace",
             self.namespace,
             "upload",
@@ -394,7 +422,7 @@ class E2ETestSuite:
             "--config",
             str(self.config_file),
             "--build-id",
-            "test-build-456",
+            self.bid(BUILD_ID_UPLOAD_FULL),
             "--namespace",
             self.namespace,
             "upload",
@@ -415,9 +443,15 @@ class E2ETestSuite:
         self.assert_exit_code(0, exit_code, "Upload with all options completes successfully")
         if exit_code > 0:
             self.log_error(output)
+            return
+
+        if not self.assert_file_exists(sbom_results, "SBOM results file"):
+            self.log_error(output)
+            return
 
         sbom_results_content = sbom_results.read_text("utf-8")
-        expected_sbom_results = f"{self.base_url}/api/pulp-content/{self.namespace}/test-build-456/sbom/sbom.json"
+        full_build_id = self.bid(BUILD_ID_UPLOAD_FULL)
+        expected_sbom_results = f"{self.base_url}/api/pulp-content/{self.namespace}/{full_build_id}/sbom/sbom.json"
         if sbom_results_content != expected_sbom_results:
             self.stats.failed += 1
             self.log_error(f"Unexpected SBOM results: {sbom_results_content}")
@@ -432,7 +466,7 @@ class E2ETestSuite:
                 "test.1-1.0.0-1.x86_64.rpm",
                 "test.1-1.0.0-1.aarch64.rpm",
                 "test.1-1.0.0-1.noarch.rpm",
-                "test-build-456/sbom.json",
+                f"{full_build_id}/sbom.json",
             }
             if not set(pulp_results_content["artifacts"].keys()) == expected_pulp_artifacts:
                 self.stats.failed += 1
@@ -497,7 +531,7 @@ class E2ETestSuite:
             "--config",
             str(self.config_file),
             "--build-id",
-            "test-build-789",
+            self.bid(BUILD_ID_UPLOAD_TARGET_ARCH),
             "--namespace",
             self.namespace,
             "upload",
@@ -535,7 +569,7 @@ class E2ETestSuite:
             "--config",
             str(self.config_file),
             "--build-id",
-            "test-build-files",
+            self.bid(BUILD_ID_UPLOAD_FILES),
             "--namespace",
             self.namespace,
             "upload-files",
@@ -761,17 +795,19 @@ class E2ETestSuite:
             return
 
         self.run_test("pulp-tool create-repository")
+        repo_name = self.bid(REPO_CREATE_REPOSITORY)
+        base_path = self.bpath(BASE_PATH_CREATE_REPOSITORY)
         cmd = [
             "pulp-tool",
             "--config",
             str(self.config_file),
             "create-repository",
             "--repository-name",
-            "test-repo",
+            repo_name,
             "--packages",
             f"/api/pulp/{self.namespace}/api/v3/content/rpm/packages/019e1c81-287e-70bb-8009-ff05bd35415a/",
             "--base-path",
-            "repo_0/test",
+            base_path,
             "--compression-type",
             "zstd",
             "--checksum-type",
@@ -789,9 +825,11 @@ class E2ETestSuite:
             return
 
         self.run_test("pulp-tool create-repository --json-data")
+        repo_name = self.bid(REPO_CREATE_REPOSITORY_JSON)
+        base_path = self.bpath(BASE_PATH_CREATE_REPOSITORY_JSON)
         json_input = json.dumps(
             {
-                "name": "test-repo-json",
+                "name": repo_name,
                 "packages": [
                     {
                         "pulp_href": f"/api/pulp/{self.namespace}/api/v3/content/rpm/packages/019e1c81-1484-7e7c-86ca-d15f04a2fd0a/"  # noqa: E501
@@ -801,7 +839,7 @@ class E2ETestSuite:
                     },
                 ],
                 "repository_options": {"autopublish": True},
-                "distribution_options": {"name": "test-repo-json", "base_path": "repo_1/path"},
+                "distribution_options": {"name": repo_name, "base_path": base_path},
             }
         )
 
@@ -926,6 +964,8 @@ class E2ETestSuite:
                 self.test_dir = Path.cwd()
             self.log_info("Skipping test environment setup")
         self.log_info(f"Test directory: {self.test_dir}")
+        if self.run_id:
+            self.log_info(f"E2e run id: {self.run_id} (build-scoped Pulp resources are suffixed)")
 
         print()
         print("Running tests...")
@@ -1035,6 +1075,11 @@ Examples:
     parser.add_argument("--rpm-dir", type=Path, required=True, help="Path to directory containing RPM files")
     parser.add_argument("--pulp-results", type=Path, required=True, help="Path to test pulp_results.json file")
     parser.add_argument("--test-dir", type=Path, help="Path to store test files and results")
+    parser.add_argument(
+        "--run-id",
+        default=None,
+        help="Unique suffix for build-scoped Pulp resources (default: E2E_RUN_ID env var)",
+    )
     parser.add_argument("--skip-setup", action="store_true", help="Skip test environment setup (files, dirs)")
 
     # Mutually exclusive group for server mode
@@ -1083,6 +1128,7 @@ Examples:
         skip_setup=args.skip_setup,
         real_server=args.real_server,
         dry_run=dry_run,
+        run_id=args.run_id,
     )
 
     try:

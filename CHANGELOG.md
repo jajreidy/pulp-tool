@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **E2e reusable test image:** [`Dockerfile.e2e`](Dockerfile.e2e) pre-installs `python3`, `gcc`, `pulp-cli`, and `rpm-rs`; [`pulp-e2e-testing`](.tekton/pipelines/pulp-e2e-testing.yaml) builds it once per PipelineRun via `task-buildah` and reuses it in all e2e Tekton steps; `make test-e2e-container` for local smoke-test
+- **E2e concurrent run isolation:** Tekton sets `E2E_RUN_ID` from `$(context.pipelineRun.uid)`; build-scoped Pulp resource names are suffixed via [`e2e/names.py`](e2e/names.py); per-arch `--target-arch-repo` repos remain global names and may contend when runs overlap
 - **Lint toolchain expansion:** Ruff (replaces Black and Flake8), yamllint, ShellCheck, hadolint, codespell, and Checkton (Tekton embedded scripts) in pre-commit and/or CI; pip-audit added to pre-commit via `make audit`; `.yamllint.yml` and `.codespell-ignore-words.txt`
 - **`docs/releasing.md`:** maintainer guide for PyPI releases (trusted publishing setup, semver tagging on `main`, workflow steps, verification, troubleshooting); linked from `CONTRIBUTING.md`, `README.md`, and `.github/workflows/release.yml`
 - **PyPI release workflow (`.github/workflows/release.yml`):** builds and publishes `pulp-tool` on semver `v*` tags that point at `main`; uses `hynek/build-and-inspect-python-package` for wheel/sdist inspection and PyPI [trusted publishing](https://docs.pypi.org/trusted-publishers/) via `pypa/gh-action-pypi-publish`; maintainer steps in [docs/releasing.md](docs/releasing.md)

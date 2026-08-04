@@ -21,6 +21,18 @@ spec:
       description: Image expiration time
       type: string
       default: 5d
+    - name: dockerfile
+      description: Path to the e2e Dockerfile inside the cloned source tree (under source/)
+      type: string
+      default: Dockerfile.e2e
+    - name: path-context
+      description: Build context relative to the cloned source tree (Konflux buildah SOURCE_CODE_DIR)
+      type: string
+      default: .
+    - name: enable-cache-proxy
+      description: Enable Konflux cache proxy (passed to init; feeds buildah HTTP_PROXY/NO_PROXY)
+      type: string
+      default: "false"
   workspaces:
     - name: test
       description: Workspace for test artifacts
@@ -31,6 +43,9 @@ spec:
       optional: true
   tasks:
     - name: init
+      params:
+        - name: enable-cache-proxy
+          value: $(params.enable-cache-proxy)
       taskRef:
         params:
           - name: name
@@ -62,9 +77,48 @@ spec:
           workspace: repository
         - name: basic-auth
           workspace: git-auth
-    - name: run-e2e-test-suite
+    - name: build-e2e-image
       runAfter:
         - clone-repository
+      params:
+        - name: IMAGE
+          value: $(params.output-image)
+        - name: DOCKERFILE
+          value: $(params.dockerfile)
+        - name: CONTEXT
+          value: $(params.path-context)
+        - name: IMAGE_EXPIRES_AFTER
+          value: $(params.image-expires-after)
+        - name: COMMIT_SHA
+          value: $(tasks.clone-repository.results.commit)
+        - name: SOURCE_URL
+          value: $(params.git-url)
+        - name: SKIP_SBOM_GENERATION
+          value: "true"
+        - name: HTTP_PROXY
+          value: $(tasks.init.results.http-proxy)
+        - name: NO_PROXY
+          value: $(tasks.init.results.no-proxy)
+      taskRef:
+        params:
+          - name: name
+            value: buildah
+          - name: bundle
+            value: quay.io/konflux-ci/tekton-catalog/task-buildah:0.4@sha256:9bedc54bbf756aee2cf9601892d1174e65dd6bc9a2cd350e7c9711acac4661e1
+          - name: kind
+            value: task
+        resolver: bundles
+      workspaces:
+        - name: source
+          workspace: repository
+    - name: run-e2e-test-suite
+      runAfter:
+        - build-e2e-image
+      params:
+        - name: e2e-image
+          value: $(tasks.build-e2e-image.results.IMAGE_REF)
+        - name: e2e-run-id
+          value: $(context.pipelineRun.uid)
       taskRef:
         resolver: git
         params:
@@ -73,7 +127,7 @@ spec:
           - name: url
             value: $(params.git-url)
           - name: pathInRepo
-            value: ".tekton/tasks/run-e2e-test-suite.yaml"
+            value: .tekton/tasks/run-e2e-test-suite.yaml
       workspaces:
         - name: test
           workspace: test
@@ -81,6 +135,9 @@ spec:
           workspace: repository
   finally:
     - name: post-test-cleanup
+      params:
+        - name: e2e-run-id
+          value: $(context.pipelineRun.uid)
       taskRef:
         resolver: git
         params:
@@ -89,7 +146,7 @@ spec:
           - name: url
             value: $(params.git-url)
           - name: pathInRepo
-            value: ".tekton/tasks/post-test-cleanup.yaml"
+            value: .tekton/tasks/post-test-cleanup.yaml
       workspaces:
         - name: repository
           workspace: repository

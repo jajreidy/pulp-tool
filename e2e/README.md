@@ -196,33 +196,45 @@ The e2e test suite runs automatically on pull requests via Konflux Tekton pipeli
 **Pipeline steps:**
 
 1. **init** — Initialize build context
-2. **clone-repository** — Clone the PR branch
-3. **run-e2e-test-suite** — Execute the test suite (see task below)
-4. **post-test-cleanup** (finally) — Clean up test resources even if tests fail
+2. **clone-repository** — Clone the PR branch into `source/`
+3. **build-e2e-image** — Build [`Dockerfile.e2e`](../Dockerfile.e2e) once and push to `output-image` (Quay). Uses Konflux `git-clone` (default checkout under `source/`) and `task-buildah` with `DOCKERFILE=Dockerfile.e2e`, `CONTEXT=.`, plus `HTTP_PROXY`/`NO_PROXY` from `init` (required for image pulls in the cluster).
+4. **run-e2e-test-suite** — Execute the test suite using the digest-pinned image from `build-e2e-image` (`IMAGE_REF`; see task below)
+5. **post-test-cleanup** (finally) — Clean up test resources even if tests or image build fail (stable UBI image, not `build-e2e-image` output)
 
 ### Task: [`run-e2e-test-suite`](../.tekton/tasks/run-e2e-test-suite.yaml)
 
 **Steps:**
 
 1. **pre-test-setup**
-   - Install `python3`, `python3-pip`, `rpm-rs<0.25`
-   - Run `pre-test.py` to build test RPMs
+   - Run `pre-test.py` to build test RPMs (uses pre-installed `rpm-rs` from the e2e image)
 2. **pulp-tool-test**
-   - Install `pulp-tool` from source
-   - Run `test-pulp-tool.py --real-server` against the real Pulp server
+   - `pip install -e` from the cloned PR branch, then run `test-pulp-tool.py --real-server` against the real Pulp server
    - Uses secrets:
      - `pulp-access` → `/etc/pulp-access/cli.toml` (from [pulp-access-controller](https://github.com/pulp/pulp-access-controller); controller-managed credentials)
      - `pulp-results` → `/etc/pulp-results/pulp-results.json` (fixture file with test repo/dist references)
 3. **post-test-validation**
-   - Install `pulp-cli`
-   - Run `post-test-validation.py` to verify repository content
+   - Run `post-test-validation.py` to verify repository content (uses pre-installed `pulp-cli`)
 
 ### Task: [`post-test-cleanup`](../.tekton/tasks/post-test-cleanup.yaml)
 
-**Runs in `finally` block** (always executes, even if tests fail)
+**Runs in `finally` block** (always executes, even if tests or image build fail)
 
-- Installs `pulp-cli`
+- Uses a stable UBI 10 base image (not the built e2e runner image) and installs `python3` + `pulp-cli` at runtime
 - Runs `post-test-cleanup.py` to destroy test resources
+
+### Concurrent pipeline runs
+
+Multiple e2e PipelineRuns can execute against the same shared Pulp domain. To avoid collisions on build-scoped repositories (`test-build-123/rpms`, etc.), the pipeline passes `e2e-run-id: $(context.pipelineRun.uid)` into the test and cleanup tasks (exported as `E2E_RUN_ID`) and passes it to:
+
+- `test-pulp-tool.py --run-id …` (suffixes build ids such as `test-build-123-{uid}`)
+- `post-test-validation.py --run-id …`
+- `post-test-cleanup.py --run-id …`
+
+Shared naming helpers live in [`names.py`](names.py).
+
+**Note:** `--target-arch-repo` creates globally named RPM repositories (`x86_64`, `aarch64`, `noarch`). Those names are not run-suffixed; concurrent PipelineRuns may contend on them. Build-scoped repos still use the run id suffix.
+
+PR and push PipelineRuns set `concurrency_limit: 1` per pipeline, but run ids still protect against overlap between PR and push pipelines or manual re-runs.
 
 ---
 
@@ -270,19 +282,23 @@ EOF
 ./e2e/post-test-cleanup.py --config /path/to/cli.toml
 ```
 
-### Using the container image
+### Using the container images
 
-The e2e test suite can also be run using the `pulp-tool:test` container:
+**E2e runner image** (UBI 10; `python3`, `gcc`, `pulp-cli`/`pulp`, `rpm-rs`):
 
 ```bash
-# Build the container
-make test-container
-
-# The container includes pulp-tool pre-installed
-# Mount your config and test data, then run tests
+make test-e2e-container
+# pulp-e2e:test — mount cloned repo + secrets, then run e2e scripts
 ```
 
-See [`skills/changing-pulp-container/SKILL.md`](../skills/changing-pulp-container/SKILL.md) for details on the container build process.
+**Production `pulp-tool` image** (UBI 10):
+
+```bash
+make test-container
+# pulp-tool:test — pulp-tool pre-installed for Konflux upload tasks
+```
+
+See [`skills/changing-pulp-container/SKILL.md`](../skills/changing-pulp-container/SKILL.md) for the production container build process.
 
 ---
 
@@ -297,7 +313,8 @@ See [`skills/changing-pulp-container/SKILL.md`](../skills/changing-pulp-containe
 
 **CI environment:**
 
-- Fedora 45 base image (`registry.fedoraproject.org/fedora:45`)
+- [`Dockerfile.e2e`](../Dockerfile.e2e) — UBI 10 image built once per PipelineRun; shared by all e2e steps
+- Runtime: `pip install -e` from the cloned PR branch in the `pulp-tool-test` step only
 - Konflux secrets:
   - `pulp-access` → Pulp CLI config (`cli.toml`)
   - `pulp-results` → Fixture file with test repo/distribution references
