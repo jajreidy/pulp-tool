@@ -9,15 +9,113 @@ from types import SimpleNamespace
 from typing import cast
 from unittest.mock import Mock, patch
 
+import pytest
 from httpx import HTTPError
 
+from pulp_tool.exceptions import PulpToolHTTPError
 from pulp_tool.models.pulp_api import RpmDistributionRequest, RpmRepositoryRequest
 from pulp_tool.utils import PulpHelper
-from pulp_tool.utils.repository_manager import RepositoryApiOps
+from pulp_tool.utils.repository_manager import RepositoryApiOps, _is_distribution_uniqueness_error
 
 
 class TestPulpHelperDistributionOperations:
     """Test PulpHelper distribution checking and creation."""
+
+    def test_is_distribution_uniqueness_error(self) -> None:
+        """Detect Pulp uniqueness validation errors in task/HTTP bodies."""
+        assert _is_distribution_uniqueness_error(
+            "{'base_path': [ErrorDetail(string='This field must be unique.', code='unique')]}"
+        )
+        assert not _is_distribution_uniqueness_error("Task failed")
+        assert not _is_distribution_uniqueness_error("")
+
+    def test_get_existing_distribution_base_path(self, mock_pulp_client) -> None:
+        """Return base_path when distribution exists."""
+        helper = PulpHelper(mock_pulp_client)
+        mock_response = Mock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {"results": [{"base_path": "test-build/rpms"}]}
+        mock_pulp_client.check_response = Mock()
+        methods = cast(RepositoryApiOps, SimpleNamespace(get_distro=Mock(return_value=mock_response)))
+        base_path = helper._repository_manager._get_existing_distribution_base_path(methods, "test-build/rpms", "rpms")
+        assert base_path == "test-build/rpms"
+
+    def test_get_existing_distribution_base_path_not_found(self, mock_pulp_client) -> None:
+        """Return None when distribution is missing."""
+        helper = PulpHelper(mock_pulp_client)
+        mock_response = Mock()
+        mock_response.status_code = 404
+        methods = cast(RepositoryApiOps, SimpleNamespace(get_distro=Mock(return_value=mock_response)))
+        base_path = helper._repository_manager._get_existing_distribution_base_path(methods, "test-build/rpms", "rpms")
+        assert base_path is None
+
+    def test_get_existing_distribution_base_path_empty_results(self, mock_pulp_client) -> None:
+        """Return None when lookup succeeds but has no matching distribution."""
+        helper = PulpHelper(mock_pulp_client)
+        mock_response = Mock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {"results": []}
+        mock_pulp_client.check_response = Mock()
+        methods = cast(RepositoryApiOps, SimpleNamespace(get_distro=Mock(return_value=mock_response)))
+        base_path = helper._repository_manager._get_existing_distribution_base_path(methods, "test-build/rpms", "rpms")
+        assert base_path is None
+
+    def test_get_existing_distribution_base_path_lookup_error(self, mock_pulp_client) -> None:
+        """Return None when distribution lookup raises."""
+        helper = PulpHelper(mock_pulp_client)
+        methods = cast(RepositoryApiOps, SimpleNamespace(get_distro=Mock(side_effect=HTTPError("API error"))))
+        base_path = helper._repository_manager._get_existing_distribution_base_path(methods, "test-build/rpms", "rpms")
+        assert base_path is None
+
+    def test_cache_distribution_base_path(self, mock_pulp_client) -> None:
+        """Cache resolved base_path for later URL construction."""
+        helper = PulpHelper(mock_pulp_client)
+        methods = cast(RepositoryApiOps, SimpleNamespace())
+        with patch.object(
+            helper._repository_manager, "_get_existing_distribution_base_path", return_value="test-build/rpms"
+        ):
+            helper._repository_manager._cache_distribution_base_path(
+                "test-build", "rpms", "test-build/rpms", methods, fallback_base_path="fallback"
+            )
+        assert helper._repository_manager._distribution_cache[("test-build", "rpms")] == "test-build/rpms"
+
+    def test_cache_distribution_base_path_no_build_id(self, mock_pulp_client) -> None:
+        """Skip caching when build_id is missing."""
+        helper = PulpHelper(mock_pulp_client)
+        methods = cast(RepositoryApiOps, SimpleNamespace())
+        with patch.object(helper._repository_manager, "_get_existing_distribution_base_path") as mock_lookup:
+            helper._repository_manager._cache_distribution_base_path(None, "rpms", "test-build/rpms", methods)
+        mock_lookup.assert_not_called()
+
+    def test_new_distribution_task_http_400_other_error_raises(self, mock_pulp_client) -> None:
+        """Non-uniqueness HTTP 400 errors are still raised."""
+        helper = PulpHelper(mock_pulp_client)
+        mock_response = Mock()
+        mock_response.status_code = 400
+        mock_response.text = "Invalid repository reference"
+        methods = cast(RepositoryApiOps, SimpleNamespace(distro=Mock(return_value=mock_response)))
+        mock_pulp_client.check_response = Mock(
+            side_effect=PulpToolHTTPError("Failed to create distribution", response=mock_response)
+        )
+        new_distro = RpmDistributionRequest(name="test-distro", base_path="test-distro", repository="test-repo")
+        with pytest.raises(PulpToolHTTPError):
+            helper._repository_manager._new_distribution_task(methods, new_distro, "rpm")
+
+    def test_create_distribution_task_http_400_already_exists(self, mock_pulp_client) -> None:
+        """Create task returns empty string when POST reports distribution already exists."""
+        helper = PulpHelper(mock_pulp_client)
+        methods = cast(RepositoryApiOps, SimpleNamespace())
+        new_distro = RpmDistributionRequest(name="test-distro", base_path="test-distro", repository="test-repo")
+        with (
+            patch.object(helper._repository_manager, "_check_existing_distribution", return_value=False),
+            patch.object(helper._repository_manager, "_new_distribution_task", return_value=""),
+            patch.object(helper._repository_manager, "_cache_distribution_base_path") as mock_cache,
+        ):
+            task_id = helper._repository_manager._create_distribution_task(
+                methods, new_distro, "rpms", build_id="test-build"
+            )
+        assert task_id == ""
+        mock_cache.assert_called_once()
 
     def test_check_existing_distribution(self, mock_pulp_client) -> None:
         """Test PulpHelper _check_existing_distribution."""
@@ -77,6 +175,23 @@ class TestPulpHelperDistributionOperations:
         task_id = helper._repository_manager._new_distribution_task(methods, new_distro, "rpm")
         assert task_id == "/pulp/api/v3/tasks/12345/"
 
+    def test_new_distribution_task_http_400_already_exists(self, mock_pulp_client) -> None:
+        """HTTP 400 uniqueness on create is treated as already exists."""
+        helper = PulpHelper(mock_pulp_client)
+        mock_response = Mock()
+        mock_response.status_code = 400
+        mock_response.text = (
+            "{'base_path': [ErrorDetail(string='This field must be unique.', code='unique')], "
+            "'name': [ErrorDetail(string='This field must be unique.', code='unique')]}"
+        )
+        methods = cast(RepositoryApiOps, SimpleNamespace(distro=Mock(return_value=mock_response)))
+        mock_pulp_client.check_response = Mock(
+            side_effect=PulpToolHTTPError("Failed to create distribution", response=mock_response)
+        )
+        new_distro = RpmDistributionRequest(name="test-distro", base_path="test-distro", repository="test-repo")
+        task_id = helper._repository_manager._new_distribution_task(methods, new_distro, "rpm")
+        assert task_id == ""
+
     def test_create_distribution_task(self, mock_pulp_client) -> None:
         """Test PulpHelper _create_distribution_task."""
         helper = PulpHelper(mock_pulp_client)
@@ -98,9 +213,29 @@ class TestPulpHelperDistributionOperations:
         helper = PulpHelper(mock_pulp_client)
         methods = cast(RepositoryApiOps, SimpleNamespace())
         new_distro = RpmDistributionRequest(name="test-distro", base_path="test-distro", repository="test-repo")
-        with patch.object(helper._repository_manager, "_check_existing_distribution", return_value=True):
+        with (
+            patch.object(helper._repository_manager, "_check_existing_distribution", return_value=True),
+            patch.object(helper._repository_manager, "_cache_distribution_base_path") as mock_cache,
+        ):
             task_id = helper._repository_manager._create_distribution_task(methods, new_distro, "rpms")
         assert task_id == ""
+        mock_cache.assert_called_once()
+
+    def test_create_distribution_task_skips_for_new_repo_when_distribution_exists(self, mock_pulp_client) -> None:
+        """New repositories still skip create when distribution already exists (504 retry case)."""
+        helper = PulpHelper(mock_pulp_client)
+        methods = cast(RepositoryApiOps, SimpleNamespace())
+        new_distro = RpmDistributionRequest(name="test-distro", base_path="test-distro", repository="test-repo")
+        with (
+            patch.object(helper._repository_manager, "_check_existing_distribution", return_value=True),
+            patch.object(helper._repository_manager, "_cache_distribution_base_path"),
+            patch.object(helper._repository_manager, "_new_distribution_task") as mock_new,
+        ):
+            task_id = helper._repository_manager._create_distribution_task(
+                methods, new_distro, "rpms", is_new_repository=True, build_id="test-build"
+            )
+        assert task_id == ""
+        mock_new.assert_not_called()
 
     def test_get_single_distribution_url(self, mock_pulp_client) -> None:
         """Test PulpHelper _get_single_distribution_url."""
