@@ -3,7 +3,7 @@
 COMPARE_BRANCH ?= origin/main
 AUDIT_VENV ?= .audit-venv
 
-.PHONY: help install install-dev test test-container test-e2e-container test-diff-coverage lint format check clean audit lock lock-check pre-commit-ci
+.PHONY: help install install-dev test test-container test-e2e-container test-diff-coverage lint format check clean audit lock lock-check pre-commit-ci release-please release-publish
 
 # Default target
 help:
@@ -22,6 +22,8 @@ help:
 	@echo "  make clean        - Clean build artifacts"
 	@echo "  make lock         - Regenerate uv.lock from pyproject.toml (uv lock)"
 	@echo "  make lock-check   - Fail if pyproject.toml and uv.lock are out of sync"
+	@echo "  make release-please  - Open/update release PR (Release Please; gh auth or GITHUB_TOKEN)"
+	@echo "  make release-publish - Push v* tag from manifest (git only; triggers release.yml)"
 	@echo ""
 	@echo "  Diff coverage base: COMPARE_BRANCH=origin/main (override for e.g. origin/release-1.0)"
 
@@ -142,3 +144,10 @@ run-tests:
 
 check-all:
 	@./scripts/check-all.sh
+
+# Maintainer release helpers (local Release Please — see docs/releasing.md).
+release-please:
+	@./scripts/release-please.sh pr
+
+release-publish:
+	@./scripts/release-please.sh publish
