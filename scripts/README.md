@@ -60,6 +60,27 @@ This script:
 - Updates package dependencies
 - Updates pre-commit hooks
 
+### `release-please.sh`
+
+Run [Release Please](https://github.com/googleapis/release-please) locally to open release PRs and create semver tags. See [docs/releasing.md](../docs/releasing.md).
+
+```bash
+gh auth login
+
+# Open or update the release PR (run on main after feature merges)
+./scripts/release-please.sh pr
+make release-please
+
+# After merging the release PR — push v* tag (git credentials only)
+./scripts/release-please.sh publish
+make release-publish
+
+# Preview without opening a PR
+./scripts/release-please.sh pr -- --dry-run --debug
+```
+
+`make release-please` needs GitHub API access (`gh auth login` or a token). `make release-publish` uses plain `git tag` / `git push` only.
+
 ## Usage
 
 All scripts are executable and can be run directly:
@@ -77,6 +98,8 @@ make test         # Same as ./scripts/run-tests.sh (pytest with coverage)
 make check        # lint + test (subset; use make pre-commit-ci for full CI lint gates)
 make pre-commit-ci  # all pre-commit hooks (matches GitHub PR CI)
 make lock         # Regenerate uv.lock (see also ./scripts/update-deps.sh for broader bumps)
+make release-please   # Open/update release PR (maintainers; see docs/releasing.md)
+make release-publish  # Tag release after merging release PR
 ```
 
 Optional scripts (run directly):

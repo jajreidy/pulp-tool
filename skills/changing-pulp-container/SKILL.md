@@ -23,7 +23,7 @@ The **`pulp-tool-container`** image is built and published by **Konflux Tekton**
 | [pulp-tool-container-build-push.yaml](../../.tekton/pulp-tool-container-build-push.yaml) | `push` → `main` | `quay.io/.../pulp-tool-container:latest` |
 | [pulp-tool-container-build-pull-request.yaml](../../.tekton/pulp-tool-container-build-pull-request.yaml) | `pull_request` → `main` | `…/pulp-tool-container:on-pr-{{revision}}` (`image-expires-after: 5d`) |
 
-Shared: namespace `artifact-storage-tenant`, app/component `tooling` / `pulp-tool-container`, SA `build-pipeline-pulp-tool-container`, workspace `git-auth`, params `git-url` + `revision`.
+Shared: namespace `artifact-storage-tenant`, app/component `tooling` / `pulp-tool-container`, SA `build-pipeline-pulp-tool-container`, workspace `git-auth`, params `git-url` + `revision`. Release Please PR merges to `main` trigger the on-push build (see [docs/releasing.md](../../docs/releasing.md)); there is no on-tag PipelineRun.
 
 ## What the remote pipeline does
 
