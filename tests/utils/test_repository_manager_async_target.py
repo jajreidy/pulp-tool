@@ -12,6 +12,18 @@ from pulp_tool.models.pulp_api import RpmRepositoryRequest, TaskResponse
 from pulp_tool.utils.repository_manager import RepositoryApiOps, RepositoryManager, _resource_log_label
 
 
+def _create_or_get_repository_side_effect(
+    new_repository: object,
+    *_args: object,
+    **_kwargs: object,
+) -> tuple[str, str | None]:
+    """Mock _create_or_get_repository_impl by repo name suffix (concurrency-safe)."""
+    name = getattr(new_repository, "name", "")
+    repo_type = name.rsplit("/", 1)[-1]
+    href = f"{repo_type}-href" if repo_type in ("rpms", "rpms-signed") else None
+    return (f"{repo_type}-prn", href)
+
+
 class TestRepositoryManagerCreateNewRepository:
     """Tests for RepositoryManager._create_new_repository() method."""
 
@@ -104,14 +116,7 @@ class TestRepositoryManagerSetupRepositoriesAsync:
         mock_client.namespace = "test-namespace"
         manager = RepositoryManager(mock_client)
         with patch.object(manager, "_create_or_get_repository_impl") as mock_create:
-            mock_create.side_effect = [
-                ("rpms-prn", "rpms-href"),
-                ("logs-prn", None),
-                ("sbom-prn", None),
-                ("artifacts-prn", None),
-            ]
-            import asyncio
-
+            mock_create.side_effect = _create_or_get_repository_side_effect
             result = asyncio.run(manager._setup_repositories_impl_async("test-build"))
             assert result["rpms_prn"] == "rpms-prn"
             assert result["rpms_href"] == "rpms-href"
@@ -126,9 +131,7 @@ class TestRepositoryManagerSetupRepositoriesAsync:
         mock_client.namespace = "test-namespace"
         manager = RepositoryManager(mock_client)
         with patch.object(manager, "_create_or_get_repository_impl") as mock_create:
-            mock_create.side_effect = [("rpms-prn", "rpms-href"), ("logs-prn", None), ("sbom-prn", None)]
-            import asyncio
-
+            mock_create.side_effect = _create_or_get_repository_side_effect
             result = asyncio.run(manager._setup_repositories_impl_async("test-build", skip_artifacts_repo=True))
             assert mock_create.call_count == 3
             assert "artifacts_prn" not in result
@@ -139,15 +142,7 @@ class TestRepositoryManagerSetupRepositoriesAsync:
         mock_client.namespace = "test-namespace"
         manager = RepositoryManager(mock_client)
         with patch.object(manager, "_create_or_get_repository_impl") as mock_create:
-            mock_create.side_effect = [
-                ("rpms-prn", "rpms-href"),
-                ("logs-prn", None),
-                ("sbom-prn", None),
-                ("artifacts-prn", None),
-                ("rpms-signed-prn", "rpms-signed-href"),
-            ]
-            import asyncio
-
+            mock_create.side_effect = _create_or_get_repository_side_effect
             result = asyncio.run(manager._setup_repositories_impl_async("test-build", signed_by="key-123"))
             assert mock_create.call_count == 5
             assert result["rpms_signed_prn"] == "rpms-signed-prn"
