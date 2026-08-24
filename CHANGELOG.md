@@ -146,6 +146,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Fixed Optional import missing in content_query.py
 
 ### Security
+- **`pip-audit` / security-scan:** pin **`pip>=26.2`** in the `dev` extra (lockfile **26.2.1**) so CVE-2026-13346 (doubly-encoded index URLs; GHSA-qwm4-qh6w-59xr) is not flagged; `pip-audit` → `pip-api` previously resolved **26.1.2**
 - **Path traversal via `--results-json`:** reject artifact keys whose resolved path escapes `files_base_path` (`resolve_path_under_base`)
 - **Path traversal via pull log `arch` labels:** validate architecture against `SUPPORTED_ARCHITECTURES` before writing under `logs/<arch>/`
 - **Invalid `arch` in Pulp file content paths:** `_build_file_relative_path` rejects unsupported architecture values
