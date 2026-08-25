@@ -5,6 +5,55 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0](https://github.com/jajreidy/pulp-tool/compare/v1.0.0...v1.1.0) (2026-08-25)
+
+
+### Added
+
+* add i686 arch support and pr-description drafting ([edfe7a1](https://github.com/jajreidy/pulp-tool/commit/edfe7a12bd84a36542fabe530e5c0d8623685a0f))
+* add i686 arch support and pr-description drafting ([e06cf41](https://github.com/jajreidy/pulp-tool/commit/e06cf415bc6a6e6557d5bd0459a5c6c155e61013))
+* **e2e:** reusable test image and concurrent run isolation ([a7e776f](https://github.com/jajreidy/pulp-tool/commit/a7e776fd5df6666c50f034a7705c60b2e93b545a))
+* **e2e:** reusable test image and concurrent run isolation ([c060d79](https://github.com/jajreidy/pulp-tool/commit/c060d791fd5c952a84c6ff376eb5aa55e6beced0))
+* **release:** add local Release Please workflow and GitHub Release o… ([43e3e48](https://github.com/jajreidy/pulp-tool/commit/43e3e4890929470914d213918bdf980a83c9b6eb))
+* **release:** add local Release Please workflow and GitHub Release on tag ([c02a88b](https://github.com/jajreidy/pulp-tool/commit/c02a88b1cadf53752d9723f4b93c70edd30c3574))
+* **upload:** add --overwrite for RPMs (remove matching repo content before upload) ([01c9750](https://github.com/jajreidy/pulp-tool/commit/01c9750511a16de1e32662099dca74945ecc8ed6))
+
+
+### Fixed
+
+* **api:** validate HTTP responses and clarify content-search parse errors ([c565851](https://github.com/jajreidy/pulp-tool/commit/c565851187308ebff2bf5522076298128d6c284a))
+* **api:** validate HTTP responses and clarify content-search parse errors ([e1bd66b](https://github.com/jajreidy/pulp-tool/commit/e1bd66b93cfdfeb1b4120b32219c2d300a8af4d1))
+* **ci:** correct codecov flag name and add codecov.yml config ([2311b82](https://github.com/jajreidy/pulp-tool/commit/2311b82024eeed62152ce20af1ac5bde8bdef2dc))
+* **ci:** correct codecov flag name and add codecov.yml config ([fd91a71](https://github.com/jajreidy/pulp-tool/commit/fd91a71d99d85d471bdd5d567a07c60fa3b36507))
+* **ci:** restrict Checkton to pull requests and fix local diff base ([3902add](https://github.com/jajreidy/pulp-tool/commit/3902add34b9f8b7be6c81ea1cdee763124cb96fc))
+* **ci:** restrict Checkton to pull requests and fix local diff base ([0e60822](https://github.com/jajreidy/pulp-tool/commit/0e608226b258863dcddce6f2b8aa37b56a21c347))
+* **ci:** run pip-audit before safety and migrate e2e init task ([60eebcb](https://github.com/jajreidy/pulp-tool/commit/60eebcb256cbee8cbd26e01afc8a66c6d2c7d36c))
+* **ci:** run pip-audit before safety and migrate e2e init task ([3833b01](https://github.com/jajreidy/pulp-tool/commit/3833b015c5a4eed882b312f1594b467e4783674d))
+* **container:** align CI and agents with Python 3.15 Konflux image ([c2d23bc](https://github.com/jajreidy/pulp-tool/commit/c2d23bcf1dc979cc6bce29e70728d45991a28020))
+* **container:** align CI and agents with Python 3.15 Konflux image ([f7bc1a6](https://github.com/jajreidy/pulp-tool/commit/f7bc1a6b7b4292dd9548bfd3ef9554769a9bf3e9))
+* **container:** build image on Fedora 45 Python 3.15 ([17d680e](https://github.com/jajreidy/pulp-tool/commit/17d680eabe79bcf55aa2e0215f24703eadfbc523))
+* **container:** build image on Fedora 45 Python 3.15 ([dfc460d](https://github.com/jajreidy/pulp-tool/commit/dfc460d419ec595692954117e92af1b5b7e7ef73))
+* **container:** move pulp-tool image to UBI 10 and Python 3.12 ([d9f1257](https://github.com/jajreidy/pulp-tool/commit/d9f1257f73d671c402aa45b6fbcc96576168b1ed))
+* **container:** move pulp-tool image to UBI 10 and Python 3.12 ([0d6c302](https://github.com/jajreidy/pulp-tool/commit/0d6c302ca8e47107579ed5ac52d8ffe4a09ca4e0))
+* correct GitHub URLs and align package metadata ([9a04339](https://github.com/jajreidy/pulp-tool/commit/9a04339397e638e994138329228ea3bb4b760ccc))
+* correct GitHub URLs and align package metadata ([fcf528c](https://github.com/jajreidy/pulp-tool/commit/fcf528cda897b08ada6e5dc0891be39065b0ab90))
+* **deps:** pin pip&gt;=26.2 for CVE-2026-13346 in pip-audit ([57d3f81](https://github.com/jajreidy/pulp-tool/commit/57d3f81a7d44ff0410c4ac02f063e434964e5eab))
+* **deps:** pin pip&gt;=26.2 for CVE-2026-13346 in pip-audit ([b313813](https://github.com/jajreidy/pulp-tool/commit/b313813d4b06f1b9f626e8b20cec31c7a3979415))
+* detect artifact type by extension before substring matching ([51f3c3f](https://github.com/jajreidy/pulp-tool/commit/51f3c3fbdc66edd4e4c06030f12bad914eaa560c))
+* detect artifact type by extension before substring matching ([0fcd7c6](https://github.com/jajreidy/pulp-tool/commit/0fcd7c64db6213a2461831ec91de4583b1dadbf4))
+* **pulp:** normalize signed_by for uploads and Pulp queries ([e6b6ca3](https://github.com/jajreidy/pulp-tool/commit/e6b6ca3feec3af7d7b933d5eb6826fef4c83c4e7))
+* **pulp:** normalize signed_by for uploads and Pulp queries ([ebf366e](https://github.com/jajreidy/pulp-tool/commit/ebf366e3d0474dbf59a7988bf4cc317958116a7d))
+* **upload:** defer distribution waits and cap task polling at 30 minutes ([ee5c226](https://github.com/jajreidy/pulp-tool/commit/ee5c226a8a49df6f4a175602b5b304f5a22a7dfd))
+* **upload:** defer distribution waits and cap task polling at 30 minutes ([5a2076d](https://github.com/jajreidy/pulp-tool/commit/5a2076d644b6940bca44416774d8444ef0c8e4c4))
+* **upload:** handle signed_by labels with commas; refresh agent docs ([352c308](https://github.com/jajreidy/pulp-tool/commit/352c30862b657a5667527b220aba737878848def))
+* **upload:** handle signed_by labels with commas; refresh agent docs ([c45eb5b](https://github.com/jajreidy/pulp-tool/commit/c45eb5b687ed5b02c1144eb5ac542bb92e654425))
+* **upload:** harden Konflux digest, paths, and RPM upload reliability ([84998cf](https://github.com/jajreidy/pulp-tool/commit/84998cf3c906b7fd79b146b25ae9f66e1997dbc6))
+* **upload:** harden Konflux digest, paths, and RPM upload reliability ([7fdeb58](https://github.com/jajreidy/pulp-tool/commit/7fdeb58edd43dafa88d833d211406be153a401f4))
+* **upload:** idempotent distribution setup after 504 retries ([a68c443](https://github.com/jajreidy/pulp-tool/commit/a68c4436deb78cb301b7223e78f3d2aa8cc8823c))
+* **upload:** idempotent distribution setup after 504 retries ([3cee8bb](https://github.com/jajreidy/pulp-tool/commit/3cee8bbcabe8d93905e8bf7e2da6a6a9ac59fde6))
+* **upload:** omit artifacts distribution URL for local --artifact-results folder ([91b7bd1](https://github.com/jajreidy/pulp-tool/commit/91b7bd173dd0fa8e8611ba0b805e50803072b435))
+* **upload:** omit artifacts distribution URL for local --artifact-results folder ([cb4603e](https://github.com/jajreidy/pulp-tool/commit/cb4603e66ec54b37f41d1580eb62ab4193ca3c65))
+
 ## [Unreleased]
 
 ### Added
