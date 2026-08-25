@@ -133,7 +133,7 @@ Wire your **Release Plan Admission** to [`push-to-external-registry`](https://gi
 
 ## Version numbers
 
-Package version comes from [setuptools-scm](https://setuptools-scm.readthedocs.io/) and the git tag (see `[tool.setuptools_scm]` in [`pyproject.toml`](../pyproject.toml)). Tag **`v1.2.3`** produces version **`1.2.3`**. The release workflow checks out full git history (`fetch-depth: 0`) so the tagged version resolves correctly at build time.
+Package version comes from [setuptools-scm](https://setuptools-scm.readthedocs.io/) and the git tag (see `[tool.setuptools_scm]` in [`pyproject.toml`](../pyproject.toml)). Tag **`v1.2.3`** produces version **`1.2.3`**. The release workflow sets **`SETUPTOOLS_SCM_PRETEND_VERSION`** from the pushed tag so PyPI never receives a local/dev version (e.g. `1.2.3.dev0+g…`, which PyPI rejects).
 
 Build metadata in tags (e.g. **`v1.2.3+build.1`**) is accepted by the workflow; confirm how `setuptools_scm` maps that to the PyPI version string before publishing non-standard tags.
 
@@ -205,6 +205,7 @@ Container images are **not** rebuilt on tag push; they are produced when the rel
 | Tag format rejected | Use SemVer tags such as `v1.2.3`, `v1.2.3-rc1`, or `v1.2.3+build.1` (not `1.2.3` without the `v` prefix) |
 | Not on `main` | Tag must point at a commit reachable from `main` (checked via GitHub compare API) |
 | Upload auth failed | PyPI trusted publisher must match `konflux-ci` / `pulp-tool` / workflow `release.yml` with a blank environment name; upload job needs `id-token: write` |
+| PyPI 400 local version (`+g…` or `.dev0`) | Tag build must use a clean semver — [`.github/workflows/release.yml`](../.github/workflows/release.yml) sets `SETUPTOOLS_SCM_PRETEND_VERSION` from the tag; re-run after that fix is on `main`, or delete the tag and re-push on a commit that includes the fix |
 | Empty GitHub Release notes | Ensure `CHANGELOG.md` has a **`## [X.Y.Z]`** section for that version before tagging |
 | Wrong package version | Tag name must match the intended release; rebuild requires a new tag |
 | Container not rebuilt | Merging the release PR must land on `main`; check Konflux PipelineRun `pulp-tool-container-on-push` |
