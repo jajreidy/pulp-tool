@@ -79,7 +79,7 @@ Release Please does **not** run in GitHub Actions for this repository. Maintaine
 | **Node.js + npm** | For `npx release-please@…` on **`make release-please`** (or install globally: `npm i -g release-please`) |
 | **GitHub CLI (`gh`)** or **token** | **`make release-please`** calls the GitHub API to open/update the release PR. Use `gh auth login` (recommended) or set `GITHUB_TOKEN` / `GH_TOKEN` with **contents** and **pull-requests** write. There is no token-free mode for this step. |
 | **Git push access** | **`make release-publish`** only runs `git tag` + `git push` (SSH or HTTPS); no GitHub API token |
-| **Clean `main` checkout** | `git checkout main && git pull origin main` before `make release-please` |
+| **Clean `main` checkout** | `git checkout main && git pull <remote> main` before `make release-please` (use `upstream` when `RELEASE_GIT_REMOTE=upstream`) |
 
 **Configuration files**
 
@@ -104,7 +104,24 @@ make release-please
 make release-publish
 ```
 
-Pin the CLI version with `RELEASE_PLEASE_VERSION` (default **`17.2.0`** in the script). Override repo with `GITHUB_REPOSITORY=owner/repo` if `origin` is not a github.com remote.
+Pin the CLI version with `RELEASE_PLEASE_VERSION` (default **`17.2.0`** in the script). Override the GitHub repo with `GITHUB_REPOSITORY=owner/repo`, or set **`RELEASE_GIT_REMOTE`** so both `release-please` and `release-publish` infer `owner/repo` from that remote (default **`origin`**).
+
+### Fork and upstream remotes
+
+If you use a personal fork as **`origin`** and the canonical repo as **`upstream`** (e.g. `konflux-ci/pulp-tool`), releases must target **`upstream`** — PyPI trusted publishing and [`.github/workflows/release.yml`](../.github/workflows/release.yml) are registered for the canonical repo, not your fork.
+
+```bash
+# Sync main from upstream before releasing
+git checkout main && git fetch upstream && git pull --ff-only upstream main
+
+# Open/update Release PR on konflux-ci/pulp-tool (inferred from upstream URL)
+RELEASE_GIT_REMOTE=upstream make release-please
+
+# After merging the Release PR — push v* tag to upstream (triggers release.yml + PyPI)
+RELEASE_GIT_REMOTE=upstream make release-publish
+```
+
+You can still set `GITHUB_REPOSITORY=konflux-ci/pulp-tool` explicitly if the remote URL is not on github.com. `gh auth login` must have permission to open PRs on the canonical repo.
 
 ### Konflux container (optional RPA)
 
@@ -126,7 +143,7 @@ Build metadata in tags (e.g. **`v1.2.3+build.1`**) is accepted by the workflow; 
 2. On **`main`**, run **`make release-please`**. Review the Release PR on GitHub (title like `chore: release X.Y.Z`).
 3. **Review the Release PR** — confirm CI is green (`make test`, `make pre-commit-ci`, or `make test-diff-coverage` after `git fetch origin`).
 4. **Merge the Release PR** on GitHub — Konflux rebuilds **`pulp-tool-container`** on `main` (then your RPA promotes the image).
-5. Run **`make release-publish`** locally (creates tag **`vX.Y.Z`** on `main`).
+5. Run **`make release-publish`** locally (creates tag **`vX.Y.Z`** on `main` from [`.release-please-manifest.json`](../.release-please-manifest.json) **after** the release PR merge is pulled — the script syncs from `RELEASE_GIT_REMOTE` before reading the manifest).
 6. Tag push starts **`release.yml`** — build & inspect, **GitHub Release** (notes from CHANGELOG), **PyPI** upload.
 
 ### Maintainer gates
@@ -181,8 +198,10 @@ Container images are **not** rebuilt on tag push; they are produced when the rel
 | Token errors on `make release-please` | Run `gh auth login` or set `GITHUB_TOKEN` with contents + pull-requests write; Release Please cannot open PRs without GitHub API auth |
 | `make release-publish` auth failed | Configure git push (SSH key or HTTPS credential helper); this step does not use `GITHUB_TOKEN` |
 | Tag not created after release PR merge | Run `make release-publish` locally — tagging is not automatic on merge |
+| Wrong tag version on publish | Ensure the release PR is merged and run publish **after** the script pulls `main` (it reads `.release-please-manifest.json` from the synced tree, not a stale local copy). Delete a mistaken tag on the remote if needed before re-publishing. |
+| Tag pushed to fork by mistake | Use `RELEASE_GIT_REMOTE=upstream make release-publish` (or `git push upstream vX.Y.Z`); PyPI expects tags on `konflux-ci/pulp-tool` |
 | Release Please PR out of sync after manual tag | Update [`.release-please-manifest.json`](../.release-please-manifest.json) to the released version on `main` |
-| Workflow did not start | Tag must match `v*` and be pushed to GitHub (`git push origin vX.Y.Z` or `make release-publish`) |
+| Workflow did not start | Tag must match `v*` and be pushed to the canonical repo (`RELEASE_GIT_REMOTE=upstream` or `git push upstream vX.Y.Z`) |
 | Tag format rejected | Use SemVer tags such as `v1.2.3`, `v1.2.3-rc1`, or `v1.2.3+build.1` (not `1.2.3` without the `v` prefix) |
 | Not on `main` | Tag must point at a commit reachable from `main` (checked via GitHub compare API) |
 | Upload auth failed | PyPI trusted publisher must match `konflux-ci` / `pulp-tool` / workflow `release.yml` with a blank environment name; upload job needs `id-token: write` |
