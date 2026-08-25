@@ -75,11 +75,15 @@ make release-please
 ./scripts/release-please.sh publish
 make release-publish
 
+# Canonical repo on upstream (fork on origin):
+RELEASE_GIT_REMOTE=upstream make release-please
+RELEASE_GIT_REMOTE=upstream make release-publish
+
 # Preview without opening a PR
 ./scripts/release-please.sh pr -- --dry-run --debug
 ```
 
-`make release-please` needs GitHub API access (`gh auth login` or a token). `make release-publish` uses plain `git tag` / `git push` only.
+`make release-please` needs GitHub API access (`gh auth login` or a token). `make release-publish` uses plain `git tag` / `git push` only. Set **`RELEASE_GIT_REMOTE`** (default `origin`) when the release target is not `origin` — see [docs/releasing.md](../docs/releasing.md#fork-and-upstream-remotes).
 
 ## Usage
 
