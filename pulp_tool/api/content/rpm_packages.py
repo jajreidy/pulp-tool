@@ -55,7 +55,9 @@ class RpmPackageContentMixin(BaseResourceMixin):
 
         with open(file_path, "rb") as fp:
             files = {"file": fp}
-            response = self.session.post(url, data=data, files=files, timeout=self.timeout, **self.request_params)
+            response = self.session.post(
+                url, data=data, files=files, timeout=self.upload_content_timeout, **self.request_params
+            )
 
         self._check_response(response, "upload RPM package")
         return response

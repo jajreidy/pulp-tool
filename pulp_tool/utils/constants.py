@@ -54,6 +54,14 @@ SBOM_EXTENSIONS = [".json", ".spdx", ".spdx.json"]
 # Increased to 120 seconds to handle slow operations like bulk content queries
 DEFAULT_TIMEOUT = 120
 
+# Timeout for multipart content uploads (RPMs, logs, SBOM files) — large debuginfo RPMs
+# can exceed the default API timeout when uploading over slow links
+UPLOAD_CONTENT_TIMEOUT = 1800
+
+# Minimum artifact size covered by e2e large-upload tests (production debuginfo scale).
+LARGE_UPLOAD_MIN_SIZE_MB = 300
+LARGE_UPLOAD_MIN_SIZE_BYTES = LARGE_UPLOAD_MIN_SIZE_MB * 1024 * 1024
+
 # Cache TTL (time-to-live) in seconds for GET request caching
 CACHE_TTL = 300  # 5 minutes
 
@@ -198,6 +206,9 @@ __all__ = [
     "SBOM_EXTENSIONS",
     # API and Network
     "DEFAULT_TIMEOUT",
+    "UPLOAD_CONTENT_TIMEOUT",
+    "LARGE_UPLOAD_MIN_SIZE_MB",
+    "LARGE_UPLOAD_MIN_SIZE_BYTES",
     "CACHE_TTL",
     "DEFAULT_MAX_WORKERS",
     "REPOSITORY_SETUP_MAX_WORKERS",

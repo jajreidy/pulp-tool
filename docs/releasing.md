@@ -137,10 +137,22 @@ Package version comes from [setuptools-scm](https://setuptools-scm.readthedocs.i
 
 Build metadata in tags (e.g. **`v1.2.3+build.1`**) is accepted by the workflow; confirm how `setuptools_scm` maps that to the PyPI version string before publishing non-standard tags.
 
+## Changelog format
+
+[`CHANGELOG.md`](../CHANGELOG.md) follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/):
+
+- **`## [Unreleased]`** is always first. Add user-facing notes here while work is in progress.
+- On release, **move** `[Unreleased]` entries into a new **`## [X.Y.Z] - YYYY-MM-DD`** section (ISO date). Leave `[Unreleased]` empty or with only upcoming work — do not leave shipped items under Unreleased.
+- Use subsections **Added**, **Changed**, **Deprecated**, **Removed**, **Fixed**, **Security** as needed. Omit empty subsections.
+- Write for humans: one clear line per change. Do not paste commit logs or duplicate bullets.
+- Update the compare links at the bottom of the file (`[Unreleased]`, `[X.Y.Z]`, …) to point at `konflux-ci/pulp-tool`.
+
+Release Please may append conventional-commit bullets when opening the release PR. Before merging, **curate** that section into the format above (dedupe, drop commit hashes, fix org links).
+
 ## Automated release (recommended)
 
 1. Merge feature PRs to **`main`** with conventional commit prefixes where possible (`feat:`, `fix:`, …). Continue adding user-facing notes under **`[Unreleased]`** in [`CHANGELOG.md`](../CHANGELOG.md) when helpful — Release Please consolidates them into the release PR.
-2. On **`main`**, run **`make release-please`**. Review the Release PR on GitHub (title like `chore: release X.Y.Z`).
+2. On **`main`**, run **`make release-please`**. Review the Release PR on GitHub (title like `chore: release X.Y.Z`); **curate** the generated `CHANGELOG.md` section per [Changelog format](#changelog-format) before merge.
 3. **Review the Release PR** — confirm CI is green (`make test`, `make pre-commit-ci`, or `make test-diff-coverage` after `git fetch origin`).
 4. **Merge the Release PR** on GitHub — Konflux rebuilds **`pulp-tool-container`** on `main` (then your RPA promotes the image).
 5. Run **`make release-publish`** locally (creates tag **`vX.Y.Z`** on `main` from [`.release-please-manifest.json`](../.release-please-manifest.json) **after** the release PR merge is pulled — the script syncs from `RELEASE_GIT_REMOTE` before reading the manifest).

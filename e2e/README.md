@@ -22,14 +22,16 @@ The e2e test suite follows a four-phase lifecycle:
 - Builds each package for 3 architectures: `x86_64`, `aarch64`, `noarch`
 - Outputs 15 total RPM files organized by package number and architecture
 - Each RPM contains a minimal test executable at `/user/bin/test.<N>-bin`
+- Builds one **large** RPM (`test.large`) under `large/x86_64/` for multipart upload timeout coverage (default **301 MiB** incompressible payload; RPM on disk **> 300 MiB**)
 
 **Usage:**
 ```bash
-./pre-test.py --build-dir <directory>
+./pre-test.py --build-dir <directory> [--large-rpm-size-mb 301]
 ```
 
 **Arguments:**
 - `--build-dir`: Directory where test packages will be built (default: current directory)
+- `--large-rpm-size-mb`: Incompressible payload size in MiB (default: 301; built RPM must exceed 300 MiB on disk; use `0` to skip)
 
 **Output structure:**
 ```
@@ -43,6 +45,8 @@ The e2e test suite follows a four-phase lifecycle:
     │   └── ...
     └── 4/
         └── ...
+    └── large/
+        └── x86_64/test.large-1.0.0-1.x86_64.rpm
 ```
 
 **Dependencies:** `rpm-rs<0.25`
@@ -138,9 +142,10 @@ This is an **input file** (not output) containing references to pre-existing tes
 - `test-repo` — `duck-0.6-1.noarch.rpm`
 - `test-repo-json` — 2 RPMs from JSON input
 - `test-upload-results/rpms` — single noarch RPM
+- `test-build-large/rpms` — large x86_64 RPM (`test.large-1.0.0-1.x86_64.rpm`)
 
 **File repositories:**
-- `test-build-123/artifacts`, `test-build-789/artifacts`, `test-upload-results/artifacts` — `pulp_results.json`
+- `test-build-123/artifacts`, `test-build-789/artifacts`, `test-upload-results/artifacts`, `test-build-large/artifacts` — `pulp_results.json`
 - `test-build-456/sbom` — `sbom.json`
 - `test-build-files/artifacts` — `pulp_results.json`, `test.md`
 - `test-build-files/logs` — `x86_64/build.log`
@@ -329,6 +334,7 @@ The test suite validates:
 - ✅ Current `pulp-tool` commands (`upload`, `upload-files`, `pull`, `search-by`, `create-repository`)
 - ✅ Global options (`--config`, `--build-id`, `--namespace`, `--debug`)
 - ✅ RPM and file upload workflows (directories, architectures, results JSON)
+- ✅ Large RPM upload against a real Pulp server (**> 300 MiB** on disk; checksum verified via `search-by`)
 - ✅ Artifact filtering with `search-by --results-json`
 - ✅ Result file generation (`pulp_results.json` output)
 - ✅ Error handling and validation
