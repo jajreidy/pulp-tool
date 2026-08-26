@@ -57,6 +57,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **E2e large RPM upload:** `pre-test.py` builds a configurable large RPM (`--large-rpm-size-mb`, default 25); e2e suite uploads it to Pulp and verifies discoverability via `search-by --checksums`
+- **Upload content timeout:** multipart RPM and file uploads use a 30-minute HTTP timeout (`UPLOAD_CONTENT_TIMEOUT`) instead of the 120-second default API timeout
 - **Release automation (maintainers):** local [Release Please](https://github.com/googleapis/release-please) via [`scripts/release-please.sh`](scripts/release-please.sh) — `make release-please` opens/updates the release PR (`gh auth login` or token); `make release-publish` pushes a `v*` tag from [`.release-please-manifest.json`](.release-please-manifest.json) with git only (triggers [`.github/workflows/release.yml`](.github/workflows/release.yml) → PyPI trusted publishing and GitHub Release notes from `CHANGELOG.md`); config in [`release-please-config.json`](release-please-config.json); documented in [`docs/releasing.md`](docs/releasing.md). Merging the release PR rebuilds the Konflux container on `main` (no on-tag image PipelineRun).
 - **E2e reusable test image:** [`Dockerfile.e2e`](Dockerfile.e2e) pre-installs `python3`, `gcc`, `pulp-cli`, and `rpm-rs`; [`pulp-e2e-testing`](.tekton/pipelines/pulp-e2e-testing.yaml) builds it once per PipelineRun via `task-buildah` and reuses it in all e2e Tekton steps; `make test-e2e-container` for local smoke-test
 - **E2e concurrent run isolation:** Tekton sets `E2E_RUN_ID` from `$(context.pipelineRun.uid)`; build-scoped Pulp resource names are suffixed via [`e2e/names.py`](e2e/names.py); per-arch `--target-arch-repo` repos remain global names and may contend when runs overlap
@@ -109,6 +111,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Support for RPM, log, and SBOM file management
 - OAuth2 authentication with automatic token refresh
 - Comprehensive test suite with 85%+ coverage
+
+### Fixed
+- **Upload:** large RPM uploads no longer fail with `httpx.WriteTimeout` when transfer exceeds the previous 120-second write limit (e.g. large debuginfo packages in sign-and-verify pipelines)
 
 ### Changed
 - **Lint toolchain:** replace Black and Flake8 with Ruff (lint + format, S security ruleset); expand CI lint workflow (`python-diff-lint.yml`) with yamllint, ShellCheck, hadolint, codespell, Checkton, and **`make test-diff-coverage`** on pull requests; consolidate pytest options in `pyproject.toml` (`Makefile`, `scripts/check-all.sh`, `scripts/run-tests.sh` defer to `[tool.pytest.ini_options]`); update `CONTRIBUTING.md`, `README.md`, and troubleshooting skill

@@ -80,7 +80,9 @@ class FileContentMixin(BaseResourceMixin):
 
             with open(file_path, "rb") as fp:
                 files = {"file": fp}
-                response = self.session.post(url, data=data, files=files, timeout=self.timeout, **self.request_params)
+                response = self.session.post(
+                    url, data=data, files=files, timeout=self.upload_content_timeout, **self.request_params
+                )
         else:
             # In-memory content
             if not filename:
@@ -90,7 +92,9 @@ class FileContentMixin(BaseResourceMixin):
             data["relative_path"] = self._build_file_relative_path(filename, arch)
 
             files = {"file": (filename, content, "application/json")}  # type: ignore[dict-item]
-            response = self.session.post(url, data=data, files=files, timeout=self.timeout, **self.request_params)
+            response = self.session.post(
+                url, data=data, files=files, timeout=self.upload_content_timeout, **self.request_params
+            )
 
         self._check_response(response, "create file content")  # type: ignore[attr-defined]
         return response
