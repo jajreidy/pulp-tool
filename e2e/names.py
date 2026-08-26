@@ -6,12 +6,15 @@ import os
 import re
 from typing import Final
 
+from large_upload import LARGE_RPM_FILENAME
+
 # Build IDs created by the e2e upload/upload-files tests (without run suffix).
 BUILD_ID_UPLOAD_MINIMAL: Final = "test-build-123"
 BUILD_ID_UPLOAD_FULL: Final = "test-build-456"
 BUILD_ID_UPLOAD_RESULTS: Final = "test-upload-results"
 BUILD_ID_UPLOAD_TARGET_ARCH: Final = "test-build-789"
 BUILD_ID_UPLOAD_FILES: Final = "test-build-files"
+BUILD_ID_UPLOAD_LARGE: Final = "test-build-large"
 
 # Standalone repositories from create-repository tests.
 REPO_CREATE_REPOSITORY: Final = "test-repo"
@@ -41,6 +44,7 @@ _RPM_REPOS_BASE: Final = {
     REPO_CREATE_REPOSITORY: ["duck-0.6-1.noarch.rpm"],
     REPO_CREATE_REPOSITORY_JSON: ["duck-0.8-1.noarch.rpm", "giraffe-0.67-2.noarch.rpm"],
     f"{BUILD_ID_UPLOAD_RESULTS}/rpms": ["test.2-1.0.0-1.noarch.rpm"],
+    f"{BUILD_ID_UPLOAD_LARGE}/rpms": [LARGE_RPM_FILENAME],
 }
 
 _FILE_REPOS_BASE: Final = {
@@ -51,6 +55,7 @@ _FILE_REPOS_BASE: Final = {
     f"{BUILD_ID_UPLOAD_FULL}/sbom": ["sbom.json"],
     f"{BUILD_ID_UPLOAD_TARGET_ARCH}/artifacts": ["pulp_results.json"],
     f"{BUILD_ID_UPLOAD_RESULTS}/artifacts": ["pulp_results.json"],
+    f"{BUILD_ID_UPLOAD_LARGE}/artifacts": ["pulp_results.json"],
 }
 
 

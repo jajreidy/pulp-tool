@@ -5,6 +5,8 @@ import argparse
 import sys
 from pathlib import Path
 
+from large_rpm import build_large_rpm
+from large_upload import DEFAULT_LARGE_RPM_PAYLOAD_MB
 from rpm_rs import BuildConfig, CompressionType, FileOptions, PackageBuilder
 
 PACKAGE_COUNT = 5
@@ -47,7 +49,7 @@ def build_rpm(test_pkgs_dir: Path, pkg_num: str, arch: str) -> bool:
         return False
 
 
-def build_test_packages(build_dir: Path) -> int:
+def build_test_packages(build_dir: Path, *, large_rpm_payload_mb: int = DEFAULT_LARGE_RPM_PAYLOAD_MB) -> int:
     """Build all test RPM packages.
 
     Args:
@@ -78,6 +80,11 @@ def build_test_packages(build_dir: Path) -> int:
 
     print(f"\nSummary: {built}/{total_packages} packages built successfully")
 
+    if large_rpm_payload_mb <= 0:
+        print("Skipping large RPM build (--large-rpm-size-mb <= 0)")
+    elif not build_large_rpm(test_pkgs_dir, large_rpm_payload_mb):
+        failures += 1
+
     return 1 if failures > 0 else 0
 
 
@@ -93,13 +100,22 @@ def parse_args() -> argparse.Namespace:
         default=Path("."),
         help="Directory where test packages will be built (default: current directory)",
     )
+    parser.add_argument(
+        "--large-rpm-size-mb",
+        type=int,
+        default=DEFAULT_LARGE_RPM_PAYLOAD_MB,
+        help=(
+            "Incompressible payload size in MiB for the large upload test RPM; built RPM must exceed "
+            f"{DEFAULT_LARGE_RPM_PAYLOAD_MB - 1} MiB on disk (default: {DEFAULT_LARGE_RPM_PAYLOAD_MB}; use 0 to skip)"
+        ),
+    )
     return parser.parse_args()
 
 
 def main() -> int:
     """Main entry point."""
     args = parse_args()
-    return build_test_packages(args.build_dir)
+    return build_test_packages(args.build_dir, large_rpm_payload_mb=args.large_rpm_size_mb)
 
 
 if __name__ == "__main__":

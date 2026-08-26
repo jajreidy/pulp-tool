@@ -12,6 +12,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 import tomllib
 from pathlib import Path
 from typing import Dict, List
@@ -19,9 +20,11 @@ from typing import Dict, List
 from names import (
     BUILD_ID_UPLOAD_FILES,
     BUILD_ID_UPLOAD_FULL,
+    BUILD_ID_UPLOAD_LARGE,
     BUILD_ID_UPLOAD_MINIMAL,
     BUILD_ID_UPLOAD_RESULTS,
     BUILD_ID_UPLOAD_TARGET_ARCH,
+    LARGE_RPM_FILENAME,
     BASE_PATH_CREATE_REPOSITORY,
     BASE_PATH_CREATE_REPOSITORY_JSON,
     REPO_CREATE_REPOSITORY,
@@ -29,6 +32,15 @@ from names import (
     resolve_run_id,
     scoped_base_path,
     scoped_build_id,
+)
+
+from large_upload import (
+    LARGE_RPM_ARCH,
+    LARGE_RPM_FILENAME,
+    LARGE_RPM_PACKAGE,
+    LARGE_RPM_RELEASE,
+    LARGE_RPM_VERSION,
+    LARGE_UPLOAD_MIN_SIZE_BYTES,
 )
 
 
@@ -154,6 +166,53 @@ class E2ETestSuite:
             print(f"Actual output: {output[:500]}")
             self.stats.failed += 1
             return False
+
+    def assert_search_by_package(
+        self,
+        output: str,
+        *,
+        name: str,
+        version: str,
+        release: str,
+        arch: str,
+        checksum: str | None = None,
+        test_name: str,
+    ) -> bool:
+        """Assert search-by JSON output includes a package with the given NVRA (and optional checksum)."""
+        try:
+            packages = json.loads(output)
+        except json.JSONDecodeError:
+            self.log_error(f"{test_name} (output is not valid JSON)")
+            print(f"Actual output: {output[:500]}")
+            self.stats.failed += 1
+            return False
+
+        if not isinstance(packages, list):
+            self.log_error(f"{test_name} (expected JSON array)")
+            print(f"Actual output: {output[:500]}")
+            self.stats.failed += 1
+            return False
+
+        for pkg in packages:
+            if not isinstance(pkg, dict):
+                continue
+            if (
+                pkg.get("name") == name
+                and pkg.get("version") == version
+                and pkg.get("release") == release
+                and pkg.get("arch") == arch
+            ):
+                if checksum and pkg.get("pkgId", "").lower() != checksum.lower():
+                    continue
+                nvra = f"{name}-{version}-{release}.{arch}"
+                self.log_success(f"{test_name} (found {nvra})")
+                self.stats.passed += 1
+                return True
+
+        self.log_error(f"{test_name} (no matching package in search-by JSON)")
+        print(f"Actual output: {output[:500]}")
+        self.stats.failed += 1
+        return False
 
     def assert_file_exists(self, filepath: Path, test_name: str) -> bool:
         """Assert file exists"""
@@ -543,6 +602,75 @@ class E2ETestSuite:
         self.assert_exit_code(0, exit_code, "Upload with target-arch-repo completes successfully")
         if exit_code > 0:
             self.log_error(output)
+
+    def test_upload_large_rpm(self):
+        """Upload a large RPM to Pulp and verify it is discoverable by checksum."""
+        if not self.real_server:
+            self.skip_test("upload command (large RPM)", "DRY RUN")
+            return
+
+        large_rpm_dir = self.rpm_dir / "large"
+        large_rpm_path = large_rpm_dir / "x86_64" / LARGE_RPM_FILENAME
+        if not large_rpm_path.is_file():
+            self.skip_test("upload command (large RPM)", f"large RPM not found at {large_rpm_path}")
+            return
+
+        on_disk_bytes = large_rpm_path.stat().st_size
+        if on_disk_bytes < LARGE_UPLOAD_MIN_SIZE_BYTES:
+            self.stats.failed += 1
+            self.log_error(
+                f"Large RPM is {on_disk_bytes / (1024 * 1024):.1f} MiB on disk; "
+                f"expected at least {LARGE_UPLOAD_MIN_SIZE_BYTES / (1024 * 1024):.0f} MiB"
+            )
+            return
+
+        with open(large_rpm_path, "rb") as rpm_file:
+            rpm_sha256 = hashlib.file_digest(rpm_file, "sha256").hexdigest()
+        rpm_size_mb = large_rpm_path.stat().st_size / (1024 * 1024)
+        self.run_test(f"pulp-tool upload (large RPM, {rpm_size_mb:.1f} MiB on disk) - {large_rpm_path}")
+
+        cmd = [
+            "pulp-tool",
+            "--config",
+            str(self.config_file),
+            "--build-id",
+            self.bid(BUILD_ID_UPLOAD_LARGE),
+            "--namespace",
+            self.namespace,
+            "upload",
+            "--rpm-path",
+            str(large_rpm_dir),
+        ]
+        started = time.monotonic()
+        exit_code, output = self.run_command(cmd)
+        elapsed_s = time.monotonic() - started
+        self.log_info(f"Large RPM upload elapsed: {elapsed_s:.1f}s")
+        if not self.assert_exit_code(0, exit_code, "Large RPM upload completes successfully"):
+            self.log_error(output)
+            return
+
+        self.run_test("pulp-tool search-by confirms large RPM upload by checksum")
+        search_cmd = [
+            "pulp-tool",
+            "--config",
+            str(self.config_file),
+            "search-by",
+            "--checksums",
+            rpm_sha256,
+        ]
+        exit_code, output = self.run_command(search_cmd)
+        if not self.assert_exit_code(0, exit_code, "Search-by checksum for large RPM"):
+            self.log_error(output)
+            return
+        self.assert_search_by_package(
+            output,
+            name=LARGE_RPM_PACKAGE,
+            version=LARGE_RPM_VERSION,
+            release=LARGE_RPM_RELEASE,
+            arch=LARGE_RPM_ARCH,
+            checksum=rpm_sha256,
+            test_name="Large RPM discoverable in Pulp by checksum",
+        )
 
     # Test: upload-files command
     def test_upload_files(self):
@@ -987,6 +1115,7 @@ class E2ETestSuite:
         self.test_upload_full()
         self.test_upload_results_json()
         self.test_upload_target_arch_repo()
+        self.test_upload_large_rpm()
 
         # Upload-files command tests
         self.test_upload_files()

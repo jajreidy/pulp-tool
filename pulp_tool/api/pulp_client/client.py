@@ -772,7 +772,7 @@ class PulpClient(
                     logging.debug("  Labels: %s", labels)
 
                     response = self.session.post(
-                        url, data=data, files=files, timeout=self.timeout, **self.request_params
+                        url, data=data, files=files, timeout=self.upload_content_timeout, **self.request_params
                     )
             else:
                 # For non-RPM files, use create_file_content from FileContentMixin

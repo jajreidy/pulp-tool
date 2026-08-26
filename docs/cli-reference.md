@@ -161,7 +161,7 @@ For development outside Konflux, create `~/.config/pulp/cli.toml` yourself or ex
 
 **Environment:** `SSL_CERT_FILE`, `SSL_CERT_DIR`, `HTTP_PROXY`, `HTTPS_PROXY`, `NO_PROXY`, and `PULP_TOOL_CORRELATION_ID` are supported. Correlation ID resolution: `cli.correlation_id` in config > `PULP_TOOL_CORRELATION_ID` > `{namespace}/{build_id}` from global CLI options > `build_id` alone.
 
-**Configuration (`[cli]`):** `base_url`, `api_root`, `domain`, OAuth (`client_id`, `client_secret`) or Basic Auth (`username`, `password`), optional client cert (`cert`, `key`), and optional `correlation_id`. SSL verification is always enabled; pulp-tool does not read pulp-cli keys such as `verify_ssl`, `dry_run`, or `timeout` from config today.
+**Configuration (`[cli]`):** `base_url`, `api_root`, `domain`, OAuth (`client_id`, `client_secret`) or Basic Auth (`username`, `password`), optional client cert (`cert`, `key`), and optional `correlation_id`. SSL verification is always enabled; pulp-tool does not read pulp-cli keys such as `verify_ssl`, `dry_run`, or `timeout` from config today. Built-in HTTP timeouts: 120 seconds for most API calls; 30 minutes for multipart content uploads (RPMs, logs, SBOM files).
 
 **Verbosity:** `-d` INFO, `-dd` DEBUG, `-ddd` HTTP logs. Default: WARNING.
 

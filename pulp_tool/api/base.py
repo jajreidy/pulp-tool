@@ -39,6 +39,13 @@ class BaseApiMixin(Protocol):
 class BaseResourceMixin:
     """Base mixin providing common HTTP methods and response parsing for Pulp API resources."""
 
+    @property
+    def upload_content_timeout(self) -> float:
+        """Timeout in seconds for multipart content uploads (large RPMs and files)."""
+        from ..utils.constants import UPLOAD_CONTENT_TIMEOUT
+
+        return UPLOAD_CONTENT_TIMEOUT
+
     def _parse_response(
         self, response: httpx.Response, model_class: type[T], operation: str, *, check_success: bool = True
     ) -> T:
