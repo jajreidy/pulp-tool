@@ -1,7 +1,7 @@
 # E2e test runner image for Konflux pulp-e2e-testing pipeline.
 # Pre-installs dependencies shared across all e2e Tekton steps.
 # Base image: UBI 10 minimal (system python3 is 3.12)
-FROM registry.access.redhat.com/ubi10/ubi-minimal:10.2-1787204459
+FROM registry.access.redhat.com/ubi10/ubi-minimal:10.2-1787688243
 
 RUN microdnf update -y && \
     microdnf install -y \
