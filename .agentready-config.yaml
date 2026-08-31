@@ -8,7 +8,6 @@
 
 excluded_attributes:
   - openapi_specs
-  - cicd_pipeline_visibility
 
 # Reports default to .agentready/ (gitignored). Override if needed:
 # output_dir: ./.agentready
