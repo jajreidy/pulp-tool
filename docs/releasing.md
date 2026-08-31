@@ -144,10 +144,10 @@ Build metadata in tags (e.g. **`v1.2.3+build.1`**) is accepted by the workflow; 
 - **`## [Unreleased]`** is always first. Add user-facing notes here while work is in progress.
 - On release, **move** `[Unreleased]` entries into a new **`## [X.Y.Z] - YYYY-MM-DD`** section (ISO date). Leave `[Unreleased]` empty or with only upcoming work — do not leave shipped items under Unreleased.
 - Use subsections **Added**, **Changed**, **Deprecated**, **Removed**, **Fixed**, **Security** as needed. Omit empty subsections.
-- Write for humans: one clear line per change. Do not paste commit logs or duplicate bullets.
+- Write for humans: one clear line per change. End each line with a link to the implementing commit on `konflux-ci/pulp-tool`: `([abc1234](https://github.com/konflux-ci/pulp-tool/commit/abc1234))`. Use multiple links when a bullet spans more than one commit.
 - Update the compare links at the bottom of the file (`[Unreleased]`, `[X.Y.Z]`, …) to point at `konflux-ci/pulp-tool`.
 
-Release Please may append conventional-commit bullets when opening the release PR. Before merging, **curate** that section into the format above (dedupe, drop commit hashes, fix org links).
+Release Please appends conventional-commit bullets with commit links when opening the release PR. Before merging, **curate** that section into the format above: merge duplicate bullets, keep human-readable text, **preserve commit links**, and fix org URLs to `konflux-ci/pulp-tool`.
 
 ## Automated release (recommended)
 
