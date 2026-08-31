@@ -30,8 +30,7 @@ Point your agent at `skills/<name>/SKILL.md` or rely on auto-discovery via the s
 | [changing-pulp-upload](changing-pulp-upload/SKILL.md) | Changing `upload`, CLI flags, SBOM, artifacts, Tekton paths that *run* pulp-tool |
 | [changing-pulp-container](changing-pulp-container/SKILL.md) | Changing `Dockerfile`, `.tekton/` PipelineRuns, or Konflux image build ([reference.md](changing-pulp-container/reference.md) — remote pipeline tasks) |
 | [drafting-pulp-tool-pr](drafting-pulp-tool-pr/SKILL.md) | User confirms paste-ready PR body, commit message, or CHANGELOG; writes `pr-description.md` |
-| [fixing-diff-cover-failures](fixing-diff-cover-failures/SKILL.md) | `make test-diff-coverage` fails or CI diff coverage below 100% |
-| [troubleshooting-pulp-tool-ci](troubleshooting-pulp-tool-ci/SKILL.md) | Pre-commit or lint loops failing; local vs CI mismatch (Ruff, yamllint, hadolint, checkton, pip-audit) |
+| [troubleshooting-pulp-tool-ci](troubleshooting-pulp-tool-ci/SKILL.md) | Pre-commit, lint, or diff-cover failures; local vs CI mismatch |
 
 Index, lint quick-ref, and CI parity table: [`.cursor/rules/llm-development-guidelines-deep.mdc`](../.cursor/rules/llm-development-guidelines-deep.mdc).
 

@@ -57,7 +57,7 @@ Signed-off-by: <human author — contributor GitHub/git identity>
 
 **Where:** `## [Unreleased]` at top of `CHANGELOG.md`.
 
-**Format:** [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) subsections as needed: Added, Changed, Deprecated, Removed, Fixed, Security. One line per change.
+**Format:** [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) subsections as needed: Added, Changed, Deprecated, Removed, Fixed, Security. One line per change. End each line with `([shortsha](https://github.com/konflux-ci/pulp-tool/commit/shortsha))` for the implementing commit(s).
 
 **Skip** for trivial typo-only or internal refactors with no user-visible effect.
 
