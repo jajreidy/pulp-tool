@@ -16,7 +16,7 @@ REPOSITORY_TYPES = ["rpms", "logs", "sbom", "artifacts"]
 SIGNED_REPOSITORY_TYPES = ["rpms-signed"]
 
 # Supported CPU architectures (including source RPMs as a logical 'src' arch)
-SUPPORTED_ARCHITECTURES = ["x86_64", "i686", "aarch64", "s390x", "ppc64le", "noarch", "src"]
+SUPPORTED_ARCHITECTURES = ["x86_64", "i686", "aarch64", "s390x", "ppc64le", "noarch", "src", "ppc64"]
 
 # Content types for filtering
 CONTENT_TYPES = ["rpm", "log", "sbom"]
