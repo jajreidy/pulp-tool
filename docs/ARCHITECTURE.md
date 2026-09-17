@@ -65,7 +65,7 @@ flowchart TB
 | Pull | `pulp_tool/pull/` | Download / transfer helpers |
 | Models | `pulp_tool/models/` | Pydantic: context, Pulp DTOs, results |
 | Utils | `pulp_tool/utils/` | Validation, logging, RPM helpers, session retries |
-| Container | `Dockerfile`, `.tekton/pulp-tool-container-build-*.yaml` | Konflux Tekton → upstream `single-arch-build-pipeline` (`buildah-oci-ta`); **changing-pulp-container** skill + [reference.md](../skills/changing-pulp-container/reference.md) |
+| Container | `Dockerfile`, `.tekton/pulp-tool-container-build-*.yaml` | Konflux Tekton → upstream `docker-build-oci-ta` (`buildah-oci-ta`); **changing-pulp-container** skill + [reference.md](../skills/changing-pulp-container/reference.md) |
 | Tests | `tests/` (see [tests/README.md](../tests/README.md)), `tests/support/` | Fixtures, TLS helpers |
 
 **Invariant:** `UploadService` delegates to **`PulpHelper`**; do not maintain a second upload implementation.

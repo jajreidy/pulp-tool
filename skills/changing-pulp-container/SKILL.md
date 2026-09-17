@@ -12,7 +12,7 @@ description: >-
 
 The **`pulp-tool-container`** image is built and published by **Konflux Tekton** (Pipelines as Code). GitHub Actions runs unit tests and lint only; it does **not** build the container.
 
-**In-repo:** [Dockerfile](../../Dockerfile), [`.tekton/`](../../.tekton/). **Remote pipeline:** [single-arch-build-pipeline.yaml](https://github.com/konflux-ci/olm-operator-konflux-sample/blob/main/.tekton/single-arch-build-pipeline.yaml) (git resolver @ `main`). Full task chain: [reference.md](reference.md).
+**In-repo:** [Dockerfile](../../Dockerfile), [`.tekton/`](../../.tekton/). **Remote pipeline:** [docker-build-oci-ta.yaml](https://github.com/konflux-ci/container-build-catalog/blob/main/pipelines/docker-build-oci-ta/docker-build-oci-ta.yaml) (git resolver @ `main`). Full task chain: [reference.md](reference.md).
 
 **Downstream consumers** of the published image: **changing-pulp-upload** + [CLAUDE.md](../../CLAUDE.md).
 
@@ -31,15 +31,15 @@ Shared: namespace `artifact-storage-tenant`, app/component `tooling` / `pulp-too
 2. **`git-clone-oci-ta`** — checkout repo at `revision`.
 3. **`prefetch-dependencies-oci-ta`** — Cachi2 (empty for pulp-tool; no prefetch config in-repo).
 4. **`buildah-oci-ta` (`build-container`)** — **Buildah builds [Dockerfile](../../Dockerfile) at repo root (`path-context: .`) and pushes `output-image`.** Dockerfile `RUN` steps need network (`hermetic` defaults `false`).
-5. **Post-build checks** (unless `skip-checks`) — deprecated base image, Clair, cert preflight, Snyk SAST, ClamAV, SBOM JSON.
-6. **Finally** — `show-sbom`, `show-summary`.
+5. **`build-image-index`** — pass-through when `build-image-index=false`; pipeline `IMAGE_URL` / `IMAGE_DIGEST` results come from this task.
+6. **Post-build checks** (unless `skip-checks`) — deprecated base image, Clair, cert preflight, Snyk SAST, ClamAV, shell/unicode SAST, RPM signature scan, apply-tags, push-dockerfile.
 
 **Debug tip:** Dockerfile errors appear in Konflux **`build-container`** logs, not GitHub Actions.
 
 ## Workflow
 
 1. Read this skill, [Dockerfile](../../Dockerfile), and [reference.md](reference.md).
-2. Re-open `.tekton/pulp-tool-container-build-*.yaml` and upstream **single-arch-build-pipeline** on GitHub (bundles evolve).
+2. Re-open `.tekton/pulp-tool-container-build-*.yaml` and upstream **docker-build-oci-ta** on GitHub (bundles evolve).
 3. Edit `Dockerfile` / `pyproject.toml` install deps as needed.
 4. Edit `.tekton/` for publish paths/triggers only — do not vendor the remote pipeline in-repo.
 5. Do **not** add GitHub Actions `docker build` as a merge gate.
@@ -72,7 +72,7 @@ Shared: namespace `artifact-storage-tenant`, app/component `tooling` / `pulp-too
 |---------|--------|
 | Image recipe | `Dockerfile` |
 | Triggers / Quay tags | `.tekton/pulp-tool-container-build-*.yaml` |
-| Build implementation | Upstream `single-arch-build-pipeline` → `buildah-oci-ta` |
+| Build implementation | Upstream `docker-build-oci-ta` → `buildah-oci-ta` |
 | Task details | [reference.md](reference.md) |
 | Local smoke test | `make test-container` |
 | Runtime usage | **changing-pulp-upload** + [CLAUDE.md](../../CLAUDE.md) |
