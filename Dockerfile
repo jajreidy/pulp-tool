@@ -1,5 +1,34 @@
 # Dockerfile for pulp-tool
-# Base image: UBI 10 minimal (system python3 is 3.12)
+# Base image: UBI 10 minimal (Python 3.12 in builder/runtime stages)
+#
+# Multi-stage layout: builder installs deps (network); runtime copies /app/install
+# only so the final image has no uv/pip fetch steps and fewer microdnf packages.
+
+FROM registry.access.redhat.com/ubi10/ubi-minimal:10.2-1788940913 AS builder
+
+ARG VERSION=1.0.0
+
+# Skip microdnf update — metadata refresh is a common Konflux failure point.
+RUN microdnf install -y \
+        python3 \
+        python3-pip && \
+    microdnf clean all && \
+    pip3 install --no-cache-dir --root-user-action=ignore uv
+
+WORKDIR /app
+
+# Runtime install from uv.lock (regenerate with: make lock).
+COPY pyproject.toml uv.lock README.md MANIFEST.in VERSION ./
+COPY pulp_tool/ ./pulp_tool/
+
+ENV UV_SYSTEM_PYTHON=1
+RUN uv export --frozen --no-dev --no-emit-project -o /tmp/requirements.txt && \
+    pip3 install --no-cache-dir --root-user-action=ignore \
+        --prefix=/app/install -r /tmp/requirements.txt && \
+    SETUPTOOLS_SCM_PRETEND_VERSION="${VERSION}" pip3 install --no-cache-dir --root-user-action=ignore \
+        --prefix=/app/install --no-deps . && \
+    rm -rf /root/.cache /root/.local /tmp/requirements.txt
+
 FROM registry.access.redhat.com/ubi10/ubi-minimal:10.2-1788940913
 
 ARG VERSION=1.0.0
@@ -20,30 +49,19 @@ LABEL name="pulp-tool-container" \
 # OpenShift preflight check requires licensing files under /licenses
 COPY LICENSE /licenses/LICENSE
 
-RUN microdnf update -y && \
-    microdnf install -y \
+RUN microdnf install -y \
         python3 \
-        python3-pip \
-        jq \
         shadow-utils && \
-    microdnf clean all && \
-    pip3 install --no-cache-dir --root-user-action=ignore uv
+    microdnf clean all
 
-WORKDIR /app
+COPY --from=builder /app/install /app/install
 
-# Runtime install from uv.lock (regenerate with: make lock).
-COPY pyproject.toml uv.lock README.md MANIFEST.in VERSION ./
-COPY pulp_tool/ ./pulp_tool/
-
-ENV UV_SYSTEM_PYTHON=1
-RUN uv export --frozen --no-dev --no-emit-project -o /tmp/requirements.txt && \
-    pip3 install --no-cache-dir --root-user-action=ignore -r /tmp/requirements.txt && \
-    SETUPTOOLS_SCM_PRETEND_VERSION="${VERSION}" pip3 install --no-cache-dir --root-user-action=ignore --no-deps . && \
-    rm -rf /root/.cache /root/.local /tmp/requirements.txt
+ENV PATH="/app/install/bin:${PATH}" \
+    PYTHONPATH="/app/install/lib64/python3.12/site-packages:/app/install/lib/python3.12/site-packages"
 
 RUN useradd -lms /bin/bash -u 1001 -g 0 pulp-tool && \
-    chown -R 1001:0 /app && \
-    chmod -R g=u /app
+    chown -R 1001:0 /app/install && \
+    chmod -R g=u /app/install
 
 USER 1001
 

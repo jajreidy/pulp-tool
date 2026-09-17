@@ -27,6 +27,8 @@ spec:
     value: quay.io/redhat-user-workloads/artifact-storage-tenant/tooling/pulp-tool-container:on-pr-{{revision}}
   - name: image-expires-after
     value: 5d
+  - name: build-source-image
+    value: "true"
   pipelineRef:
     resolver: git
     params:

@@ -13,12 +13,12 @@ pulp-tool **does not** vendor this pipeline; it is fetched via `pipelineRef.reso
 | `hermetic` | `false` | Network allowed during image build (`dnf`, `pip`) |
 | `prefetch-input` | `''` | No Hermeto/Cachi2 prefetch config in-repo |
 | `skip-checks` | `false` | Post-build scans run on PR and main |
-| `build-source-image` | `false` | Source image not built |
+| `build-source-image` | `false` | **`true`** in pulp-tool PipelineRuns (release `push-snapshot` publishes `.src` source container) |
 | `build-image-index` | `false` | Index task runs but passes through single image |
 | `buildah-format` | `docker` | Docker-format image mediaType |
 | `image-expires-after` | `''` | PR PipelineRun sets `5d` |
 
-pulp-tool PipelineRuns pass: `git-url`, `revision`, `output-image`; PR also passes `image-expires-after`.
+pulp-tool PipelineRuns pass: `git-url`, `revision`, `output-image`, **`build-source-image: "true"`**; PR also passes `image-expires-after`.
 
 ## Task flow
 
@@ -28,8 +28,8 @@ flowchart TD
   clone --> prefetch[prefetch-dependencies-oci-ta]
   prefetch --> build[buildah-oci-ta build-container]
   build --> index[build-image-index]
-  index --> checks[deprecated / clair / preflight / snyk / clamav / sast / rpm scan]
-  build --> sourceImg[source-build-oci-ta optional]
+  index --> sourceImg[source-build-oci-ta]
+  sourceImg --> checks[deprecated / clair / preflight / snyk / clamav / sast / rpm scan]
 ```
 
 ### Tasks (in order)
@@ -41,7 +41,7 @@ flowchart TD
 | `prefetch-dependencies` | `prefetch-dependencies-oci-ta` | Hermeto/Cachi2 prefetch (no-op with empty `prefetch-input`) |
 | **`build-container`** | **`buildah-oci-ta`** | **Buildah build of `DOCKERFILE` in `CONTEXT`; push `output-image`** |
 | `build-image-index` | `build-image-index` | Image index / pass-through; pipeline results source |
-| `build-source-image` | `source-build-oci-ta` | Skipped (`build-source-image=false`) |
+| `build-source-image` | `source-build-oci-ta` | **Enabled** — pushes `{digest}.src` source container for release |
 | `deprecated-base-image-check` | `deprecated-image-check` | Base image deprecation |
 | `clair-scan` | `clair-scan` | Vulnerability scan |
 | `ecosystem-cert-preflight-checks` | `ecosystem-cert-preflight-checks` | Red Hat cert preflight |
@@ -65,7 +65,7 @@ Key params wired by the pipeline:
 - `HERMETIC` → `false` (allows `dnf`/`pip` network in Dockerfile)
 - `SOURCE_ARTIFACT` / `CACHI2_ARTIFACT` from clone + prefetch tasks
 
-A failing `pip install` or bad base image digest typically fails **`build-container`**, not GitHub Actions.
+A failing `pip install` or bad base image digest typically fails **`build-container`** in the **builder** stage, not GitHub Actions. The runtime stage only runs a minimal `microdnf install` (no `update`) and copies `/app/install` from the builder.
 
 ## Pipeline results
 
@@ -79,4 +79,5 @@ A failing `pip install` or bad base image digest typically fails **`build-contai
 | PAC trigger | `push` && `main` | `pull_request` && `main` |
 | `cancel-in-progress` | `false` | `true` |
 | `output-image` tag | `:latest` | `:on-pr-{{revision}}` |
+| `build-source-image` | `"true"` | `"true"` |
 | `image-expires-after` | (pipeline default empty) | `5d` |

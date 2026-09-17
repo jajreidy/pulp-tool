@@ -23,6 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Release `push-snapshot` failure resolving `{digest}.src` source container: PipelineRuns set `build-source-image=true` so `source-build-oci-ta` publishes the source image expected when release mapping defaults `pushSourceContainer` to true
 - `upload --signed-by` now stores RPMs in the `rpms-signed` repository (matching `pulp_results.json` distribution URLs and CLI docs); previously RPMs were added to `rpms` while URLs pointed at `rpms-signed`
 - Large RPM uploads no longer fail with `httpx.WriteTimeout` at the previous 120-second write limit (e.g. large debuginfo packages in sign-and-verify pipelines) ([b4cb414](https://github.com/konflux-ci/pulp-tool/commit/b4cb414))
 
