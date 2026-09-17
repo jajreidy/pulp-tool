@@ -27,7 +27,7 @@ Platform: [Konflux documentation](https://konflux-ci.dev/docs/). Upstream Pulp: 
 ### Container image build (Konflux)
 
 - **In-repo:** [Dockerfile](Dockerfile), [`.tekton/pulp-tool-container-build-push.yaml`](.tekton/pulp-tool-container-build-push.yaml) (main), [`.tekton/pulp-tool-container-build-pull-request.yaml`](.tekton/pulp-tool-container-build-pull-request.yaml) (PR).
-- **Remote pipeline:** [docker-build-oci-ta.yaml](https://github.com/konflux-ci/container-build-catalog/blob/main/pipelines/docker-build-oci-ta/docker-build-oci-ta.yaml) — clone → prefetch (no-op) → **`buildah-oci-ta`** builds `Dockerfile` at `.` → **`sast-shell-check-oci-ta`**, **`sast-unicode-check-oci-ta`**, **`rpms-signature-scan`**, image scans → push to `output-image`. Defaults: `dockerfile=Dockerfile`, `hermetic=false`, `path-context=.`.
+- **Remote pipeline:** [docker-build-oci-ta.yaml](https://github.com/konflux-ci/container-build-catalog/blob/main/pipelines/docker-build-oci-ta/docker-build-oci-ta.yaml) — clone → prefetch (no-op) → **`buildah-oci-ta`** builds `Dockerfile` at `.` → **`source-build-oci-ta`** (PipelineRuns set `build-source-image=true` for release `push-snapshot`) → **`sast-shell-check-oci-ta`**, **`sast-unicode-check-oci-ta`**, **`rpms-signature-scan`**, image scans → push to `output-image`. Defaults: `dockerfile=Dockerfile`, `hermetic=false`, `path-context=.`.
 - **Agent skill:** [changing-pulp-container](skills/changing-pulp-container/SKILL.md) · task catalog: [reference.md](skills/changing-pulp-container/reference.md). Optional local check: `make test-container`.
 
 ---

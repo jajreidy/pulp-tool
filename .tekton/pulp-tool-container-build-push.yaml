@@ -24,6 +24,8 @@ spec:
     value: '{{revision}}'
   - name: output-image
     value: quay.io/redhat-user-workloads/artifact-storage-tenant/tooling/pulp-tool-container:latest
+  - name: build-source-image
+    value: "true"
   pipelineRef:
     resolver: git
     params:
