@@ -18,7 +18,7 @@ pulp-tool **does not** vendor this pipeline; it is fetched via `pipelineRef.reso
 | `buildah-format` | `docker` | Docker-format image mediaType |
 | `image-expires-after` | `''` | PR PipelineRun sets `5d` |
 
-pulp-tool PipelineRuns pass: `git-url`, `revision`, `output-image`, **`build-source-image: "true"`**; PR also passes `image-expires-after`.
+pulp-tool PipelineRuns pass: `git-url`, `revision`, `output-image`, **`build-source-image: "true"`**, **`build-args-file: .tekton/pulp-tool-container.build-args`**; PR also passes `image-expires-after`.
 
 ## Task flow
 
@@ -80,4 +80,5 @@ A failing `pip install` or bad base image digest typically fails **`build-contai
 | `cancel-in-progress` | `false` | `true` |
 | `output-image` tag | `:latest` | `:on-pr-{{revision}}` |
 | `build-source-image` | `"true"` | `"true"` |
+| `build-args-file` | `.tekton/pulp-tool-container.build-args` | `.tekton/pulp-tool-container.build-args` |
 | `image-expires-after` | (pipeline default empty) | `5d` |

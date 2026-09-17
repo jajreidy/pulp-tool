@@ -7,6 +7,7 @@
 FROM registry.access.redhat.com/ubi10/ubi-minimal:10.2-1788940913 AS builder
 
 ARG VERSION=1.0.0
+ARG RELEASE=1
 
 # Skip microdnf update — metadata refresh is a common Konflux failure point.
 RUN microdnf install -y \
@@ -31,6 +32,7 @@ RUN uv export --frozen --no-dev --no-emit-project -o /tmp/requirements.txt && \
 
 FROM registry.access.redhat.com/ubi10/ubi-minimal:10.2-1788940913
 
+# Konflux passes VERSION/RELEASE via build-args-file (.tekton/pulp-tool-container.build-args).
 ARG VERSION=1.0.0
 ARG RELEASE=1
 

@@ -26,6 +26,8 @@ spec:
     value: quay.io/redhat-user-workloads/artifact-storage-tenant/tooling/pulp-tool-container:latest
   - name: build-source-image
     value: "true"
+  - name: build-args-file
+    value: .tekton/pulp-tool-container.build-args
   pipelineRef:
     resolver: git
     params:

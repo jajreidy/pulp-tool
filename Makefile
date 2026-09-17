@@ -53,7 +53,8 @@ test:
 # Build the Konflux container image locally and verify pulp-tool starts (Python 3.12 / UBI 10).
 test-container:
 	@command -v podman >/dev/null 2>&1 && ENGINE=podman || ENGINE=docker; \
-	$$ENGINE build -t pulp-tool:test . && \
+	./scripts/sync-container-build-args.sh; \
+	$$ENGINE build --build-arg-file .tekton/pulp-tool-container.build-args -t pulp-tool:test . && \
 	$$ENGINE run --rm pulp-tool:test python3 --version && \
 	$$ENGINE run --rm pulp-tool:test pulp-tool --version && \
 	$$ENGINE run --rm pulp-tool:test pulp-tool --help
