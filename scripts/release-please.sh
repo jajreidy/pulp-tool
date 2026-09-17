@@ -23,7 +23,8 @@ usage() {
 Usage: release-please.sh <command> [-- extra release-please flags]
 
 Commands:
-  pr        Create or update the release pull request (run on main after feature merges)
+  pr        Create or update the release pull request (run on main after feature merges).
+            Also syncs .tekton/pulp-tool-container.build-args on the release PR branch.
   publish   Create and push v* tag from .release-please-manifest.json (triggers release.yml)
 
 Authentication:
@@ -105,6 +106,68 @@ print(version.strip())
 PY
 }
 
+args_contain_dry_run() {
+  local arg
+  for arg in "$@"; do
+    if [[ "$arg" == *dry-run* ]]; then
+      return 0
+    fi
+  done
+  return 1
+}
+
+sync_container_build_args_to_release_pr() {
+  local repo_url="$1"
+  shift
+  local -a rp_extra_args=("$@")
+
+  if args_contain_dry_run "${rp_extra_args[@]}"; then
+    echo "Dry run: skipping container build-args sync on release PR."
+    return 0
+  fi
+
+  if ! command -v gh >/dev/null 2>&1; then
+    echo "Install gh to auto-sync .tekton/pulp-tool-container.build-args onto the release PR." >&2
+    return 0
+  fi
+
+  local pr_number
+  pr_number="$(gh pr list --repo "$repo_url" --state open \
+    --json number,title \
+    --jq '[.[] | select(.title | test(": release [0-9]"))][0].number // empty')"
+
+  if [[ -z "$pr_number" ]]; then
+    echo "No open release PR found; skipping container build-args sync." >&2
+    return 0
+  fi
+
+  if ! git diff --quiet || ! git diff --cached --quiet; then
+    echo "Working tree has uncommitted changes; commit or stash before release-please syncs build-args." >&2
+    return 1
+  fi
+
+  local start_branch=""
+  start_branch="$(git branch --show-current 2>/dev/null || true)"
+
+  echo "Syncing container build-args on release PR #${pr_number}..."
+  gh pr checkout "$pr_number" --repo "$repo_url"
+
+  "${REPO_ROOT}/scripts/sync-container-build-args.sh"
+
+  if git diff --quiet -- .tekton/pulp-tool-container.build-args; then
+    echo "Container build-args already match manifest on PR #${pr_number}."
+  else
+    git add .tekton/pulp-tool-container.build-args
+    git commit -m "chore(tekton): sync container build-args for release"
+    git push
+    echo "Pushed container build-args update to release PR #${pr_number}."
+  fi
+
+  if [[ -n "$start_branch" ]]; then
+    git checkout "$start_branch"
+  fi
+}
+
 publish_git_tag() {
   local version tag
 
@@ -180,6 +243,7 @@ case "$cmd" in
       --config-file="$CONFIG_FILE" \
       --manifest-file="$MANIFEST_FILE" \
       "${extra_args[@]}"
+    sync_container_build_args_to_release_pr "$repo_url" "${extra_args[@]}"
     ;;
   publish|github-release|tag)
     publish_git_tag

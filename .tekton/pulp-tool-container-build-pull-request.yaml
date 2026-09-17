@@ -29,6 +29,8 @@ spec:
     value: 5d
   - name: build-source-image
     value: "true"
+  - name: build-args-file
+    value: .tekton/pulp-tool-container.build-args
   pipelineRef:
     resolver: git
     params:

@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Konflux `pulp-tool-container` PipelineRuns pass `build-args-file` (`.tekton/pulp-tool-container.build-args`) so image OCI labels and `pulp-tool --version` use the Release Please manifest version instead of hardcoded `Dockerfile` defaults; regenerate with `scripts/sync-container-build-args.sh`
 - Konflux `pulp-tool-container` PipelineRuns migrated from deprecated `single-arch-build-pipeline` (`olm-operator-konflux-sample`) to `docker-build-oci-ta` (`container-build-catalog`), adding Conforma-required SAST and RPM signature scan tasks and dropping expired `sbom-json-check`
 - Pytest configuration consolidated in `pyproject.toml` only (removed duplicate `.pytest.ini`; 85% coverage threshold unified)
 - CHANGELOG entries link to implementing commits; `docs/releasing.md` and PR-drafting templates document link preservation when curating releases
