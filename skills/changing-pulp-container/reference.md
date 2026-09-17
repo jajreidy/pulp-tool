@@ -1,6 +1,6 @@
-# Konflux single-arch container build — pipeline reference
+# Konflux container build — pipeline reference
 
-Source: [single-arch-build-pipeline.yaml](https://github.com/konflux-ci/olm-operator-konflux-sample/blob/main/.tekton/single-arch-build-pipeline.yaml) (resolved at `main` by pulp-tool `.tekton/` PipelineRuns).
+Source: [docker-build-oci-ta.yaml](https://github.com/konflux-ci/container-build-catalog/blob/main/pipelines/docker-build-oci-ta/docker-build-oci-ta.yaml) (resolved at `main` by pulp-tool `.tekton/` PipelineRuns).
 
 pulp-tool **does not** vendor this pipeline; it is fetched via `pipelineRef.resolver: git`. Re-open the upstream file when tasks or bundle digests change.
 
@@ -11,9 +11,10 @@ pulp-tool **does not** vendor this pipeline; it is fetched via `pipelineRef.reso
 | `path-context` | `.` | Repo root |
 | `dockerfile` | `Dockerfile` | Root [Dockerfile](../../Dockerfile) |
 | `hermetic` | `false` | Network allowed during image build (`dnf`, `pip`) |
-| `prefetch-input` | `''` | No Cachi2 prefetch config in-repo |
+| `prefetch-input` | `''` | No Hermeto/Cachi2 prefetch config in-repo |
 | `skip-checks` | `false` | Post-build scans run on PR and main |
 | `build-source-image` | `false` | Source image not built |
+| `build-image-index` | `false` | Index task runs but passes through single image |
 | `buildah-format` | `docker` | Docker-format image mediaType |
 | `image-expires-after` | `''` | PR PipelineRun sets `5d` |
 
@@ -26,28 +27,33 @@ flowchart TD
   init[init] --> clone[git-clone-oci-ta]
   clone --> prefetch[prefetch-dependencies-oci-ta]
   prefetch --> build[buildah-oci-ta build-container]
-  build --> checks[deprecated / clair / preflight / snyk / clamav / sbom checks]
+  build --> index[build-image-index]
+  index --> checks[deprecated / clair / preflight / snyk / clamav / sast / rpm scan]
   build --> sourceImg[source-build-oci-ta optional]
-  build --> finally[show-sbom / summary]
 ```
 
 ### Tasks (in order)
 
-| Task | Catalog bundle | Role |
-|------|----------------|------|
-| `init` | `task-init:0.2` | Decide whether to build; proxy settings |
-| `clone-repository` | `task-git-clone-oci-ta:0.1` | Clone `git-url` @ `revision`; workspace `git-auth` |
-| `prefetch-dependencies` | `task-prefetch-dependencies-oci-ta:0.2` | Cachi2 prefetch (no-op with empty `prefetch-input`) |
-| **`build-container`** | **`task-buildah-oci-ta:0.7`** | **Buildah build of `DOCKERFILE` in `CONTEXT`; push `output-image`** |
-| `build-source-image` | `task-source-build-oci-ta:0.3` | Skipped (`build-source-image=false`) |
-| `deprecated-base-image-check` | `task-deprecated-image-check:0.5` | Base image deprecation |
-| `clair-scan` | `task-clair-scan:0.3` | Vulnerability scan |
-| `ecosystem-cert-preflight-checks` | `task-ecosystem-cert-preflight-checks:0.2` | Red Hat cert preflight |
-| `sast-snyk-check` | `task-sast-snyk-check-oci-ta:0.4` | SAST |
-| `clamav-scan` | `task-clamav-scan:0.3` | Malware scan |
-| `sbom-json-check` | `task-sbom-json-check:0.2` | SBOM validation |
+| Task | Catalog task | Role |
+|------|--------------|------|
+| `init` | `init` | Decide whether to build; proxy settings |
+| `clone-repository` | `git-clone-oci-ta` | Clone `git-url` @ `revision`; workspace `git-auth` |
+| `prefetch-dependencies` | `prefetch-dependencies-oci-ta` | Hermeto/Cachi2 prefetch (no-op with empty `prefetch-input`) |
+| **`build-container`** | **`buildah-oci-ta`** | **Buildah build of `DOCKERFILE` in `CONTEXT`; push `output-image`** |
+| `build-image-index` | `build-image-index` | Image index / pass-through; pipeline results source |
+| `build-source-image` | `source-build-oci-ta` | Skipped (`build-source-image=false`) |
+| `deprecated-base-image-check` | `deprecated-image-check` | Base image deprecation |
+| `clair-scan` | `clair-scan` | Vulnerability scan |
+| `ecosystem-cert-preflight-checks` | `ecosystem-cert-preflight-checks` | Red Hat cert preflight |
+| `sast-snyk-check` | `sast-snyk-check-oci-ta` | SAST (Snyk) |
+| `clamav-scan` | `clamav-scan` | Malware scan |
+| `sast-shell-check` | `sast-shell-check-oci-ta` | Shell script SAST (Conforma required task) |
+| `sast-unicode-check` | `sast-unicode-check-oci-ta` | Unicode SAST (Conforma required task) |
+| `apply-tags` | `apply-tags` | Apply Konflux tags |
+| `push-dockerfile` | `push-dockerfile-oci-ta` | Push Dockerfile artifact |
+| `rpms-signature-scan` | `rpms-signature-scan` | RPM signature scan (Conforma required task) |
 
-**Finally:** `show-sbom`, `show-summary` (build status and image URL).
+This pipeline does **not** include deprecated `sbom-json-check`.
 
 ### build-container (where Dockerfile failures surface)
 
@@ -63,8 +69,8 @@ A failing `pip install` or bad base image digest typically fails **`build-contai
 
 ## Pipeline results
 
-- `IMAGE_URL`, `IMAGE_DIGEST` — from `build-container`
-- `CHAINS-GIT_URL`, `CHAINS-GIT_COMMIT` — supply-chain metadata
+- `IMAGE_URL`, `IMAGE_DIGEST` — from `build-image-index`
+- `CHAINS-GIT_URL`, `CHAINS-GIT_COMMIT` — from `clone-repository`
 
 ## In-repo PipelineRun differences
 
