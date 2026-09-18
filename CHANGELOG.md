@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0](https://github.com/konflux-ci/pulp-tool/compare/v1.1.0...v1.2.0) (2026-09-18)
+
+
+### Added
+
+* **constants:** add ppc64 to SUPPORTED_ARCHITECTURES ([2d0186a](https://github.com/konflux-ci/pulp-tool/commit/2d0186aaa355f4cadfe224b1357369caf48ee236))
+* **constants:** add ppc64 to SUPPORTED_ARCHITECTURES ([49bb42e](https://github.com/konflux-ci/pulp-tool/commit/49bb42e2c10ff8a8262e102771fe43259cd023d4))
+
+
+### Fixed
+
+* **config:** remove invalid cicd_pipeline_visibility exclusion ([c43bb0d](https://github.com/konflux-ci/pulp-tool/commit/c43bb0d03af30e86b6581a78df000211d861da72))
+* **config:** remove invalid cicd_pipeline_visibility exclusion ([5cc38d7](https://github.com/konflux-ci/pulp-tool/commit/5cc38d78759edecba29a5065f6ed5c4d7eddecab))
+* **upload:** use 30-minute timeout for large multipart uploads ([d7b357d](https://github.com/konflux-ci/pulp-tool/commit/d7b357de74d2088d4ab9664010b51da263c9699f))
+* **upload:** use 30-minute timeout for large multipart uploads ([b4cb414](https://github.com/konflux-ci/pulp-tool/commit/b4cb414257eee4c62043dcd8d3998d78193816a0))
+
 ## [Unreleased]
 
 ### Added
