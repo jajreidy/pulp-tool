@@ -9,31 +9,16 @@ import hashlib
 import json
 import logging
 import os
+import shlex
 import shutil
 import subprocess
 import sys
 import tempfile
 import time
 import tomllib
+from collections.abc import Callable
 from pathlib import Path
 from typing import Dict, List
-
-from names import (
-    BUILD_ID_UPLOAD_FILES,
-    BUILD_ID_UPLOAD_FULL,
-    BUILD_ID_UPLOAD_LARGE,
-    BUILD_ID_UPLOAD_MINIMAL,
-    BUILD_ID_UPLOAD_RESULTS,
-    BUILD_ID_UPLOAD_TARGET_ARCH,
-    LARGE_RPM_FILENAME,
-    BASE_PATH_CREATE_REPOSITORY,
-    BASE_PATH_CREATE_REPOSITORY_JSON,
-    REPO_CREATE_REPOSITORY,
-    REPO_CREATE_REPOSITORY_JSON,
-    resolve_run_id,
-    scoped_base_path,
-    scoped_build_id,
-)
 
 from distribution_fetch import (
     DistributionFetchError,
@@ -44,7 +29,6 @@ from distribution_fetch import (
     format_pulp_results_for_diagnostics,
     normalize_sha256_hex,
 )
-
 from large_upload import (
     LARGE_RPM_ARCH,
     LARGE_RPM_FILENAME,
@@ -52,6 +36,21 @@ from large_upload import (
     LARGE_RPM_RELEASE,
     LARGE_RPM_VERSION,
     LARGE_UPLOAD_MIN_SIZE_BYTES,
+)
+from names import (
+    BASE_PATH_CREATE_REPOSITORY,
+    BASE_PATH_CREATE_REPOSITORY_JSON,
+    BUILD_ID_UPLOAD_FILES,
+    BUILD_ID_UPLOAD_FULL,
+    BUILD_ID_UPLOAD_LARGE,
+    BUILD_ID_UPLOAD_MINIMAL,
+    BUILD_ID_UPLOAD_RESULTS,
+    BUILD_ID_UPLOAD_TARGET_ARCH,
+    REPO_CREATE_REPOSITORY,
+    REPO_CREATE_REPOSITORY_JSON,
+    resolve_run_id,
+    scoped_base_path,
+    scoped_build_id,
 )
 
 
@@ -99,6 +98,8 @@ class E2ETestSuite:
         self.stats = TestStats()
         self.rpm_dirs: Dict[int, Path] = {}
         self.current_rpm_index = 0
+        self._test_case_index = 0
+        self._current_case_id: str | None = None
 
         with open(self.config_file, "rb") as f:
             config = tomllib.load(f)
@@ -116,7 +117,8 @@ class E2ETestSuite:
 
     def log_info(self, message: str):
         """Log informational message"""
-        print(f"{Colors.BLUE}[INFO]{Colors.NC} {message}")
+        prefix = f"[{self._current_case_id}] " if self._current_case_id else ""
+        print(f"{Colors.BLUE}[INFO]{Colors.NC} {prefix}{message}")
 
     def log_success(self, message: str):
         """Log success message"""
@@ -145,14 +147,26 @@ class E2ETestSuite:
         Returns:
             Tuple of (exit_code, combined_output)
         """
+        cmd_line = shlex.join(cmd)
+        if len(cmd_line) > 600:
+            cmd_line = f"{cmd_line[:600]}… (truncated)"
+        cwd_label = f" cwd={cwd}" if cwd else ""
+        self.log_info(f"$ {cmd_line}{cwd_label}")
+        started = time.monotonic()
         try:
             result = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, check=check)
             output = result.stdout + result.stderr
+            elapsed_ms = (time.monotonic() - started) * 1000
+            self.log_info(f"exit={result.returncode} elapsed_ms={elapsed_ms:.0f}")
             return result.returncode, output
         except subprocess.CalledProcessError as e:
             output = e.stdout + e.stderr
+            elapsed_ms = (time.monotonic() - started) * 1000
+            self.log_info(f"exit={e.returncode} elapsed_ms={elapsed_ms:.0f} (CalledProcessError)")
             return e.returncode, output
         except Exception as e:
+            elapsed_ms = (time.monotonic() - started) * 1000
+            self.log_info(f"exit=1 elapsed_ms={elapsed_ms:.0f} (exception: {e})")
             return 1, str(e)
 
     def assert_exit_code(self, expected: int, actual: int, test_name: str) -> bool:
@@ -258,10 +272,7 @@ class E2ETestSuite:
         if failed_expected_sha256:
             self.log_error(f"failed expected_sha256: {normalize_sha256_hex(failed_expected_sha256)}")
         if failed_artifact_entry is not None:
-            self.log_error(
-                "failed artifact entry:\n"
-                + json.dumps(failed_artifact_entry, indent=2, sort_keys=True)
-            )
+            self.log_error("failed artifact entry:\n" + json.dumps(failed_artifact_entry, indent=2, sort_keys=True))
         self.log_error(f"konflux pulp_results URL file: {pulp_results_url}")
         self.log_error(f"konflux pulp_results digest file: {pulp_results_digest}")
         self.log_error(f"sbom results URL: {sbom_url}")
@@ -285,7 +296,11 @@ class E2ETestSuite:
         """HTTP GET distribution URLs and verify SHA256 against pulp_results metadata."""
         rpm_key = "test.1-1.0.0-1.x86_64.rpm"
         sbom_key = next(
-            (key for key in pulp_results_content.get("artifacts", {}) if key.endswith("/sbom.json") or key == "sbom.json"),
+            (
+                key
+                for key in pulp_results_content.get("artifacts", {})
+                if key.endswith("/sbom.json") or key == "sbom.json"
+            ),
             None,
         )
         checks: list[tuple[str, str, str, dict | None]] = [
@@ -332,19 +347,79 @@ class E2ETestSuite:
                         failed_expected_sha256=expected_sha256,
                         failed_artifact_entry=artifact_entry,
                     )
-                    self.log_error(format_fetch_check_summary(label, url, expected_sha256, artifact_entry=artifact_entry))
+                    self.log_error(
+                        format_fetch_check_summary(label, url, expected_sha256, artifact_entry=artifact_entry)
+                    )
                     diagnostics_logged = True
 
-    def run_test(self, test_name: str):
-        """Mark start of a test"""
-        self.stats.run += 1
-        self.log_info(f"Running: {test_name}")
+    def begin_section(self, title: str, *, description: str = "") -> None:
+        """Print a visible boundary between groups of related test cases."""
+        print()
+        print("#" * 70)
+        print(f"  SECTION: {title}")
+        if description:
+            print(f"  {description}")
+        print("#" * 70)
 
-    def skip_test(self, test_name: str, reason: str):
+    def invoke_test_case(
+        self,
+        method: Callable[[], None],
+        case_id: str,
+        description: str,
+        *,
+        requires_real_server: bool = False,
+    ) -> None:
+        """Run one test method with a numbered header, context, and completion summary."""
+        self._test_case_index += 1
+        self._current_case_id = case_id
+        before = (self.stats.passed, self.stats.failed, self.stats.skipped)
+        started = time.monotonic()
+
+        print()
+        print("=" * 70)
+        print(f"  TEST [{self._test_case_index:02d}] {case_id}")
+        print(f"  {description}")
+        if requires_real_server:
+            if self.real_server:
+                print(f"  {Colors.BLUE}Mode: live Pulp (--real-server){Colors.NC}")
+            else:
+                print(f"  {Colors.YELLOW}Mode: dry-run (Pulp mutations skipped inside this case){Colors.NC}")
+        print("=" * 70)
+
+        method()
+
+        elapsed_s = time.monotonic() - started
+        delta_passed = self.stats.passed - before[0]
+        delta_failed = self.stats.failed - before[1]
+        delta_skipped = self.stats.skipped - before[2]
+        if delta_failed:
+            outcome = f"{Colors.RED}FAILED{Colors.NC}"
+        elif delta_skipped and delta_passed == 0:
+            outcome = f"{Colors.YELLOW}SKIPPED{Colors.NC}"
+        else:
+            outcome = f"{Colors.GREEN}OK{Colors.NC}"
+
+        print(
+            f"{Colors.BLUE}[INFO]{Colors.NC} [{case_id}] finished in {elapsed_s:.1f}s "
+            f"— {outcome} (+{delta_passed} pass, +{delta_failed} fail, +{delta_skipped} skip)"
+        )
+        print("-" * 70)
+        self._current_case_id = None
+
+    def run_test(self, step_name: str, *, detail: str | None = None) -> None:
+        """Mark start of a step within the current test case."""
+        self.stats.run += 1
+        message = f"step: {step_name}"
+        if detail:
+            message = f"{message} — {detail}"
+        self.log_info(message)
+
+    def skip_test(self, test_name: str, reason: str) -> None:
         """Mark test as skipped"""
         self.stats.run += 1
         self.stats.skipped += 1
-        self.log_skip(f"{test_name} - {reason}")
+        case = f"[{self._current_case_id}] " if self._current_case_id else ""
+        self.log_skip(f"{case}{test_name} — {reason}")
 
     def setup_test_env(self):
         """Setup test environment with temporary files and directories"""
@@ -432,9 +507,7 @@ class E2ETestSuite:
                     "sha256": str(digest.hexdigest()),
                 }
             },
-            "distributions": {
-                "rpms": f"{self.base_url}/api/pulp-content/{self.namespace}/{upload_build_id}/rpms/"
-            },
+            "distributions": {"rpms": f"{self.base_url}/api/pulp-content/{self.namespace}/{upload_build_id}/rpms/"},
         }
         self.upload_results_json.write_text(json.dumps(upload_results_data, indent=2))
 
@@ -581,11 +654,15 @@ class E2ETestSuite:
 
         # Use RPM directory index 1
         rpm_dir = self.rpm_dirs[1]
-        self.run_test(f"pulp-tool upload (full options) - using {rpm_dir}")
-
         sbom_results = self.output_dir / "sbom_results.json"
         image_url_path = self.output_dir / "image_url"
         image_digest_path = self.output_dir / "image_digest"
+        full_build_id = self.bid(BUILD_ID_UPLOAD_FULL)
+
+        self.run_test(
+            "pulp-tool upload (full options)",
+            detail=f"rpm_dir={rpm_dir} build_id={full_build_id} namespace={self.namespace}",
+        )
 
         cmd = [
             "pulp-tool",
@@ -621,8 +698,8 @@ class E2ETestSuite:
             return
 
         sbom_results_content = sbom_results.read_text("utf-8")
-        full_build_id = self.bid(BUILD_ID_UPLOAD_FULL)
         expected_sbom_results = f"{self.base_url}/api/pulp-content/{self.namespace}/{full_build_id}/sbom/sbom.json"
+        self.run_test("validate SBOM results URL", detail=f"expected={expected_sbom_results}")
         if sbom_results_content != expected_sbom_results:
             self.stats.failed += 1
             self.log_error(f"Unexpected SBOM results: {sbom_results_content}")
@@ -639,9 +716,11 @@ class E2ETestSuite:
             client = distribution_client_from_config(self.config_file)
             pulp_results_url = image_url_path.read_text(encoding="utf-8").strip()
             pulp_results_digest = image_digest_path.read_text(encoding="utf-8").strip()
-            self.log_info("Fetching pulp_results.json for structure validation")
-            self.log_info(f"  Konflux URL result: {pulp_results_url}")
-            self.log_info(f"  Konflux digest result: {pulp_results_digest}")
+            self.run_test(
+                "distribution fetch setup",
+                detail=f"build_id={full_build_id} konflux_url={pulp_results_url}",
+            )
+            self.log_info(f"Konflux digest result: {pulp_results_digest}")
             pulp_results_content = json.loads(
                 fetch_bytes(client, pulp_results_url, label="pulp_results.json").decode("utf-8")
             )
@@ -1266,53 +1345,155 @@ class E2ETestSuite:
         self.log_info(f"Test directory: {self.test_dir}")
         if self.run_id:
             self.log_info(f"E2e run id: {self.run_id} (build-scoped Pulp resources are suffixed)")
+        else:
+            self.log_info("E2e run id: (none — legacy unsuffixed build-scoped resource names)")
 
         print()
         print("Running tests...")
         print("=" * 60)
 
-        # Help and version tests
-        self.test_help_commands()
-        self.test_upload_help()
-        self.test_upload_files_help()
-        self.test_pull_help()
-        self.test_search_by_help()
-        self.test_create_repository_help()
+        self.begin_section("CLI help and usage", description="Smoke-test --help output for each command.")
+        self.invoke_test_case(self.test_help_commands, "test_help_commands", "Verify pulp-tool --help and --version.")
+        self.invoke_test_case(self.test_upload_help, "test_upload_help", "Verify pulp-tool upload --help.")
+        self.invoke_test_case(
+            self.test_upload_files_help,
+            "test_upload_files_help",
+            "Verify pulp-tool upload-files --help.",
+        )
+        self.invoke_test_case(self.test_pull_help, "test_pull_help", "Verify pulp-tool pull --help.")
+        self.invoke_test_case(self.test_search_by_help, "test_search_by_help", "Verify pulp-tool search-by --help.")
+        self.invoke_test_case(
+            self.test_create_repository_help,
+            "test_create_repository_help",
+            "Verify pulp-tool create-repository --help.",
+        )
 
-        # Global options tests
-        self.test_global_options()
+        self.begin_section("Global CLI options", description="Config path and debug flag handling.")
+        self.invoke_test_case(self.test_global_options, "test_global_options", "Validate --config and debug flags.")
 
-        # Upload command tests
-        self.test_upload_minimal()
-        self.test_upload_full()
-        self.test_upload_results_json()
-        self.test_upload_target_arch_repo()
-        self.test_upload_large_rpm()
+        self.begin_section(
+            "Upload (pulp-tool upload)",
+            description="RPM/SBOM upload paths; cases marked live Pulp mutate the shared test domain.",
+        )
+        self.invoke_test_case(
+            self.test_upload_minimal,
+            "test_upload_minimal",
+            f"Minimal upload (RPM dir 0); build_id={self.bid(BUILD_ID_UPLOAD_MINIMAL)}.",
+            requires_real_server=True,
+        )
+        self.invoke_test_case(
+            self.test_upload_full,
+            "test_upload_full",
+            f"Full upload with SBOM, signed RPMs, Konflux --artifact-results, and distribution URL fetch; "
+            f"build_id={self.bid(BUILD_ID_UPLOAD_FULL)}.",
+            requires_real_server=True,
+        )
+        self.invoke_test_case(
+            self.test_upload_results_json,
+            "test_upload_results_json",
+            f"Upload from --results-json (RPM dir 2/noarch); build_id={self.bid(BUILD_ID_UPLOAD_RESULTS)}.",
+            requires_real_server=True,
+        )
+        self.invoke_test_case(
+            self.test_upload_target_arch_repo,
+            "test_upload_target_arch_repo",
+            f"Per-arch RPM repos (--target-arch-repo); build_id={self.bid(BUILD_ID_UPLOAD_TARGET_ARCH)}.",
+            requires_real_server=True,
+        )
+        self.invoke_test_case(
+            self.test_upload_large_rpm,
+            "test_upload_large_rpm",
+            f"Large RPM upload (>300 MiB) and search-by checksum; build_id={self.bid(BUILD_ID_UPLOAD_LARGE)}.",
+            requires_real_server=True,
+        )
 
-        # Upload-files command tests
-        self.test_upload_files()
+        self.begin_section("Upload files (pulp-tool upload-files)")
+        self.invoke_test_case(
+            self.test_upload_files,
+            "test_upload_files",
+            f"Upload RPM, logs, SBOM, and arbitrary file (RPM dir 4); build_id={self.bid(BUILD_ID_UPLOAD_FILES)}.",
+            requires_real_server=True,
+        )
 
-        # Pull command tests
-        self.test_pull_by_build_id()
-        self.test_pull_by_artifact_location()
+        self.begin_section("Pull (pulp-tool pull)", description="Download artifacts from Pulp distributions.")
+        self.invoke_test_case(
+            self.test_pull_by_build_id,
+            "test_pull_by_build_id",
+            "Pull by --build-id test-fixture (fixture content in shared Pulp domain).",
+            requires_real_server=True,
+        )
+        self.invoke_test_case(
+            self.test_pull_by_artifact_location,
+            "test_pull_by_artifact_location",
+            f"Pull via --artifact-location fixture ({self.pulp_results.name}).",
+            requires_real_server=True,
+        )
 
-        # Search-by command tests
-        self.test_search_by_checksums()
-        self.test_search_by_filenames()
-        self.test_search_by_signed_by()
-        self.test_search_by_results_json()
+        self.begin_section("Search (pulp-tool search-by)")
+        self.invoke_test_case(
+            self.test_search_by_checksums,
+            "test_search_by_checksums",
+            "Search RPM packages by SHA256 checksum list.",
+            requires_real_server=True,
+        )
+        self.invoke_test_case(
+            self.test_search_by_filenames,
+            "test_search_by_filenames",
+            "Search RPM packages by filename list.",
+            requires_real_server=True,
+        )
+        self.invoke_test_case(
+            self.test_search_by_signed_by,
+            "test_search_by_signed_by",
+            "Search RPM packages by signed_by label.",
+            requires_real_server=True,
+        )
+        self.invoke_test_case(
+            self.test_search_by_results_json,
+            "test_search_by_results_json",
+            "Filter search-by output using --results-json.",
+            requires_real_server=True,
+        )
 
-        # Create-repository command tests
-        self.test_create_repository()
-        self.test_create_repository_json()
+        self.begin_section("Create repository (pulp-tool create-repository)")
+        self.invoke_test_case(
+            self.test_create_repository,
+            "test_create_repository",
+            f"Create RPM repo from CLI flags; base_path={self.bpath(BASE_PATH_CREATE_REPOSITORY)}.",
+            requires_real_server=True,
+        )
+        self.invoke_test_case(
+            self.test_create_repository_json,
+            "test_create_repository_json",
+            f"Create RPM repo from --json-data; base_path={self.bpath(BASE_PATH_CREATE_REPOSITORY_JSON)}.",
+            requires_real_server=True,
+        )
 
-        # Error handling tests
-        self.test_error_missing_args()
-        self.test_error_mutually_exclusive()
+        self.begin_section("Error handling", description="CLI validation and mutually exclusive options.")
+        self.invoke_test_case(
+            self.test_error_missing_args,
+            "test_error_missing_args",
+            "upload-files fails when required args are missing.",
+        )
+        self.invoke_test_case(
+            self.test_error_mutually_exclusive,
+            "test_error_mutually_exclusive",
+            "search-by rejects --checksums and --filenames together.",
+            requires_real_server=True,
+        )
 
-        # Environment and output tests
-        self.test_environment_variables()
-        self.test_json_output()
+        self.begin_section("Environment and output format")
+        self.invoke_test_case(
+            self.test_environment_variables,
+            "test_environment_variables",
+            "PULP_TOOL_JSON_LOG and SSL_CERT_FILE env vars.",
+        )
+        self.invoke_test_case(
+            self.test_json_output,
+            "test_json_output",
+            "search-by JSON output shape.",
+            requires_real_server=True,
+        )
 
         # Summary
         print()

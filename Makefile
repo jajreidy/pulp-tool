@@ -22,8 +22,8 @@ help:
 	@echo "  make clean        - Clean build artifacts"
 	@echo "  make lock         - Regenerate uv.lock from pyproject.toml (uv lock)"
 	@echo "  make lock-check   - Fail if pyproject.toml and uv.lock are out of sync"
-	@echo "  make release-please  - Open/update release PR (Release Please; gh auth or GITHUB_TOKEN)"
-	@echo "  make release-publish - Push v* tag from manifest (git only; triggers release.yml)"
+	@echo "  make release-please [BUMP=major|minor|bugfix]  - Open/update release PR (Release Please; gh auth or GITHUB_TOKEN)"
+	@echo "  make release-publish [BUMP=major|minor|bugfix] - Push v* tag from manifest or bumped version (git only; triggers release.yml)"
 	@echo "  Release remote: RELEASE_GIT_REMOTE=upstream (default origin; see docs/releasing.md)"
 	@echo ""
 	@echo "  Diff coverage base: COMPARE_BRANCH=origin/main (override for e.g. origin/release-1.0)"
@@ -148,8 +148,9 @@ check-all:
 	@./scripts/check-all.sh
 
 # Maintainer release helpers (local Release Please — see docs/releasing.md).
+# Optional BUMP=major|minor|bugfix overrides conventional-commit semver; passed to the script.
 release-please:
-	@./scripts/release-please.sh pr
+	@BUMP='$(BUMP)' ./scripts/release-please.sh pr
 
 release-publish:
-	@./scripts/release-please.sh publish
+	@BUMP='$(BUMP)' ./scripts/release-please.sh publish

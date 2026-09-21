@@ -9,7 +9,7 @@ Maintainer guide for publishing **`pulp-tool`** to [PyPI](https://pypi.org/proje
 | **Container image** | Merge to **`main`** (including the Release Please PR) | [`.tekton/pulp-tool-container-build-push.yaml`](../.tekton/pulp-tool-container-build-push.yaml) → promote with your RPA (`push-to-external-registry`) |
 | **Python package (PyPI)** | **`v*`** tag on **`main`** | [`.github/workflows/release.yml`](../.github/workflows/release.yml) — build, GitHub Release, PyPI upload |
 
-**Release PR automation** uses [Release Please](https://github.com/googleapis/release-please) run **locally** by maintainers ([`scripts/release-please.sh`](../scripts/release-please.sh)). It opens a Release PR with [`CHANGELOG.md`](../CHANGELOG.md) and [`.release-please-manifest.json`](../.release-please-manifest.json) updates, then syncs [`.tekton/pulp-tool-container.build-args`](../.tekton/pulp-tool-container.build-args) onto that PR branch. **Merging that PR** rebuilds the container on `main`. A separate local step (**`make release-publish`**) creates the **`v*` git tag** for PyPI.
+**Release PR automation** uses [Release Please](https://github.com/googleapis/release-please) run **locally** by maintainers ([`scripts/release-please.sh`](../scripts/release-please.sh)). It opens a Release PR with [`CHANGELOG.md`](../CHANGELOG.md) and [`.release-please-manifest.json`](../.release-please-manifest.json) updates, then syncs [`VERSION`](../VERSION) and [`.tekton/pulp-tool-container.build-args`](../.tekton/pulp-tool-container.build-args) onto that PR branch. **Merging that PR** rebuilds the container on `main`. A separate local step (**`make release-publish`**) creates the **`v*` git tag** for PyPI.
 
 Manual tagging (below) remains supported for hotfixes or when Release Please is skipped.
 
@@ -97,6 +97,10 @@ Tags use the **`v` prefix** (e.g. **`v1.2.3`**) to match [`.github/workflows/rel
 gh auth login
 make release-please
 
+# Force semver bump from manifest instead of conventional-commit inference:
+make release-please BUMP=major
+make release-please BUMP=bugfix
+
 # Dry-run (no PR created):
 ./scripts/release-please.sh pr -- --dry-run --debug
 
@@ -105,6 +109,8 @@ make release-publish
 ```
 
 Pin the CLI version with `RELEASE_PLEASE_VERSION` (default **`17.2.0`** in the script). Override the GitHub repo with `GITHUB_REPOSITORY=owner/repo`, or set **`RELEASE_GIT_REMOTE`** so both `release-please` and `release-publish` infer `owner/repo` from that remote (default **`origin`**).
+
+Optional **`BUMP=major`**, **`BUMP=minor`**, or **`BUMP=bugfix`** (alias **`patch`**) on **`make release-please`** computes the next version from [`.release-please-manifest.json`](../.release-please-manifest.json) and passes **`--release-as`** to Release Please — use when conventional commits would pick the wrong bump level. On **`make release-publish`**, the same variable tags the bumped version instead of the manifest (mainly for hotfix recovery; after a normal release PR merge, omit **`BUMP`** so the tag matches the manifest).
 
 ### Fork and upstream remotes
 
@@ -131,7 +137,7 @@ Merging the Release Please PR (or any push) to **`main`** runs [`.tekton/pulp-to
 
 Wire your **Release Plan Admission** to [`push-to-external-registry`](https://github.com/konflux-ci/release-service-catalog/tree/development/pipelines/managed/push-to-external-registry) to promote that image. There is **no** separate on-tag container build — the release commit is already on `main` when the release PR merges.
 
-**Container image version:** Konflux passes [`build-args-file`](https://konflux-ci.dev/docs/building/build-with-args/) [`.tekton/pulp-tool-container.build-args`](../.tekton/pulp-tool-container.build-args) (`VERSION`, `RELEASE`) into the `Dockerfile` `ARG`s for OCI labels and `pulp-tool --version`. **`make release-please`** runs [`scripts/sync-container-build-args.sh`](../scripts/sync-container-build-args.sh) on the open release PR branch after Release Please updates the manifest (requires `gh` and a clean working tree). For local smoke tests, `make test-container` runs the same sync before `podman`/`docker` build. The git tag (`make release-publish`) is created **after** the on-push container build, so the manifest is the build-time source of truth; it matches the tag once publish completes.
+**Container image version:** Konflux passes [`build-args-file`](https://konflux-ci.dev/docs/building/build-with-args/) [`.tekton/pulp-tool-container.build-args`](../.tekton/pulp-tool-container.build-args) (`VERSION`, `RELEASE`) into the `Dockerfile` `ARG`s for OCI labels and `pulp-tool --version`. [`VERSION`](../VERSION) is copied into the image build context (fallback when git metadata is absent). **`make release-please`** runs [`scripts/sync-container-build-args.sh`](../scripts/sync-container-build-args.sh) on the open release PR branch after Release Please updates the manifest, updating both files (requires `gh` and a clean working tree). For local smoke tests, `make test-container` runs the same sync before `podman`/`docker` build. The git tag (`make release-publish`) is created **after** the on-push container build, so the manifest is the build-time source of truth; it matches the tag once publish completes.
 
 ## Version numbers
 

@@ -24,6 +24,12 @@ from pulp_tool.api import DistributionClient
 RESULTS_JSON_FILENAME = "pulp_results.json"
 LOGGER = logging.getLogger("e2e.distribution_fetch")
 
+# Pulp publish can finish before packages.redhat.com pulp-content serves the object.
+DISTRIBUTION_FETCH_RETRY_ATTEMPTS = max(1, int(os.environ.get("E2E_DISTRIBUTION_FETCH_ATTEMPTS", "8")))
+DISTRIBUTION_FETCH_RETRY_INITIAL_DELAY_S = float(os.environ.get("E2E_DISTRIBUTION_FETCH_DELAY_S", "2"))
+DISTRIBUTION_FETCH_RETRY_MAX_DELAY_S = 15.0
+DISTRIBUTION_FETCH_RETRY_STATUSES = frozenset({404, 502, 503, 504})
+
 
 class DistributionFetchError(Exception):
     """Raised when a distribution URL fetch or checksum verification fails."""
@@ -32,6 +38,28 @@ class DistributionFetchError(Exception):
         super().__init__(message)
         self.url = url
         self.label = label
+
+
+def _response_body_preview(response: httpx.Response, *, max_len: int = 800) -> str:
+    """Return response body text for diagnostics (works after streaming GET failures)."""
+    try:
+        body = response.text
+    except Exception:
+        try:
+            raw = response.read()
+            body = raw.decode("utf-8", errors="replace") if raw else ""
+        except Exception as body_exc:  # noqa: BLE001 — diagnostic helper
+            return f"<unreadable: {body_exc}>"
+    if not body:
+        return ""
+    if len(body) <= max_len:
+        return body
+    return f"{body[:max_len]}… (truncated, {len(body)} chars total)"
+
+
+def _retry_delay_s(attempt_index: int) -> float:
+    delay = DISTRIBUTION_FETCH_RETRY_INITIAL_DELAY_S * (2**attempt_index)
+    return min(delay, DISTRIBUTION_FETCH_RETRY_MAX_DELAY_S)
 
 
 def format_http_status_error(exc: httpx.HTTPStatusError, *, url: str, label: str) -> str:
@@ -45,13 +73,9 @@ def format_http_status_error(exc: httpx.HTTPStatusError, *, url: str, label: str
         lines.append(f"content-type: {response.headers.get('content-type')}")
     if response.headers.get("content-length"):
         lines.append(f"content-length: {response.headers.get('content-length')}")
-    try:
-        body = response.text
-        if body:
-            preview = body if len(body) <= 800 else f"{body[:800]}… (truncated, {len(body)} chars total)"
-            lines.append(f"response body: {preview}")
-    except Exception as body_exc:  # noqa: BLE001 — diagnostic helper
-        lines.append(f"response body: <unreadable: {body_exc}>")
+    body = _response_body_preview(response)
+    if body:
+        lines.append(f"response body: {body}")
     return "\n  ".join(lines)
 
 
@@ -151,41 +175,81 @@ def normalize_sha256_hex(value: str) -> str:
     return normalized
 
 
+def _fetch_bytes_once(client: DistributionClient, url: str, *, label: str) -> tuple[int, bytes]:
+    """Perform one streaming GET; raise ``HTTPStatusError`` on non-success."""
+    with client.session.stream("GET", url) as response:
+        status_code = response.status_code
+        if response.is_error:
+            response.read()
+        response.raise_for_status()
+        body = b"".join(response.iter_bytes(chunk_size=65536))
+    return status_code, body
+
+
 def fetch_bytes(client: DistributionClient, url: str, *, label: str) -> bytes:
     """GET ``url`` and return the response body."""
     LOGGER.info("HTTP GET %s: %s", label, url)
     started = time.monotonic()
-    try:
-        with client.session.stream("GET", url) as response:
-            status_code = response.status_code
-            response.raise_for_status()
-            body = b"".join(response.iter_bytes(chunk_size=65536))
-    except httpx.HTTPStatusError as exc:
-        elapsed_ms = (time.monotonic() - started) * 1000
-        LOGGER.error("HTTP GET %s failed after %.0f ms: %s", label, elapsed_ms, exc)
-        raise DistributionFetchError(
-            format_http_status_error(exc, url=url, label=label),
-            url=url,
-            label=label,
-        ) from exc
-    except httpx.HTTPError as exc:
-        elapsed_ms = (time.monotonic() - started) * 1000
-        LOGGER.error("HTTP GET %s failed after %.0f ms: %s", label, elapsed_ms, exc)
-        raise DistributionFetchError(
-            f"{label}: HTTP GET failed for {url}: {exc}",
-            url=url,
-            label=label,
-        ) from exc
+    last_status_error: httpx.HTTPStatusError | None = None
 
-    elapsed_ms = (time.monotonic() - started) * 1000
-    LOGGER.info(
-        "HTTP GET %s complete: status=%s bytes=%d elapsed_ms=%.0f",
-        label,
-        status_code,
-        len(body),
-        elapsed_ms,
-    )
-    return body
+    for attempt in range(DISTRIBUTION_FETCH_RETRY_ATTEMPTS):
+        try:
+            status_code, body = _fetch_bytes_once(client, url, label=label)
+            elapsed_ms = (time.monotonic() - started) * 1000
+            if attempt > 0:
+                LOGGER.info(
+                    "HTTP GET %s succeeded on attempt %d/%d",
+                    label,
+                    attempt + 1,
+                    DISTRIBUTION_FETCH_RETRY_ATTEMPTS,
+                )
+            LOGGER.info(
+                "HTTP GET %s complete: status=%s bytes=%d elapsed_ms=%.0f",
+                label,
+                status_code,
+                len(body),
+                elapsed_ms,
+            )
+            return body
+        except httpx.HTTPStatusError as exc:
+            last_status_error = exc
+            if (
+                exc.response.status_code in DISTRIBUTION_FETCH_RETRY_STATUSES
+                and attempt + 1 < DISTRIBUTION_FETCH_RETRY_ATTEMPTS
+            ):
+                delay_s = _retry_delay_s(attempt)
+                LOGGER.warning(
+                    "HTTP GET %s returned %s; retrying in %.1fs (attempt %d/%d)",
+                    label,
+                    exc.response.status_code,
+                    delay_s,
+                    attempt + 1,
+                    DISTRIBUTION_FETCH_RETRY_ATTEMPTS,
+                )
+                time.sleep(delay_s)
+                continue
+            elapsed_ms = (time.monotonic() - started) * 1000
+            LOGGER.error("HTTP GET %s failed after %.0f ms: %s", label, elapsed_ms, exc)
+            raise DistributionFetchError(
+                format_http_status_error(exc, url=url, label=label),
+                url=url,
+                label=label,
+            ) from exc
+        except httpx.HTTPError as exc:
+            elapsed_ms = (time.monotonic() - started) * 1000
+            LOGGER.error("HTTP GET %s failed after %.0f ms: %s", label, elapsed_ms, exc)
+            raise DistributionFetchError(
+                f"{label}: HTTP GET failed for {url}: {exc}",
+                url=url,
+                label=label,
+            ) from exc
+
+    assert last_status_error is not None  # noqa: S101 — loop guard
+    raise DistributionFetchError(
+        format_http_status_error(last_status_error, url=url, label=label),
+        url=url,
+        label=label,
+    ) from last_status_error
 
 
 def fetch_and_verify_sha256(
@@ -212,32 +276,11 @@ def fetch_and_verify_sha256(
     LOGGER.info("Verifying %s download and SHA256 from %s", label, url)
     LOGGER.info("  expected SHA256: %s", expected)
     started = time.monotonic()
-    byte_count = 0
-    status_code: int | None = None
-    try:
-        with client.session.stream("GET", url) as response:
-            status_code = response.status_code
-            response.raise_for_status()
-            hasher = hashlib.sha256()
-            for chunk in response.iter_bytes(chunk_size=65536):
-                byte_count += len(chunk)
-                hasher.update(chunk)
-    except httpx.HTTPStatusError as exc:
-        elapsed_ms = (time.monotonic() - started) * 1000
-        LOGGER.error("SHA256 verify %s failed after %.0f ms: %s", label, elapsed_ms, exc)
-        raise DistributionFetchError(
-            format_http_status_error(exc, url=url, label=label),
-            url=url,
-            label=label,
-        ) from exc
-    except httpx.HTTPError as exc:
-        elapsed_ms = (time.monotonic() - started) * 1000
-        LOGGER.error("SHA256 verify %s failed after %.0f ms: %s", label, elapsed_ms, exc)
-        raise DistributionFetchError(
-            f"{label}: HTTP GET failed for {url}: {exc}",
-            url=url,
-            label=label,
-        ) from exc
+    body = fetch_bytes(client, url, label=label)
+    byte_count = len(body)
+    status_code = 200
+    hasher = hashlib.sha256()
+    hasher.update(body)
 
     elapsed_ms = (time.monotonic() - started) * 1000
     actual = hasher.hexdigest()

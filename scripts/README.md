@@ -81,9 +81,15 @@ RELEASE_GIT_REMOTE=upstream make release-publish
 
 # Preview without opening a PR
 ./scripts/release-please.sh pr -- --dry-run --debug
+
+# Override semver bump (major, minor, or bugfix) instead of conventional-commit inference:
+make release-please BUMP=major
+make release-please BUMP=bugfix
+make release-publish BUMP=minor
+BUMP=major ./scripts/release-please.sh pr
 ```
 
-`make release-please` needs GitHub API access (`gh auth login` or a token). `make release-publish` uses plain `git tag` / `git push` only. Set **`RELEASE_GIT_REMOTE`** (default `origin`) when the release target is not `origin` — see [docs/releasing.md](../docs/releasing.md#fork-and-upstream-remotes).
+`make release-please` needs GitHub API access (`gh auth login` or a token). `make release-publish` uses plain `git tag` / `git push` only. Optional **`BUMP=major`**, **`BUMP=minor`**, or **`BUMP=bugfix`** (alias **`patch`**) bumps from [`.release-please-manifest.json`](../.release-please-manifest.json): on **`pr`**, passes **`--release-as`** to Release Please; on **`publish`**, tags the bumped version instead of the manifest value. Set **`RELEASE_GIT_REMOTE`** (default `origin`) when the release target is not `origin` — see [docs/releasing.md](../docs/releasing.md#fork-and-upstream-remotes).
 
 ## Usage
 
@@ -104,6 +110,8 @@ make pre-commit-ci  # all pre-commit hooks (matches GitHub PR CI)
 make lock         # Regenerate uv.lock (see also ./scripts/update-deps.sh for broader bumps)
 make release-please   # Open/update release PR (maintainers; see docs/releasing.md)
 make release-publish  # Tag release after merging release PR
+make release-please BUMP=major   # Force major release PR from manifest
+make release-publish BUMP=bugfix # Tag patch bump from manifest (hotfix)
 ```
 
 Optional scripts (run directly):
