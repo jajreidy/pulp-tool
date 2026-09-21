@@ -4,7 +4,7 @@
 # Multi-stage layout: builder installs deps (network); runtime copies /app/install
 # only so the final image has no uv/pip fetch steps and fewer microdnf packages.
 
-FROM registry.access.redhat.com/ubi10/ubi-minimal:10.2-1788940913 AS builder
+FROM registry.access.redhat.com/ubi10/ubi-minimal:10.2-1789645153 AS builder
 
 ARG VERSION=1.0.0
 ARG RELEASE=1
@@ -30,7 +30,7 @@ RUN uv export --frozen --no-dev --no-emit-project -o /tmp/requirements.txt && \
         --prefix=/app/install --no-deps . && \
     rm -rf /root/.cache /root/.local /tmp/requirements.txt
 
-FROM registry.access.redhat.com/ubi10/ubi-minimal:10.2-1788940913
+FROM registry.access.redhat.com/ubi10/ubi-minimal:10.2-1789645153
 
 # Konflux passes VERSION/RELEASE via build-args-file (.tekton/pulp-tool-container.build-args).
 ARG VERSION=1.0.0
