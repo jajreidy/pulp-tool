@@ -92,6 +92,8 @@ def test_fetch_and_verify_sha256_match() -> None:
     expected = hashlib.sha256(body).hexdigest()
     client = MagicMock()
     response = MagicMock()
+    response.is_error = False
+    response.status_code = 200
     response.raise_for_status = MagicMock()
     response.iter_bytes = MagicMock(return_value=iter([body]))
     client.session.stream.return_value.__enter__.return_value = response
@@ -102,6 +104,8 @@ def test_fetch_and_verify_sha256_match() -> None:
 def test_fetch_and_verify_sha256_mismatch() -> None:
     client = MagicMock()
     response = MagicMock()
+    response.is_error = False
+    response.status_code = 200
     response.raise_for_status = MagicMock()
     response.iter_bytes = MagicMock(return_value=iter([b"other"]))
     client.session.stream.return_value.__enter__.return_value = response
@@ -121,17 +125,66 @@ def test_format_http_status_error_includes_body() -> None:
     assert "not found" in message
 
 
+def test_format_http_status_error_reads_unread_streaming_response_body() -> None:
+    class UnreadStreamResponse:
+        status_code = 404
+        reason_phrase = "Not Found"
+        headers = {"content-type": "text/plain; charset=utf-8", "content-length": "9"}
+
+        @property
+        def text(self) -> str:
+            raise RuntimeError("Attempted to access streaming response content, without having called `read()`.")
+
+        def read(self) -> bytes:
+            return b"Not Found"
+
+    request = httpx.Request("GET", "https://example.com/missing.rpm")
+    response = UnreadStreamResponse()
+    exc = httpx.HTTPStatusError("not found", request=request, response=response)  # type: ignore[arg-type]
+    message = format_http_status_error(exc, url="https://example.com/missing.rpm", label="RPM")
+    assert "response body: Not Found" in message
+
+
+def test_fetch_bytes_retries_transient_404() -> None:
+    body = b"payload"
+    client = MagicMock()
+    ok_response = MagicMock()
+    ok_response.is_error = False
+    ok_response.status_code = 200
+    ok_response.raise_for_status = MagicMock()
+    ok_response.iter_bytes = MagicMock(return_value=iter([body]))
+
+    missing_request = httpx.Request("GET", "https://example.com/missing")
+    missing_response = httpx.Response(404, text="missing", request=missing_request)
+    bad_response = MagicMock()
+    bad_response.is_error = True
+    bad_response.status_code = 404
+    bad_response.read = MagicMock(return_value=b"missing")
+    bad_response.raise_for_status = MagicMock(
+        side_effect=httpx.HTTPStatusError("not found", request=missing_request, response=missing_response)
+    )
+
+    client.session.stream.return_value.__enter__.side_effect = [bad_response, ok_response]
+
+    with patch("distribution_fetch.time.sleep"):
+        assert fetch_bytes(client, "https://example.com/missing", label="artifact") == body
+
+
 def test_fetch_bytes_http_status_error() -> None:
     client = MagicMock()
     request = httpx.Request("GET", "https://example.com/missing")
     response = httpx.Response(404, text="missing", request=request)
     error = httpx.HTTPStatusError("not found", request=request, response=response)
     mock_response = MagicMock()
+    mock_response.is_error = True
+    mock_response.status_code = 404
+    mock_response.read = MagicMock(return_value=b"missing")
     mock_response.raise_for_status.side_effect = error
     client.session.stream.return_value.__enter__.return_value = mock_response
 
-    with pytest.raises(DistributionFetchError, match="HTTP 404"):
-        fetch_bytes(client, "https://example.com/missing", label="artifact")
+    with patch("distribution_fetch.DISTRIBUTION_FETCH_RETRY_ATTEMPTS", 1):
+        with pytest.raises(DistributionFetchError, match="HTTP 404"):
+            fetch_bytes(client, "https://example.com/missing", label="artifact")
 
 
 def test_fetch_bytes_http_error() -> None:

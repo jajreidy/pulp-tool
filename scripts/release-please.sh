@@ -7,6 +7,9 @@
 #
 # pr:      uses release-please release-pr (GitHub API — needs gh login or a token)
 # publish: git tag + push from .release-please-manifest.json (git credentials only)
+#
+# Optional BUMP=major|minor|bugfix overrides conventional-commit semver inference:
+# pr passes --release-as with the bumped version; publish tags that version.
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -18,14 +21,68 @@ RELEASE_GIT_REMOTE="${RELEASE_GIT_REMOTE:-origin}"
 CONFIG_FILE="${RELEASE_PLEASE_CONFIG_FILE:-release-please-config.json}"
 MANIFEST_FILE="${RELEASE_PLEASE_MANIFEST_FILE:-.release-please-manifest.json}"
 
+# BUMP (make) or RELEASE_BUMP: major | minor | bugfix (patch accepted as bugfix).
+RELEASE_BUMP="${RELEASE_BUMP:-${BUMP:-}}"
+
+semver_tag_pattern='^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$'
+
+normalize_release_bump() {
+  local raw="${1,,}"
+  case "$raw" in
+    major | minor | bugfix | patch) printf '%s' "$raw" ;;
+    *)
+      echo "Invalid release bump \"${1}\" (expected major, minor, or bugfix)" >&2
+      return 1
+      ;;
+  esac
+}
+
+bump_version_from_manifest() {
+  local bump_kind
+  bump_kind="$(normalize_release_bump "$1")"
+  if [[ "$bump_kind" == patch ]]; then
+    bump_kind="bugfix"
+  fi
+  python3 - "$bump_kind" "$MANIFEST_FILE" <<'PY'
+import json
+import re
+import sys
+
+bump = sys.argv[1]
+with open(sys.argv[2], encoding="utf-8") as fh:
+    data = json.load(fh)
+base = data.get(".")
+if not base or not isinstance(base, str):
+    raise SystemExit(f"Invalid manifest version in {sys.argv[2]!r}: {base!r}")
+base = base.strip()
+match = re.match(r"^(\d+)\.(\d+)\.(\d+)", base)
+if not match:
+    raise SystemExit(f"Cannot bump version {base!r} (expected X.Y.Z prefix)")
+major, minor, patch = (int(match.group(i)) for i in range(1, 4))
+if bump == "major":
+    major += 1
+    minor = 0
+    patch = 0
+elif bump == "minor":
+    minor += 1
+    patch = 0
+elif bump == "bugfix":
+    patch += 1
+else:
+    raise SystemExit(f"Unsupported bump {bump!r}")
+print(f"{major}.{minor}.{patch}")
+PY
+}
+
 usage() {
   cat <<'EOF'
 Usage: release-please.sh <command> [-- extra release-please flags]
 
 Commands:
   pr        Create or update the release pull request (run on main after feature merges).
-            Also syncs .tekton/pulp-tool-container.build-args on the release PR branch.
+            Also syncs .tekton/pulp-tool-container.build-args and VERSION on the release PR branch.
   publish   Create and push v* tag from .release-please-manifest.json (triggers release.yml)
+            Optional BUMP=major|minor|bugfix tags a bumped version instead of the manifest.
 
 Authentication:
   pr        release-please talks to the GitHub API. Provide GITHUB_TOKEN/GH_TOKEN, or run
@@ -33,6 +90,9 @@ Authentication:
   publish   plain git tag push only (SSH or HTTPS git credentials; no GitHub API token)
 
 Environment:
+  BUMP or RELEASE_BUMP        Optional bump kind for pr (--release-as) or publish (tag):
+                              major, minor, bugfix (patch is an alias for bugfix).
+                              make release-please BUMP=major
   GITHUB_TOKEN or GH_TOKEN   Optional if `gh auth login` is configured (pr command only)
   GITHUB_REPOSITORY          owner/repo (optional; inferred from RELEASE_GIT_REMOTE)
   RELEASE_GIT_REMOTE         Git remote for fetch/pull/tag push and repo inference (default: origin)
@@ -42,7 +102,10 @@ Environment:
 Examples:
   gh auth login
   ./scripts/release-please.sh pr
+  make release-please BUMP=major
+  make release-please BUMP=bugfix
   ./scripts/release-please.sh pr -- --dry-run --debug
+  make release-publish BUMP=minor
   # Fork workflow (canonical repo on upstream remote):
   RELEASE_GIT_REMOTE=upstream ./scripts/release-please.sh pr
   RELEASE_GIT_REMOTE=upstream ./scripts/release-please.sh publish
@@ -127,7 +190,7 @@ sync_container_build_args_to_release_pr() {
   fi
 
   if ! command -v gh >/dev/null 2>&1; then
-    echo "Install gh to auto-sync .tekton/pulp-tool-container.build-args onto the release PR." >&2
+    echo "Install gh to auto-sync VERSION and .tekton/pulp-tool-container.build-args onto the release PR." >&2
     return 0
   fi
 
@@ -142,25 +205,25 @@ sync_container_build_args_to_release_pr() {
   fi
 
   if ! git diff --quiet || ! git diff --cached --quiet; then
-    echo "Working tree has uncommitted changes; commit or stash before release-please syncs build-args." >&2
+    echo "Working tree has uncommitted changes; commit or stash before release-please syncs version files." >&2
     return 1
   fi
 
   local start_branch=""
   start_branch="$(git branch --show-current 2>/dev/null || true)"
 
-  echo "Syncing container build-args on release PR #${pr_number}..."
+  echo "Syncing VERSION and container build-args on release PR #${pr_number}..."
   gh pr checkout "$pr_number" --repo "$repo_url"
 
   "${REPO_ROOT}/scripts/sync-container-build-args.sh"
 
-  if git diff --quiet -- .tekton/pulp-tool-container.build-args; then
-    echo "Container build-args already match manifest on PR #${pr_number}."
+  if git diff --quiet -- .tekton/pulp-tool-container.build-args VERSION; then
+    echo "VERSION and container build-args already match manifest on PR #${pr_number}."
   else
-    git add .tekton/pulp-tool-container.build-args
-    git commit -m "chore(tekton): sync container build-args for release"
+    git add .tekton/pulp-tool-container.build-args VERSION
+    git commit -m "chore(release): sync VERSION and container build-args for release"
     git push
-    echo "Pushed container build-args update to release PR #${pr_number}."
+    echo "Pushed VERSION and container build-args update to release PR #${pr_number}."
   fi
 
   if [[ -n "$start_branch" ]]; then
@@ -169,17 +232,25 @@ sync_container_build_args_to_release_pr() {
 }
 
 publish_git_tag() {
-  local version tag
+  local version tag manifest_version=""
 
   git fetch "$RELEASE_GIT_REMOTE" "$TARGET_BRANCH"
   git checkout "$TARGET_BRANCH"
   git pull --ff-only "$RELEASE_GIT_REMOTE" "$TARGET_BRANCH"
 
-  # Read manifest after sync — a stale local file before pull caused wrong tags.
-  version="$(read_manifest_version)"
+  if [[ -n "$RELEASE_BUMP" ]]; then
+    version="$(bump_version_from_manifest "$RELEASE_BUMP")"
+    manifest_version="$(read_manifest_version)" || true
+    if [[ -n "$manifest_version" && "$manifest_version" != "$version" ]]; then
+      echo "Note: tagging v${version} (BUMP=${RELEASE_BUMP} from manifest ${manifest_version})." >&2
+    fi
+  else
+    # Read manifest after sync — a stale local file before pull caused wrong tags.
+    version="$(read_manifest_version)"
+  fi
   tag="v${version}"
 
-  if [[ ! "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$ ]]; then
+  if [[ ! "$tag" =~ $semver_tag_pattern ]]; then
     echo "Refusing to tag: manifest version ${version!r} -> ${tag!r} (expected SemVer)" >&2
     exit 1
   fi
@@ -197,6 +268,34 @@ publish_git_tag() {
   git tag "$tag"
   git push "$RELEASE_GIT_REMOTE" "$tag"
   echo "Pushed ${tag} to ${RELEASE_GIT_REMOTE}. release.yml should start on GitHub Actions."
+}
+
+run_release_pr_command() {
+  local token repo_url release_as
+  local -a rp_cli_args extra_args=("$@")
+
+  token="$(resolve_github_token || true)"
+  if [[ -z "$token" ]]; then
+    echo "release-pr needs GitHub API access." >&2
+    echo "Run 'gh auth login' or set GITHUB_TOKEN / GH_TOKEN (contents + pull-requests write)." >&2
+    exit 1
+  fi
+  repo_url="$(resolve_repo_url)"
+  rp_cli_args=(
+    release-pr
+    --token="$token"
+    --repo-url="$repo_url"
+    --target-branch="$TARGET_BRANCH"
+    --config-file="$CONFIG_FILE"
+    --manifest-file="$MANIFEST_FILE"
+  )
+  if [[ -n "$RELEASE_BUMP" ]]; then
+    release_as="$(bump_version_from_manifest "$RELEASE_BUMP")"
+    echo "Using release-as=${release_as} (BUMP=${RELEASE_BUMP} from manifest)."
+    rp_cli_args+=(--release-as="$release_as")
+  fi
+  run_release_please "${rp_cli_args[@]}" "${extra_args[@]}"
+  sync_container_build_args_to_release_pr "$repo_url" "${extra_args[@]}"
 }
 
 run_release_please() {
@@ -229,21 +328,7 @@ fi
 
 case "$cmd" in
   pr|release-pr)
-    token="$(resolve_github_token || true)"
-    if [[ -z "$token" ]]; then
-      echo "release-pr needs GitHub API access." >&2
-      echo "Run 'gh auth login' or set GITHUB_TOKEN / GH_TOKEN (contents + pull-requests write)." >&2
-      exit 1
-    fi
-    repo_url="$(resolve_repo_url)"
-    run_release_please release-pr \
-      --token="$token" \
-      --repo-url="$repo_url" \
-      --target-branch="$TARGET_BRANCH" \
-      --config-file="$CONFIG_FILE" \
-      --manifest-file="$MANIFEST_FILE" \
-      "${extra_args[@]}"
-    sync_container_build_args_to_release_pr "$repo_url" "${extra_args[@]}"
+    run_release_pr_command "${extra_args[@]}"
     ;;
   publish|github-release|tag)
     publish_git_tag

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Write Konflux build-args-file for pulp-tool-container from the release version.
+# Sync release version from .release-please-manifest.json into Konflux build-args and VERSION.
 #
 # Uses .release-please-manifest.json (updated in Release Please PRs). That version
 # becomes the git tag when maintainers run `make release-publish`; Konflux builds on
@@ -11,6 +11,7 @@ cd "$REPO_ROOT"
 
 MANIFEST_FILE="${RELEASE_PLEASE_MANIFEST_FILE:-.release-please-manifest.json}"
 OUT_FILE="${CONTAINER_BUILD_ARGS_FILE:-.tekton/pulp-tool-container.build-args}"
+VERSION_FILE="${PULP_TOOL_VERSION_FILE:-VERSION}"
 RELEASE="${CONTAINER_RELEASE:-1}"
 
 if [[ ! -f "$MANIFEST_FILE" ]]; then
@@ -36,4 +37,10 @@ VERSION=${VERSION}
 RELEASE=${RELEASE}
 EOF
 
+cat >"$VERSION_FILE" <<EOF
+# Version information for pulp-tool package
+__version__ = "${VERSION}"
+EOF
+
 echo "Wrote ${OUT_FILE} (VERSION=${VERSION}, RELEASE=${RELEASE})"
+echo "Wrote ${VERSION_FILE} (__version__ = \"${VERSION}\")"
