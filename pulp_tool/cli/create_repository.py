@@ -14,6 +14,7 @@ from ..models.pulp_api import (
 )
 from ..utils import PulpHelper, setup_logging
 from ..utils.error_handling import handle_generic_error
+from ..utils.pulp_tasks import wait_for_successful_task
 
 
 @click.command()
@@ -161,7 +162,7 @@ def create_repository(  # pylint: disable=too-many-arguments,too-many-positional
             logging.info("Updating repository with packages")
             logging.debug(f"Packages: {package_list}")
             repo_task = client.add_content(repo_href, package_list)
-            finished_task = client.wait_for_finished_task(repo_task.pulp_href)
+            finished_task = wait_for_successful_task(client, repo_task.pulp_href, "add packages to repository")
             if finished_task.created_resources:
                 logging.debug(
                     "Captured %d created resources from RPM add_content", len(finished_task.created_resources)

@@ -24,11 +24,18 @@ from pulp_tool.api import DistributionClient
 RESULTS_JSON_FILENAME = "pulp_results.json"
 LOGGER = logging.getLogger("e2e.distribution_fetch")
 
-# Pulp publish can finish before packages.redhat.com pulp-content serves the object.
-DISTRIBUTION_FETCH_RETRY_ATTEMPTS = max(1, int(os.environ.get("E2E_DISTRIBUTION_FETCH_ATTEMPTS", "8")))
+# Pulp API reports content in the repository as soon as the upload task completes.
+# pulp-content (packages.redhat.com) can lag behind publish — post-test-validation uses
+# the Pulp API; distribution fetch uses pulp-content HTTP and must poll longer.
+DISTRIBUTION_FETCH_MAX_WAIT_S = float(os.environ.get("E2E_DISTRIBUTION_FETCH_MAX_WAIT_S", "300"))
 DISTRIBUTION_FETCH_RETRY_INITIAL_DELAY_S = float(os.environ.get("E2E_DISTRIBUTION_FETCH_DELAY_S", "2"))
 DISTRIBUTION_FETCH_RETRY_MAX_DELAY_S = 15.0
 DISTRIBUTION_FETCH_RETRY_STATUSES = frozenset({404, 502, 503, 504})
+# Back-compat: optional cap on attempts (0 = unlimited until max wait elapses)
+_DISTRIBUTION_FETCH_ATTEMPTS_RAW = os.environ.get("E2E_DISTRIBUTION_FETCH_ATTEMPTS", "").strip()
+DISTRIBUTION_FETCH_RETRY_ATTEMPTS = (
+    max(1, int(_DISTRIBUTION_FETCH_ATTEMPTS_RAW)) if _DISTRIBUTION_FETCH_ATTEMPTS_RAW else 0
+)
 
 
 class DistributionFetchError(Exception):
@@ -167,6 +174,54 @@ def distribution_client_from_config(config_path: Path) -> DistributionClient:
     )
 
 
+def probe_http_get_status(client: DistributionClient, url: str) -> int:
+    """Return HTTP status code for ``url`` without raising (e2e diagnostics only)."""
+    try:
+        with client.session.stream("GET", url) as response:
+            if response.is_error:
+                response.read()
+            return int(response.status_code)
+    except httpx.HTTPError:
+        return 0
+
+
+def distribution_fetch_retry_policy_summary() -> str:
+    """Human-readable summary of retry settings (for e2e logs)."""
+    attempts_part = (
+        f"max_attempts={DISTRIBUTION_FETCH_RETRY_ATTEMPTS}"
+        if DISTRIBUTION_FETCH_RETRY_ATTEMPTS
+        else "max_attempts=unlimited"
+    )
+    return (
+        f"max_wait_s={DISTRIBUTION_FETCH_MAX_WAIT_S}, "
+        f"{attempts_part}, "
+        f"initial_delay_s={DISTRIBUTION_FETCH_RETRY_INITIAL_DELAY_S}, "
+        f"max_delay_s={DISTRIBUTION_FETCH_RETRY_MAX_DELAY_S}, "
+        f"retry_statuses={sorted(DISTRIBUTION_FETCH_RETRY_STATUSES)}"
+    )
+
+
+def format_distribution_fetch_exhausted_message(
+    exc: httpx.HTTPStatusError,
+    *,
+    url: str,
+    label: str,
+    attempts: int,
+    elapsed_s: float,
+) -> str:
+    """Error text when retries are exhausted (often Pulp pulp-content propagation)."""
+    base = format_http_status_error(exc, url=url, label=label)
+    return (
+        f"{base}\n"
+        f"  retries: {attempts} attempt(s) over {elapsed_s:.1f}s "
+        f"({distribution_fetch_retry_policy_summary()})\n"
+        f"  hint: upload succeeded and Konflux URL matches build_id — persistent 404 usually means "
+        f"pulp-content is not serving this object yet (Pulp publish/CDN lag; content may already "
+        f"appear in the Pulp API and in post-test-validation). Compare GET status for SBOM vs "
+        f"pulp_results.json on failure."
+    )
+
+
 def normalize_sha256_hex(value: str) -> str:
     """Strip optional ``sha256:`` prefix and return lowercase hex."""
     normalized = value.strip().lower()
@@ -190,18 +245,23 @@ def fetch_bytes(client: DistributionClient, url: str, *, label: str) -> bytes:
     """GET ``url`` and return the response body."""
     LOGGER.info("HTTP GET %s: %s", label, url)
     started = time.monotonic()
+    deadline = started + DISTRIBUTION_FETCH_MAX_WAIT_S
     last_status_error: httpx.HTTPStatusError | None = None
+    attempt = 0
 
-    for attempt in range(DISTRIBUTION_FETCH_RETRY_ATTEMPTS):
+    while True:
+        if DISTRIBUTION_FETCH_RETRY_ATTEMPTS and attempt >= DISTRIBUTION_FETCH_RETRY_ATTEMPTS:
+            break
+        attempt += 1
         try:
             status_code, body = _fetch_bytes_once(client, url, label=label)
             elapsed_ms = (time.monotonic() - started) * 1000
-            if attempt > 0:
+            if attempt > 1:
                 LOGGER.info(
-                    "HTTP GET %s succeeded on attempt %d/%d",
+                    "HTTP GET %s succeeded on attempt %d after %.0f ms (pulp-content became available)",
                     label,
-                    attempt + 1,
-                    DISTRIBUTION_FETCH_RETRY_ATTEMPTS,
+                    attempt,
+                    elapsed_ms,
                 )
             LOGGER.info(
                 "HTTP GET %s complete: status=%s bytes=%d elapsed_ms=%.0f",
@@ -213,28 +273,28 @@ def fetch_bytes(client: DistributionClient, url: str, *, label: str) -> bytes:
             return body
         except httpx.HTTPStatusError as exc:
             last_status_error = exc
-            if (
-                exc.response.status_code in DISTRIBUTION_FETCH_RETRY_STATUSES
-                and attempt + 1 < DISTRIBUTION_FETCH_RETRY_ATTEMPTS
-            ):
-                delay_s = _retry_delay_s(attempt)
-                LOGGER.warning(
-                    "HTTP GET %s returned %s; retrying in %.1fs (attempt %d/%d)",
-                    label,
-                    exc.response.status_code,
-                    delay_s,
-                    attempt + 1,
-                    DISTRIBUTION_FETCH_RETRY_ATTEMPTS,
-                )
-                time.sleep(delay_s)
-                continue
-            elapsed_ms = (time.monotonic() - started) * 1000
-            LOGGER.error("HTTP GET %s failed after %.0f ms: %s", label, elapsed_ms, exc)
-            raise DistributionFetchError(
-                format_http_status_error(exc, url=url, label=label),
-                url=url,
-                label=label,
-            ) from exc
+            if exc.response.status_code not in DISTRIBUTION_FETCH_RETRY_STATUSES:
+                elapsed_ms = (time.monotonic() - started) * 1000
+                LOGGER.error("HTTP GET %s failed after %.0f ms: %s", label, elapsed_ms, exc)
+                raise DistributionFetchError(
+                    format_http_status_error(exc, url=url, label=label),
+                    url=url,
+                    label=label,
+                ) from exc
+
+            remaining_s = deadline - time.monotonic()
+            if remaining_s <= 0:
+                break
+            delay_s = min(_retry_delay_s(attempt - 1), remaining_s)
+            LOGGER.warning(
+                "HTTP GET %s returned %s; retrying in %.1fs (attempt %d, %.0fs left in max wait)",
+                label,
+                exc.response.status_code,
+                delay_s,
+                attempt,
+                remaining_s,
+            )
+            time.sleep(delay_s)
         except httpx.HTTPError as exc:
             elapsed_ms = (time.monotonic() - started) * 1000
             LOGGER.error("HTTP GET %s failed after %.0f ms: %s", label, elapsed_ms, exc)
@@ -244,12 +304,26 @@ def fetch_bytes(client: DistributionClient, url: str, *, label: str) -> bytes:
                 label=label,
             ) from exc
 
-    assert last_status_error is not None  # noqa: S101 — loop guard
+    elapsed_s = time.monotonic() - started
+    if last_status_error is not None:
+        LOGGER.error("HTTP GET %s failed after %.0f ms: %s", label, elapsed_s * 1000, last_status_error)
+        raise DistributionFetchError(
+            format_distribution_fetch_exhausted_message(
+                last_status_error,
+                url=url,
+                label=label,
+                attempts=attempt,
+                elapsed_s=elapsed_s,
+            ),
+            url=url,
+            label=label,
+        ) from last_status_error
+
     raise DistributionFetchError(
-        format_http_status_error(last_status_error, url=url, label=label),
+        f"{label}: HTTP GET timed out for {url} after {elapsed_s:.1f}s",
         url=url,
         label=label,
-    ) from last_status_error
+    )
 
 
 def fetch_and_verify_sha256(

@@ -365,6 +365,8 @@ The test suite validates:
 4. For `--real-server` tests, verify Pulp server connectivity
 5. For `search-by` tests, verify the `pulp-results` fixture file exists and is valid JSON
 
+**`test_upload_full` distribution fetch 404 but cleanup/validation sees content:** Upload completes when the Pulp **API** indexes content in the repository. `test_upload_full` then HTTP GETs **pulp-content** (`packages.redhat.com`), which can lag behind publish. `post-test-validation.py` lists repository content via the Pulp CLI (API) and may pass while pulp-content still returns 404. The fetch helper polls until `E2E_DISTRIBUTION_FETCH_MAX_WAIT_S` (default **300** seconds). Increase it if your domain is slow; set `E2E_DISTRIBUTION_FETCH_ATTEMPTS=1` only to fail fast while debugging.
+
 ### Validation failures
 
 If `post-test-validation.py` fails:

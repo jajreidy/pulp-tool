@@ -16,7 +16,7 @@ from ..models.context import UploadContext
 from ..models.results import PulpResultsModel, RpmUploadResult
 from .constants import SUPPORTED_ARCHITECTURES
 from .error_handling import handle_generic_error
-from .pulp_tasks import create_file_content_and_wait
+from .pulp_tasks import create_file_content_and_wait, wait_for_successful_task
 from .rpm_operations import upload_rpms_parallel
 from .rpm_overwrite import remove_rpms_matching_local_files_from_repository
 from .validation import validate_file_path
@@ -203,9 +203,8 @@ def upload_artifacts_to_repository(
             # Check if response contains a task or if it's already complete
             response_data = content_response.json()
             if "task" in response_data:
-                # Wait for upload to complete
                 task_href = response_data["task"]
-                client.wait_for_finished_task(task_href)
+                wait_for_successful_task(client, task_href, f"upload {file_type} {artifact_name}")
             else:
                 # Response might be immediate success, log it
                 logging.debug("File upload completed immediately: %s", artifact_name)
@@ -303,7 +302,9 @@ def upload_rpms(
     if rpm_results_artifacts:
         logging.debug("Adding %s RPM artifacts to repository", len(rpm_results_artifacts))
         rpm_repo_task = client.add_content(rpm_repository_href, rpm_results_artifacts)
-        final_task = client.wait_for_finished_task(rpm_repo_task.pulp_href)
+        final_task = wait_for_successful_task(
+            client, rpm_repo_task.pulp_href, f"add RPM content to repository ({arch})"
+        )
         # Capture created resources from the task
         if final_task.created_resources:
             created_resources.extend(final_task.created_resources)
