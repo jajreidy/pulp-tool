@@ -15,7 +15,7 @@ from ..models.repository import RepositoryRefs
 from ..models.results import PulpResultsModel
 from ..utils import PulpHelper, determine_build_id, extract_metadata_from_artifacts
 from ..utils.error_handling import handle_generic_error
-from ..utils.pulp_tasks import create_file_content_and_wait
+from ..utils.pulp_tasks import create_file_content_and_wait, wait_for_successful_task
 from ..utils.rpm_operations import upload_rpms_parallel
 
 
@@ -126,7 +126,7 @@ def _upload_rpms_to_repository(
         logging.debug("Adding %d RPM artifacts to repository", len(rpm_artifacts))
         try:
             add_task = pulp_client.add_content(repositories.rpms_href, rpm_artifacts)
-            pulp_client.wait_for_finished_task(add_task.pulp_href)
+            wait_for_successful_task(pulp_client, add_task.pulp_href, "add RPMs to repository")
             upload_info.uploaded_counts.rpms = len(rpm_artifacts)
         except (httpx.HTTPError, ValueError, KeyError) as e:
             handle_generic_error(e, "add RPMs to repository")

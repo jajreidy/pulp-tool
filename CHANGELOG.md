@@ -26,6 +26,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - E2e distribution URL verification: after `test_upload_full`, HTTP GET of RPM, SBOM, and `pulp_results.json` distribution URLs with Basic Auth from `pulp-access` `cli.toml` and SHA256 checks against upload metadata (`e2e/distribution_fetch.py`)
+- E2e distribution fetch: wall-clock polling via `E2E_DISTRIBUTION_FETCH_MAX_WAIT_S` (default 300s) for pulp-content propagation; optional `E2E_DISTRIBUTION_FETCH_ATTEMPTS` cap; SBOM vs `pulp_results.json` probe logging on failure ([34d2254](https://github.com/konflux-ci/pulp-tool/commit/34d2254))
 - E2e large RPM upload: `pre-test.py` builds a **> 300 MiB** RPM (`--large-rpm-size-mb`, default 301 MiB incompressible payload); e2e uploads to Pulp and verifies via `search-by --checksums` ([b4cb414](https://github.com/konflux-ci/pulp-tool/commit/b4cb414))
 - `UPLOAD_CONTENT_TIMEOUT` (30 minutes) for multipart RPM and file uploads ([b4cb414](https://github.com/konflux-ci/pulp-tool/commit/b4cb414))
 - `ppc64` architecture support in `SUPPORTED_ARCHITECTURES`, RPM path detection, upload orchestration, and content queries
@@ -40,6 +41,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Upload and pull paths now require Pulp tasks to finish with `state == completed` (`wait_for_successful_task`), including `pulp_results.json` and RPM `add_content`, instead of treating failed tasks as success ([34d2254](https://github.com/konflux-ci/pulp-tool/commit/34d2254))
 - Release `push-snapshot` failure resolving `{digest}.src` source container: PipelineRuns set `build-source-image=true` so `source-build-oci-ta` publishes the source image expected when release mapping defaults `pushSourceContainer` to true
 - `upload --signed-by` now stores RPMs in the `rpms-signed` repository (matching `pulp_results.json` distribution URLs and CLI docs); previously RPMs were added to `rpms` while URLs pointed at `rpms-signed`
 - Large RPM uploads no longer fail with `httpx.WriteTimeout` at the previous 120-second write limit (e.g. large debuginfo packages in sign-and-verify pipelines) ([b4cb414](https://github.com/konflux-ci/pulp-tool/commit/b4cb414))

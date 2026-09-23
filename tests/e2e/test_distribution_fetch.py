@@ -16,10 +16,13 @@ sys.path.insert(0, str(E2E_DIR))
 from distribution_fetch import (  # noqa: E402
     DistributionFetchError,
     distribution_client_from_config,
+    distribution_fetch_retry_policy_summary,
     fetch_and_verify_sha256,
     fetch_bytes,
+    format_distribution_fetch_exhausted_message,
     format_http_status_error,
     normalize_sha256_hex,
+    probe_http_get_status,
     pulp_results_json_url,
 )
 
@@ -170,6 +173,33 @@ def test_fetch_bytes_retries_transient_404() -> None:
         assert fetch_bytes(client, "https://example.com/missing", label="artifact") == body
 
 
+def test_distribution_fetch_retry_policy_summary() -> None:
+    summary = distribution_fetch_retry_policy_summary()
+    assert "max_wait_s=" in summary
+    assert "404" in summary
+
+
+def test_probe_http_get_status() -> None:
+    client = MagicMock()
+    response = MagicMock()
+    response.is_error = False
+    response.status_code = 404
+    client.session.stream.return_value.__enter__.return_value = response
+    assert probe_http_get_status(client, "https://example.com/missing") == 404
+
+
+def test_format_distribution_fetch_exhausted_message() -> None:
+    request = httpx.Request("GET", "https://example.com/pulp_results.json")
+    response = httpx.Response(404, text="missing", request=request)
+    exc = httpx.HTTPStatusError("missing", request=request, response=response)
+    message = format_distribution_fetch_exhausted_message(
+        exc, url="https://example.com/pulp_results.json", label="pulp_results.json", attempts=8, elapsed_s=74.2
+    )
+    assert "HTTP 404" in message
+    assert "retries: 8 attempt(s)" in message
+    assert "pulp-content" in message
+
+
 def test_fetch_bytes_http_status_error() -> None:
     client = MagicMock()
     request = httpx.Request("GET", "https://example.com/missing")
@@ -182,9 +212,10 @@ def test_fetch_bytes_http_status_error() -> None:
     mock_response.raise_for_status.side_effect = error
     client.session.stream.return_value.__enter__.return_value = mock_response
 
-    with patch("distribution_fetch.DISTRIBUTION_FETCH_RETRY_ATTEMPTS", 1):
-        with pytest.raises(DistributionFetchError, match="HTTP 404"):
+    with patch("distribution_fetch.DISTRIBUTION_FETCH_RETRY_ATTEMPTS", 1), patch("distribution_fetch.time.sleep"):
+        with pytest.raises(DistributionFetchError, match="HTTP 404") as exc_info:
             fetch_bytes(client, "https://example.com/missing", label="artifact")
+    assert "retries: 1 attempt(s)" in str(exc_info.value)
 
 
 def test_fetch_bytes_http_error() -> None:

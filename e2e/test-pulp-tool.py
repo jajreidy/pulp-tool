@@ -23,11 +23,13 @@ from typing import Dict, List
 from distribution_fetch import (
     DistributionFetchError,
     distribution_client_from_config,
+    distribution_fetch_retry_policy_summary,
     fetch_and_verify_sha256,
     fetch_bytes,
     format_fetch_check_summary,
     format_pulp_results_for_diagnostics,
     normalize_sha256_hex,
+    probe_http_get_status,
 )
 from large_upload import (
     LARGE_RPM_ARCH,
@@ -720,6 +722,7 @@ class E2ETestSuite:
                 "distribution fetch setup",
                 detail=f"build_id={full_build_id} konflux_url={pulp_results_url}",
             )
+            self.log_info(f"Distribution fetch retry policy: {distribution_fetch_retry_policy_summary()}")
             self.log_info(f"Konflux digest result: {pulp_results_digest}")
             pulp_results_content = json.loads(
                 fetch_bytes(client, pulp_results_url, label="pulp_results.json").decode("utf-8")
@@ -771,6 +774,29 @@ class E2ETestSuite:
         except DistributionFetchError as exc:
             self.stats.failed += 1
             self.log_error(f"Distribution fetch setup failed: {exc}")
+            if "client" in locals() and "sbom_results_content" in locals():
+                sbom_status = probe_http_get_status(client, sbom_results_content)
+                self.log_error(
+                    "Distribution probe (immediate GET, no retry): "
+                    f"SBOM status={sbom_status} url={sbom_results_content}"
+                )
+                if sbom_status == 200:
+                    self.log_error(
+                        "SBOM is reachable via pulp-content but pulp_results.json is not — "
+                        "likely artifacts-repo publish or pulp-content mapping for the artifacts "
+                        "distribution (Pulp/platform), not e2e URL or build_id construction."
+                    )
+                elif sbom_status in {404, 502, 503, 504}:
+                    self.log_error(
+                        "SBOM URL also returned a non-success status — pulp-content may not be "
+                        "serving this build's file distributions yet, or Basic Auth/path is wrong "
+                        "for the whole build prefix."
+                    )
+                    self.log_error(
+                        "post-test-validation uses the Pulp API (content in repo); distribution fetch "
+                        "uses pulp-content HTTP, which can lag after upload — see "
+                        "E2E_DISTRIBUTION_FETCH_MAX_WAIT_S (default 300s)."
+                    )
             if "pulp_results_content" in locals():
                 self.log_distribution_fetch_diagnostics(
                     pulp_results_content,

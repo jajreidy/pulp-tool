@@ -11,9 +11,22 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from ..models.pulp_api import TaskResponse
+from .response_utils import check_task_success
 
 if TYPE_CHECKING:
     from ..api.pulp_client import PulpClient  # pragma: no cover
+
+
+def wait_for_successful_task(client: PulpClient, task_href: str, operation: str) -> TaskResponse:
+    """
+    Poll until the Pulp task finishes, then require ``state == completed``.
+
+    Raises:
+        ValueError: If the task ends in failed, canceled, or skipped state.
+    """
+    task_response = client.wait_for_finished_task(task_href)
+    check_task_success(task_response, operation)
+    return task_response
 
 
 def create_file_content_and_wait(
@@ -41,7 +54,7 @@ def create_file_content_and_wait(
         operation: Label for ``check_response`` error messages.
 
     Returns:
-        Final ``TaskResponse`` after the task reaches a terminal state.
+        Final ``TaskResponse`` after the task completes successfully.
     """
     response = client.create_file_content(
         repository,
@@ -53,7 +66,7 @@ def create_file_content_and_wait(
     )
     client.check_response(response, operation)
     task_href = response.json()["task"]
-    return client.wait_for_finished_task(task_href)
+    return wait_for_successful_task(client, task_href, operation)
 
 
-__all__ = ["create_file_content_and_wait"]
+__all__ = ["create_file_content_and_wait", "wait_for_successful_task"]

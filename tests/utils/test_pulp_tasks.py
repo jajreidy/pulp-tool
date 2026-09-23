@@ -4,7 +4,7 @@ import httpx
 import pytest
 
 from pulp_tool.models.pulp_api import TaskResponse
-from pulp_tool.utils.pulp_tasks import create_file_content_and_wait
+from pulp_tool.utils.pulp_tasks import create_file_content_and_wait, wait_for_successful_task
 
 
 def test_create_file_content_and_wait(mock_pulp_client, httpx_mock) -> None:
@@ -44,3 +44,37 @@ def test_create_file_content_and_wait_http_error(mock_pulp_client, httpx_mock) -
             filename="x.json",
             operation="test",
         )
+
+
+def test_create_file_content_and_wait_task_failed(mock_pulp_client, httpx_mock) -> None:
+    httpx_mock.post("https://pulp.example.com/pulp/api/v3/test-domain/api/v3/content/file/files/").mock(
+        return_value=httpx.Response(202, json={"task": "/pulp/api/v3/tasks/abc/"})
+    )
+    httpx_mock.get("https://pulp.example.com/pulp/api/v3/tasks/abc/").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "pulp_href": "/pulp/api/v3/tasks/abc/",
+                "state": "failed",
+                "error": {"description": "upload exploded"},
+            },
+        )
+    )
+    with pytest.raises(ValueError, match="upload exploded"):
+        create_file_content_and_wait(
+            mock_pulp_client,
+            "artifacts-prn",
+            "content",
+            build_id="b1",
+            pulp_label={"build_id": "b1"},
+            filename="pulp_results.json",
+            operation="upload results JSON",
+        )
+
+
+def test_wait_for_successful_task_completed(mock_pulp_client, httpx_mock) -> None:
+    httpx_mock.get("https://pulp.example.com/pulp/api/v3/tasks/abc/").mock(
+        return_value=httpx.Response(200, json={"pulp_href": "/pulp/api/v3/tasks/abc/", "state": "completed"})
+    )
+    task = wait_for_successful_task(mock_pulp_client, "/pulp/api/v3/tasks/abc/", "add content")
+    assert task.state == "completed"
