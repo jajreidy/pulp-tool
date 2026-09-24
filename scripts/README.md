@@ -62,7 +62,7 @@ This script:
 
 ### `release-please.sh`
 
-Run [Release Please](https://github.com/googleapis/release-please) locally to open release PRs and create semver tags. See [docs/releasing.md](../docs/releasing.md).
+Run [Release Please](https://github.com/googleapis/release-please) locally as part of the maintainer flow: **`make release-please`** (Release PR + merge + wait for Konflux on-push build) → **`make release-publish`** (`v*` tag → PyPI) → **Konflux release** (manual Release Plan for the container). See [docs/releasing.md](../docs/releasing.md).
 
 ```bash
 gh auth login

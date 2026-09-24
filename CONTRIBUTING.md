@@ -331,7 +331,13 @@ Closes #123
 
 ## Releases
 
-Maintainers: see **[docs/releasing.md](docs/releasing.md)** for PyPI release setup, tagging, and troubleshooting.
+Maintainers publish **two artifacts** (Python on PyPI, container via Konflux). Canonical flow:
+
+1. **`make release-please`** — open/update the Release PR, curate changelog, merge to `main`, wait for **`pulp-tool-container-on-push`**.
+2. **`make release-publish`** — push the `v*` tag; GitHub Actions uploads to PyPI.
+3. **Konflux release** — run the tenant Release Plan for **`pulp-tool-container`** after PyPI (image promotion is not automatic on tag push).
+
+Full setup, diagrams, and troubleshooting: **[docs/releasing.md](docs/releasing.md)**.
 
 ## Questions?
 

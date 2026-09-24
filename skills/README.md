@@ -41,3 +41,4 @@ Verification notes (RED/GREEN scenarios): [verification-scenarios.md](verificati
 - [AGENTS.md](../AGENTS.md) — bootstrap and conventions
 - [CLAUDE.md](../CLAUDE.md) — Konflux / upload contracts (source of truth for upload skill)
 - [CONTRIBUTING.md](../CONTRIBUTING.md) — contributor and agent workflow
+- [docs/releasing.md](../docs/releasing.md) — maintainer release (release-please → release-publish → Konflux release)

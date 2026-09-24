@@ -124,7 +124,7 @@ make check                # lint + test
 
 **Dependency lockfile:** **`uv.lock`** is generated from **`pyproject.toml`**; after changing dependencies, run `make lock`.
 
-Before a PR, ensure `make pre-commit-ci` (or commit + pre-push pre-commit stages) and `make test` are green. For AI-assisted work see **[AGENTS.md](AGENTS.md)** (start with § **Bootstrap**), **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)**, and **[CLAUDE.md](CLAUDE.md)** (Konflux contracts); also [CONTRIBUTING.md](CONTRIBUTING.md) and [tests/README.md](tests/README.md). Maintainers: [docs/releasing.md](docs/releasing.md). Optional [AgentReady](https://github.com/ambient-code/agentready): `pip install agentready && agentready assess .` ([.agentready-config.yaml](.agentready-config.yaml); reports under `.agentready/`, gitignored).
+Before a PR, ensure `make pre-commit-ci` (or commit + pre-push pre-commit stages) and `make test` are green. For AI-assisted work see **[AGENTS.md](AGENTS.md)** (start with § **Bootstrap**), **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)**, and **[CLAUDE.md](CLAUDE.md)** (Konflux contracts); also [CONTRIBUTING.md](CONTRIBUTING.md) and [tests/README.md](tests/README.md). **Maintainers:** release with **`make release-please`** → **`make release-publish`** → Konflux release — see **[docs/releasing.md](docs/releasing.md)**. Optional [AgentReady](https://github.com/ambient-code/agentready): `pip install agentready && agentready assess .` ([.agentready-config.yaml](.agentready-config.yaml); reports under `.agentready/`, gitignored).
 
 **Troubleshooting**
 
