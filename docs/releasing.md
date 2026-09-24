@@ -6,40 +6,52 @@ Maintainer guide for publishing **`pulp-tool`** to [PyPI](https://pypi.org/proje
 
 | Artifact | When | Mechanism |
 |----------|------|-----------|
-| **Container image** | Merge to **`main`** (including the Release Please PR) | [`.tekton/pulp-tool-container-build-push.yaml`](../.tekton/pulp-tool-container-build-push.yaml) → promote with your RPA (`push-to-external-registry`) |
+| **Container image (build)** | Merge to **`main`** (including the Release Please PR) | [`.tekton/pulp-tool-container-build-push.yaml`](../.tekton/pulp-tool-container-build-push.yaml) — PipelineRun **`pulp-tool-container-on-push`** |
+| **Container image (release)** | After **`make release-publish`** and PyPI upload | Manual **Konflux release** (tenant Release Plan / RPA; see [Konflux container build and release](#konflux-container-build-and-release)) |
 | **Python package (PyPI)** | **`v*`** tag on **`main`** | [`.github/workflows/release.yml`](../.github/workflows/release.yml) — build, GitHub Release, PyPI upload |
 
-**Release PR automation** uses [Release Please](https://github.com/googleapis/release-please) run **locally** by maintainers ([`scripts/release-please.sh`](../scripts/release-please.sh)). It opens a Release PR with [`CHANGELOG.md`](../CHANGELOG.md) and [`.release-please-manifest.json`](../.release-please-manifest.json) updates, then syncs [`VERSION`](../VERSION) and [`.tekton/pulp-tool-container.build-args`](../.tekton/pulp-tool-container.build-args) onto that PR branch. **Merging that PR** rebuilds the container on `main`. A separate local step (**`make release-publish`**) creates the **`v*` git tag** for PyPI.
+**Release PR automation** uses [Release Please](https://github.com/googleapis/release-please) run **locally** by maintainers ([`scripts/release-please.sh`](../scripts/release-please.sh)). It opens a Release PR with [`CHANGELOG.md`](../CHANGELOG.md) and [`.release-please-manifest.json`](../.release-please-manifest.json) updates, then syncs [`VERSION`](../VERSION), [`pulp_tool/_version.py`](../pulp_tool/_version.py), and [`.tekton/pulp-tool-container.build-args`](../.tekton/pulp-tool-container.build-args) onto that PR branch via [`scripts/sync-container-build-args.sh`](../scripts/sync-container-build-args.sh).
 
 Manual tagging (below) remains supported for hotfixes or when Release Please is skipped.
 
+## Maintainer flow (three steps)
+
+Canonical order: **`make release-please`** → **`make release-publish`** → **Konflux release**.
+
+| Phase | What happens | Automation |
+|-------|----------------|------------|
+| **1. Release Please** | Open/update Release PR, curate changelog, merge to `main`, wait for container build | `make release-please` + human merge; **`pulp-tool-container-on-push`** on push to `main` |
+| **2. Publish (Python)** | Cut `vX.Y.Z` tag; GitHub Release + PyPI | `make release-publish` → **`release.yml`** |
+| **3. Konflux release** | Promote the built image to downstream registries/consumers | **Manual** Release Plan in Konflux / App Studio ([Konflux releasing](https://konflux-ci.dev/docs/releasing/)) |
+
 ```mermaid
-flowchart LR
-  subgraph maintainer [Maintainer machine]
-    RPcmd["make release-please"]
-    Pubcmd["make release-publish"]
+flowchart TD
+  subgraph step1 [1_release_please]
+    RP["make release-please"]
+    Curate[Curate CHANGELOG on Release PR]
+    Merge[Merge Release PR to main]
+    WaitBuild["Wait: pulp-tool-container-on-push succeeds"]
+    RP --> Curate --> Merge --> WaitBuild
   end
-  subgraph github [GitHub]
-    Merges[PRs to main]
-    RelPR[Release PR]
-    Tag["vX.Y.Z tag"]
-    RelWF[release.yml]
-    GHR[GitHub Release]
+  subgraph step2 [2_release_publish]
+    Pub["make release-publish"]
+    GHA["release.yml: GitHub Release + PyPI"]
+    Pub --> GHA
   end
-  subgraph pypi [PyPI]
-    Wheel[pulp-tool wheel/sdist]
+  subgraph step3 [3_Konflux_release]
+    RelPlan["Run Release Plan in Konflux/App Studio"]
+    Promote["RPA promotes image e.g. push-to-external-registry"]
+    RelPlan --> Promote
   end
-  subgraph konflux [Konflux]
-    OnPush[on-push container build]
-    RPA[push-to-external-registry RPA]
-    Quay[Quay image]
-  end
-  Merges --> RPcmd --> RelPR
-  RelPR -->|merge| OnPush --> RPA --> Quay
-  RelPR -->|merge then publish| Pubcmd --> Tag
-  Tag --> RelWF --> Wheel
-  Tag --> RelWF --> GHR
+  WaitBuild --> Pub
+  GHA --> RelPlan
 ```
+
+**Checklist**
+
+1. **`make release-please`** → curate the Release PR → merge → confirm **`pulp-tool-container-on-push`** is green in Konflux / App Studio.
+2. **`make release-publish`** → confirm [**`release.yml`**](#what-runs-on-tag-push) (GitHub Release + PyPI).
+3. **Run the Konflux release** for component **`pulp-tool-container`** per [Konflux releasing documentation](https://konflux-ci.dev/docs/releasing/) (tenant Release Plan / RPA; catalog pipeline e.g. [`push-to-external-registry`](https://github.com/konflux-ci/release-service-catalog/tree/development/pipelines/managed/push-to-external-registry)). Source-container (`.src`) expectations for `push-snapshot` are documented in [changing-pulp-container](../skills/changing-pulp-container/SKILL.md).
 
 ## One-time setup
 
@@ -129,15 +141,30 @@ RELEASE_GIT_REMOTE=upstream make release-publish
 
 You can still set `GITHUB_REPOSITORY=konflux-ci/pulp-tool` explicitly if the remote URL is not on github.com. `gh auth login` must have permission to open PRs on the canonical repo.
 
-### Konflux container (optional RPA)
+### Konflux container build and release
+
+#### Automatic build on `main`
 
 Merging the Release Please PR (or any push) to **`main`** runs [`.tekton/pulp-tool-container-build-push.yaml`](../.tekton/pulp-tool-container-build-push.yaml), which builds:
 
 `quay.io/redhat-user-workloads/artifact-storage-tenant/tooling/pulp-tool-container:latest`
 
-Wire your **Release Plan Admission** to [`push-to-external-registry`](https://github.com/konflux-ci/release-service-catalog/tree/development/pipelines/managed/push-to-external-registry) to promote that image. There is **no** separate on-tag container build — the release commit is already on `main` when the release PR merges.
+There is **no** separate on-tag container build — the release commit is already on `main` when the release PR merges. Wait for PipelineRun **`pulp-tool-container-on-push`** to succeed before **`make release-publish`**.
 
-**Container image version:** Konflux passes [`build-args-file`](https://konflux-ci.dev/docs/building/build-with-args/) [`.tekton/pulp-tool-container.build-args`](../.tekton/pulp-tool-container.build-args) (`VERSION`, `RELEASE`) into the `Dockerfile` `ARG`s for OCI labels and `pulp-tool --version`. [`VERSION`](../VERSION) is copied into the image build context (fallback when git metadata is absent). **`make release-please`** runs [`scripts/sync-container-build-args.sh`](../scripts/sync-container-build-args.sh) on the open release PR branch after Release Please updates the manifest, updating both files (requires `gh` and a clean working tree). For local smoke tests, `make test-container` runs the same sync before `podman`/`docker` build. The git tag (`make release-publish`) is created **after** the on-push container build, so the manifest is the build-time source of truth; it matches the tag once publish completes.
+#### Manual release (after `release-publish`)
+
+After the **`v*`** tag is pushed and PyPI / GitHub Release succeed, run the **Konflux release** for **`pulp-tool-container`** using your tenant Release Plan (see [Konflux releasing](https://konflux-ci.dev/docs/releasing/)). Wire **Release Plan Admission** to a catalog pipeline such as [`push-to-external-registry`](https://github.com/konflux-ci/release-service-catalog/tree/development/pipelines/managed/push-to-external-registry) to promote the image built on `main`. This step is **not** triggered by the git tag.
+
+**Version files synced from the manifest** (same script for Konflux and Python imports on `main` before the tag exists):
+
+| File | Role |
+|------|------|
+| [`.release-please-manifest.json`](../.release-please-manifest.json) | Source of truth during the release PR (becomes the tag at publish) |
+| [`.tekton/pulp-tool-container.build-args`](../.tekton/pulp-tool-container.build-args) | Konflux `VERSION` / `RELEASE` build args |
+| [`VERSION`](../VERSION) | Copied into the Docker build context; setuptools-scm fallback without `.git` |
+| [`pulp_tool/_version.py`](../pulp_tool/_version.py) | Pinned `__version__` for `pulp-tool --version` from a source checkout |
+
+Konflux passes [`build-args-file`](https://konflux-ci.dev/docs/building/build-with-args/) into the `Dockerfile` `ARG`s for OCI labels and `pulp-tool --version`. **`make release-please`** runs [`scripts/sync-container-build-args.sh`](../scripts/sync-container-build-args.sh) on the open release PR branch after Release Please updates the manifest (requires `gh` and a clean working tree). For local smoke tests, `make test-container` runs the same sync before `podman`/`docker` build. The git tag (`make release-publish`) is created **after** the on-push container build, so the manifest is the build-time source of truth; it matches the tag once publish completes. Local editable installs may still regenerate `_version.py` via setuptools-scm until the release PR lands.
 
 ## Version numbers
 
@@ -149,8 +176,8 @@ Build metadata in tags (e.g. **`v1.2.3+build.1`**) is accepted by the workflow; 
 
 [`CHANGELOG.md`](../CHANGELOG.md) follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/):
 
-- **`## [Unreleased]`** is always first. Add user-facing notes here while work is in progress.
-- On release, **move** `[Unreleased]` entries into a new **`## [X.Y.Z] - YYYY-MM-DD`** section (ISO date). Leave `[Unreleased]` empty or with only upcoming work — do not leave shipped items under Unreleased.
+- Add user-facing notes under **`## [Unreleased]`** while work is in progress. Release Please may place the new **`## [X.Y.Z]`** section above `[Unreleased]` on the release PR — that is fine; after merge, keep `[Unreleased]` below the latest released version with only upcoming work.
+- On release, **move** `[Unreleased]` entries into the new version section (ISO date in the heading when curating by hand). Do not leave shipped items under Unreleased.
 - Use subsections **Added**, **Changed**, **Deprecated**, **Removed**, **Fixed**, **Security** as needed. Omit empty subsections.
 - Write for humans: one clear line per change. End each line with a link to the implementing commit on `konflux-ci/pulp-tool`: `([abc1234](https://github.com/konflux-ci/pulp-tool/commit/abc1234))`. Use multiple links when a bullet spans more than one commit.
 - Update the compare links at the bottom of the file (`[Unreleased]`, `[X.Y.Z]`, …) to point at `konflux-ci/pulp-tool`.
@@ -159,17 +186,29 @@ Release Please appends conventional-commit bullets with commit links when openin
 
 ## Automated release (recommended)
 
-1. Merge feature PRs to **`main`** with conventional commit prefixes where possible (`feat:`, `fix:`, …). Continue adding user-facing notes under **`[Unreleased]`** in [`CHANGELOG.md`](../CHANGELOG.md) when helpful — Release Please consolidates them into the release PR.
-2. On **`main`**, run **`make release-please`**. Review the Release PR on GitHub (title like `chore: release X.Y.Z`); **curate** the generated `CHANGELOG.md` section per [Changelog format](#changelog-format) before merge.
-3. **Review the Release PR** — confirm CI is green (`make test`, `make pre-commit-ci`, or `make test-diff-coverage` after `git fetch origin`).
-4. **Merge the Release PR** on GitHub — Konflux rebuilds **`pulp-tool-container`** on `main` (then your RPA promotes the image).
+Prepare on **`main`**: merge feature PRs with conventional commit prefixes where possible (`feat:`, `fix:`, …). Continue adding user-facing notes under **`[Unreleased]`** in [`CHANGELOG.md`](../CHANGELOG.md) when helpful — Release Please consolidates them into the release PR.
+
+### Step 1 — Release Please
+
+1. Run **`make release-please`** on up-to-date **`main`**.
+2. Review the Release PR on GitHub (title like `chore: release X.Y.Z`); **curate** the generated `CHANGELOG.md` section per [Changelog format](#changelog-format).
+3. Confirm CI is green (`make test`, `make pre-commit-ci`, or `make test-diff-coverage` after `git fetch origin`).
+4. **Merge the Release PR** — wait for Konflux **`pulp-tool-container-on-push`** to succeed ([automatic build](#automatic-build-on-main)).
+
+### Step 2 — Release publish
+
 5. Run **`make release-publish`** locally (creates tag **`vX.Y.Z`** on `main` from [`.release-please-manifest.json`](../.release-please-manifest.json) **after** the release PR merge is pulled — the script syncs from `RELEASE_GIT_REMOTE` before reading the manifest).
 6. Tag push starts **`release.yml`** — build & inspect, **GitHub Release** (notes from CHANGELOG), **PyPI** upload.
 
+### Step 3 — Konflux release
+
+7. Run the **Konflux release** for **`pulp-tool-container`** ([manual release](#manual-release-after-release-publish)).
+
 ### Maintainer gates
 
-- **Human merge** of the Release Please PR is the release approval gate (container + changelog land on `main`).
+- **Human merge** of the Release Please PR is the release approval gate (changelog and version files land on `main`; container image builds automatically).
 - **`make release-publish`** is the deliberate step that cuts the PyPI tag.
+- **Konflux release** promotes the image after PyPI is published — do not skip if downstream consumers depend on the promoted image.
 - Optional: add a GitHub **Environment** on `upload-to-pypi` for extra PyPI approval (see one-time setup).
 - **Do not** use Konflux [`release-to-github`](https://github.com/konflux-ci/release-service-catalog/tree/development/pipelines/managed/release-to-github) for PyPI — that pipeline attaches **binaries extracted from container images**, not Python sdist/wheel from git tags.
 
@@ -199,14 +238,15 @@ Tags must match **`vMAJOR.MINOR.PATCH`** with optional SemVer pre-release and bu
 2. **Create GitHub Release** — release notes from the matching **`## [X.Y.Z]`** section in [`CHANGELOG.md`](../CHANGELOG.md) (via [`.github/scripts/extract-changelog-notes.sh`](../.github/scripts/extract-changelog-notes.sh)); pre-releases when the tag contains **`-`**.
 3. **Upload package to PyPI** — [`pypa/gh-action-pypi-publish`](https://github.com/pypa/gh-action-pypi-publish) with trusted publishing (OIDC).
 
-Container images are **not** rebuilt on tag push; they are produced when the release commit merges to **`main`** (see [Konflux container](#konflux-container-optional-rpa) above).
+Container images are **not** rebuilt on tag push; they are produced when the release commit merges to **`main`** (see [Konflux container build and release](#konflux-container-build-and-release) above).
 
 ## Verify the release
 
 - In GitHub **Actions**, open the workflow run for the tag and confirm build, GitHub Release, and PyPI jobs succeeded.
 - On GitHub **Releases**, confirm the release page and notes.
 - On PyPI, confirm the new version at https://pypi.org/project/pulp-tool/
-- On Quay, confirm the container image from the release PR merge (after RPA, if configured).
+- In Konflux, confirm **`pulp-tool-container-on-push`** succeeded for the release merge commit.
+- After the **Konflux release**, confirm the promoted container image on tenant Quay / external registry (per your Release Plan).
 - Optionally install locally: `pip install pulp-tool==1.2.3`
 
 ## Troubleshooting
@@ -229,3 +269,4 @@ Container images are **not** rebuilt on tag push; they are produced when the rel
 | Empty GitHub Release notes | Ensure `CHANGELOG.md` has a **`## [X.Y.Z]`** section for that version before tagging |
 | Wrong package version | Tag name must match the intended release; rebuild requires a new tag |
 | Container not rebuilt | Merging the release PR must land on `main`; check Konflux PipelineRun `pulp-tool-container-on-push` |
+| Image not promoted externally | Konflux **release** is manual after `release-publish`; run the tenant Release Plan for `pulp-tool-container` ([Konflux releasing](https://konflux-ci.dev/docs/releasing/)) |

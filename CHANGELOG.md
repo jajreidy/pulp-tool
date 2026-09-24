@@ -31,9 +31,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `UPLOAD_CONTENT_TIMEOUT` (30 minutes) for multipart RPM and file uploads ([b4cb414](https://github.com/konflux-ci/pulp-tool/commit/b4cb414))
 - `ppc64` architecture support in `SUPPORTED_ARCHITECTURES`, RPM path detection, upload orchestration, and content queries
 
+### Added
+
+- Unit test for `scripts/sync-container-build-args.sh` manifest → build-args, `VERSION`, and `pulp_tool/_version.py` output
+
 ### Changed
 
-- Konflux `pulp-tool-container` PipelineRuns pass `build-args-file` (`.tekton/pulp-tool-container.build-args`) so image OCI labels and `pulp-tool --version` use the Release Please manifest version instead of hardcoded `Dockerfile` defaults; `scripts/sync-container-build-args.sh` (run by `make release-please` on the release PR branch or `make test-container` locally) syncs build-args and `VERSION` from `.release-please-manifest.json`
+- Maintainer release documentation: canonical flow `make release-please` → `make release-publish` → Konflux release; version-file table; updates in `docs/releasing.md`, `CONTRIBUTING.md`, `README.md`, and agent skills
+- `scripts/sync-container-build-args.sh` (run by `make release-please` on the release PR branch or `make test-container` locally) syncs `.tekton/pulp-tool-container.build-args`, `VERSION`, and `pulp_tool/_version.py` from `.release-please-manifest.json`
+- `CHANGELOG.md` compare links for `v1.2.0` / `[Unreleased]`
+- Konflux `pulp-tool-container` PipelineRuns pass `build-args-file` (`.tekton/pulp-tool-container.build-args`) so image OCI labels and `pulp-tool --version` use the Release Please manifest version instead of hardcoded `Dockerfile` defaults
 - Konflux `pulp-tool-container` PipelineRuns migrated from deprecated `single-arch-build-pipeline` (`olm-operator-konflux-sample`) to `docker-build-oci-ta` (`container-build-catalog`), adding Conforma-required SAST and RPM signature scan tasks and dropping expired `sbom-json-check`
 - Pytest configuration consolidated in `pyproject.toml` only (removed duplicate `.pytest.ini`; 85% coverage threshold unified)
 - CHANGELOG entries link to implementing commits; `docs/releasing.md` and PR-drafting templates document link preservation when curating releases
@@ -153,6 +160,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `pip-audit` in optional `dev` dependencies, `make audit`, and `security-scan.yml` ([1f74717](https://github.com/konflux-ci/pulp-tool/commit/1f74717))
 - Path traversal fixes for `--results-json` and pull log architecture labels ([7fdeb58](https://github.com/konflux-ci/pulp-tool/commit/7fdeb58))
 
-[Unreleased]: https://github.com/konflux-ci/pulp-tool/compare/v1.1.0...HEAD
+[Unreleased]: https://github.com/konflux-ci/pulp-tool/compare/v1.2.0...HEAD
+[1.2.0]: https://github.com/konflux-ci/pulp-tool/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/konflux-ci/pulp-tool/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/konflux-ci/pulp-tool/releases/tag/v1.0.0

@@ -80,7 +80,8 @@ Usage: release-please.sh <command> [-- extra release-please flags]
 
 Commands:
   pr        Create or update the release pull request (run on main after feature merges).
-            Also syncs .tekton/pulp-tool-container.build-args and VERSION on the release PR branch.
+            Also syncs .tekton/pulp-tool-container.build-args, VERSION, and pulp_tool/_version.py
+            on the release PR branch.
   publish   Create and push v* tag from .release-please-manifest.json (triggers release.yml)
             Optional BUMP=major|minor|bugfix tags a bumped version instead of the manifest.
 
@@ -190,7 +191,7 @@ sync_container_build_args_to_release_pr() {
   fi
 
   if ! command -v gh >/dev/null 2>&1; then
-    echo "Install gh to auto-sync VERSION and .tekton/pulp-tool-container.build-args onto the release PR." >&2
+    echo "Install gh to auto-sync version files onto the release PR (VERSION, _version.py, build-args)." >&2
     return 0
   fi
 
@@ -212,18 +213,23 @@ sync_container_build_args_to_release_pr() {
   local start_branch=""
   start_branch="$(git branch --show-current 2>/dev/null || true)"
 
-  echo "Syncing VERSION and container build-args on release PR #${pr_number}..."
+  echo "Syncing version files on release PR #${pr_number}..."
   gh pr checkout "$pr_number" --repo "$repo_url"
 
   "${REPO_ROOT}/scripts/sync-container-build-args.sh"
 
-  if git diff --quiet -- .tekton/pulp-tool-container.build-args VERSION; then
-    echo "VERSION and container build-args already match manifest on PR #${pr_number}."
+  local -a version_paths=(
+    .tekton/pulp-tool-container.build-args
+    VERSION
+    pulp_tool/_version.py
+  )
+  if git diff --quiet -- "${version_paths[@]}"; then
+    echo "Version files already match manifest on PR #${pr_number}."
   else
-    git add .tekton/pulp-tool-container.build-args VERSION
-    git commit -m "chore(release): sync VERSION and container build-args for release"
+    git add "${version_paths[@]}"
+    git commit -m "chore(release): sync version files for release"
     git push
-    echo "Pushed VERSION and container build-args update to release PR #${pr_number}."
+    echo "Pushed version file updates to release PR #${pr_number}."
   fi
 
   if [[ -n "$start_branch" ]]; then

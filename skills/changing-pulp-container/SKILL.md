@@ -23,7 +23,7 @@ The **`pulp-tool-container`** image is built and published by **Konflux Tekton**
 | [pulp-tool-container-build-push.yaml](../../.tekton/pulp-tool-container-build-push.yaml) | `push` → `main` | `quay.io/.../pulp-tool-container:latest` |
 | [pulp-tool-container-build-pull-request.yaml](../../.tekton/pulp-tool-container-build-pull-request.yaml) | `pull_request` → `main` | `…/pulp-tool-container:on-pr-{{revision}}` (`image-expires-after: 5d`) |
 
-Shared: namespace `artifact-storage-tenant`, app/component `tooling` / `pulp-tool-container`, SA `build-pipeline-pulp-tool-container`, workspace `git-auth`, params `git-url` + `revision`, **`build-source-image: "true"`** (required for release `push-snapshot` to resolve `{digest}.src` source containers), **`build-args-file: .tekton/pulp-tool-container.build-args`** (`VERSION`/`RELEASE` for image labels and `pulp-tool --version`; [`VERSION`](../../VERSION) and build-args synced on the release PR by [`scripts/release-please.sh`](../../scripts/release-please.sh) via [`scripts/sync-container-build-args.sh`](../../scripts/sync-container-build-args.sh)). Release Please PR merges to `main` trigger the on-push build (see [docs/releasing.md](../../docs/releasing.md)); there is no on-tag PipelineRun.
+Shared: namespace `artifact-storage-tenant`, app/component `tooling` / `pulp-tool-container`, SA `build-pipeline-pulp-tool-container`, workspace `git-auth`, params `git-url` + `revision`, **`build-source-image: "true"`** (required for release `push-snapshot` to resolve `{digest}.src` source containers), **`build-args-file: .tekton/pulp-tool-container.build-args`** (`VERSION`/`RELEASE` for image labels and `pulp-tool --version`; [`VERSION`](../../VERSION), [`pulp_tool/_version.py`](../../pulp_tool/_version.py), and build-args synced on the release PR by [`scripts/release-please.sh`](../../scripts/release-please.sh) via [`scripts/sync-container-build-args.sh`](../../scripts/sync-container-build-args.sh)). Release Please PR merges to `main` trigger the on-push build (see [docs/releasing.md](../../docs/releasing.md)); there is no on-tag PipelineRun.
 
 ## What the remote pipeline does
 
@@ -46,7 +46,8 @@ Shared: namespace `artifact-storage-tenant`, app/component `tooling` / `pulp-too
 5. Do **not** add GitHub Actions `docker build` as a merge gate.
 6. Optional local check: `make test-container`.
 7. Confirm Konflux PipelineRun on PR; after merge, **pulp-tool-container-on-push** on App Studio.
-8. If runtime Tekton invocation changes, load **changing-pulp-upload**.
+8. For version cuts, maintainers follow [docs/releasing.md](../../docs/releasing.md): after **`make release-publish`** (PyPI), run the **Konflux release** for **`pulp-tool-container`** (manual Release Plan — not triggered by the git tag).
+9. If runtime Tekton invocation changes, load **changing-pulp-upload**.
 
 ## Regression checklist
 

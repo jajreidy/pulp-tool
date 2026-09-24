@@ -20,7 +20,7 @@ pulp-tool **does not** vendor this pipeline; it is fetched via `pipelineRef.reso
 
 pulp-tool PipelineRuns pass: `git-url`, `revision`, `output-image`, **`build-source-image: "true"`**, **`build-args-file: .tekton/pulp-tool-container.build-args`**; PR also passes `image-expires-after`.
 
-[`scripts/sync-container-build-args.sh`](../../scripts/sync-container-build-args.sh) (run by `make release-please` on the release PR branch) writes `.tekton/pulp-tool-container.build-args` and [`VERSION`](../../VERSION) from [`.release-please-manifest.json`](../../.release-please-manifest.json).
+[`scripts/sync-container-build-args.sh`](../../scripts/sync-container-build-args.sh) (run by `make release-please` on the release PR branch) writes `.tekton/pulp-tool-container.build-args`, [`VERSION`](../../VERSION), and [`pulp_tool/_version.py`](../../pulp_tool/_version.py) from [`.release-please-manifest.json`](../../.release-please-manifest.json).
 
 ## Task flow
 
