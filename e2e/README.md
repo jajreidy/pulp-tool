@@ -7,8 +7,8 @@ This directory contains the end-to-end test suite for `pulp-tool`, designed to v
 The e2e test suite follows a four-phase lifecycle:
 
 1. **Pre-test setup** — Build test RPM packages
-2. **Test execution** — Run comprehensive CLI tests
-3. **Post-test validation** — Verify repositories and distributions
+2. **Test execution** — Run comprehensive CLI tests (within one `test-pulp-tool.py` process: **upload mutations** → **deferred pulp-content verification** → **pull** and other commands)
+3. **Post-test validation** — Verify repositories and distributions (Pulp API)
 4. **Post-test cleanup** — Remove test resources from Pulp
 
 ## Files
@@ -73,8 +73,11 @@ The e2e test suite follows a four-phase lifecycle:
   --pulp-results <fixture-json-file> \
   [--test-dir <working-directory>] \
   [--real-server] \
-  [--skip-setup]
+  [--skip-setup] \
+  [--skip-distribution-verify]
 ```
+
+**Live-server test flow (inside step 2):** All `upload` / `upload-build` / `upload-files` cases run first. HTTP GET checks against pulp-content (`pulp_results.json`, RPM, SBOM URLs) are **queued** during upload and run together in a **distribution verification** section before any `pull` tests, so pulp-content propagation can catch up while uploads still run. See [`distribution_verify_queue.py`](distribution_verify_queue.py).
 
 **Arguments:**
 - `--config`: Path to Pulp CLI config file (`cli.toml`) — **required**
@@ -84,6 +87,7 @@ The e2e test suite follows a four-phase lifecycle:
 - `--real-server`: Test against a real Pulp server (default: e2e harness skips mutating operations)
 - `--skip-setup`: Skip creating fresh test directory (reuse existing)
 - `--oci-storage`: OCI registry for ORAS e2e (Konflux `ociStorage`; optional locally)
+- `--skip-distribution-verify`: Skip the deferred pulp-content HTTP verification phase (`--real-server` only)
 
 **The `pulp-results` fixture:**
 
@@ -112,7 +116,9 @@ This is an **input file** (not output) containing references to pre-existing tes
 
 | Test | What it exercises |
 |------|-------------------|
-| `test_upload_build_oras_publish` | `upload-build` with `--oci-storage` and `--artifact-results` (Tekton-style OCI URL/digest files); Pulp `pulp_results.json` gets `oci_manifest` |
+| `test_upload_build_oras_publish` | `upload-build` with `--oci-storage` and `--artifact-results`; pulp-content `oci_manifest` check is deferred until after all uploads |
+| `test_upload_side_tag_transfer_source` | Upload source build for HTTPS side-tag pull; defers source `pulp_results.json` reachability |
+| `test_upload_side_tag_oci_source` | `upload-build` ORAS source for side-tag OCI pull (pull runs later) |
 | `test_update_build_pull_from_oras_target` | Manual `oras pull`, then `pull --artifact-location` on the local JSON (legacy two-step flow) |
 | `test_pull_artifact_location_oci_manifest_ref` | `pull --artifact-location` with `oci_manifest@digest` ref (pulp-tool ORAS-pulls JSON; no `--build-id` / `--namespace`) |
 | `test_pull_side_tag_transfer` | `pull --transfer-dest --side-tag` from HTTPS `pulp_results`; writes Tekton-style OCI URL/digest via `--artifact-results` |
@@ -388,7 +394,7 @@ The test suite validates:
 4. For `--real-server` tests, verify Pulp server connectivity
 5. For `search-by` tests, verify the `pulp-results` fixture file exists and is valid JSON
 
-**`test_upload_full` distribution fetch 404 but cleanup/validation sees content:** Upload completes when the Pulp **API** indexes content in the repository. `test_upload_full` then HTTP GETs **pulp-content** (`packages.redhat.com`), which can lag behind publish. `post-test-validation.py` lists repository content via the Pulp CLI (API) and may pass while pulp-content still returns 404. The fetch helper polls until `E2E_DISTRIBUTION_FETCH_MAX_WAIT_S` (default **300** seconds). Increase it if your domain is slow; set `E2E_DISTRIBUTION_FETCH_ATTEMPTS=1` only to fail fast while debugging.
+**Distribution fetch 404 but cleanup/validation sees content:** Upload completes when the Pulp **API** indexes content in the repository. HTTP GETs to **pulp-content** (`packages.redhat.com`) can lag behind publish. The suite runs those GETs in a **deferred verification phase after all uploads**, so propagation can progress while later builds upload. `post-test-validation.py` uses the Pulp API and may pass while pulp-content still returns 404. The fetch helper polls until `E2E_DISTRIBUTION_FETCH_MAX_WAIT_S` (default **300** seconds). Increase it if your domain is slow; set `E2E_DISTRIBUTION_FETCH_ATTEMPTS=1` only to fail fast while debugging.
 
 ### Validation failures
 

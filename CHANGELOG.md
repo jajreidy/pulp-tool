@@ -53,6 +53,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **fixing-diff-cover-failures** skill removed; diff-cover loop merged into **troubleshooting-pulp-tool-ci**
 - Side-tag RPM repository and distribution use build-scoped names `{build_id}/side-tag-{tag}` (not a global `side-tag-{tag}` base path) ([6e0cb3f](https://github.com/konflux-ci/pulp-tool/commit/6e0cb3f))
 - Bare Konflux `ociStorage` repository strings (no `:tag` or `@digest`) resolve with `:latest` for ORAS push and resolve ([6e0cb3f](https://github.com/konflux-ci/pulp-tool/commit/6e0cb3f))
+- Konflux e2e: run pulp-content HTTP checks in a **deferred verification phase** after all `upload` / `upload-build` / `upload-files` mutations; `pull` tests run afterward. Side-tag source uploads split into `test_upload_side_tag_transfer_source` and `test_upload_side_tag_oci_source`. New `--skip-distribution-verify` flag
 
 ### Fixed
 
