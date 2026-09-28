@@ -11,11 +11,13 @@ sys.path.insert(0, str(E2E_DIR))
 from names import (  # noqa: E402
     BASE_PATH_CREATE_REPOSITORY,
     BASE_PATH_CREATE_REPOSITORY_JSON,
+    BUILD_ID_E2E_ERROR_EMPTY,
     BUILD_ID_PULL_SIDE_TAG,
     BUILD_ID_PULL_SIDE_TAG_OCI,
     BUILD_ID_UPLOAD_MINIMAL,
     BUILD_ID_UPLOAD_ORAS,
     BUILD_ID_UPLOAD_TARGET_ARCH,
+    e2e_error_upload_repo_names,
     file_repos_for_run,
     normalize_oci_storage,
     oci_storage_e2e_enabled,
@@ -28,6 +30,13 @@ from names import (  # noqa: E402
     scoped_repo_name,
     side_tag_e2e_name,
 )
+
+
+def test_e2e_error_upload_repo_names() -> None:
+    build = f"{BUILD_ID_E2E_ERROR_EMPTY}-run1"
+    names = e2e_error_upload_repo_names(build)
+    assert f"{build}/rpms" in names
+    assert f"{build}/artifacts" in names
 
 
 def test_resolve_run_id_sanitizes() -> None:

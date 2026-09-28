@@ -25,6 +25,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- E2e harness: CLI validation smoke, live read-only error paths (auth, 404 `pulp_results`, bad checksum, pull filters, bad local/OCI refs), and live mutating errors (empty `--rpm-path`, bad `--results-json`, missing `upload-files` path, duplicate `create-repository`) with isolated build IDs and in-test `pulp` cleanup; documented in `e2e/README.md` ([ec3d824](https://github.com/konflux-ci/pulp-tool/commit/ec3d824))
 - `upload-build` command (`upload` remains a compatibility alias): ORAS publish of `pulp_results.json` via **`--oci-storage`** (Konflux `ociStorage`) or `cli.oci_storage`; with `--artifact-results`, Tekton files get OCI image URL (without digest) and `sha256:` digest matching import-to-quay `PULP-IMAGE_*` results ([2a3f5c8](https://github.com/konflux-ci/pulp-tool/commit/2a3f5c8))
 - `pull --oci-storage` for side-tag ORAS publish (flag overrides transfer config) ([2a3f5c8](https://github.com/konflux-ci/pulp-tool/commit/2a3f5c8))
 - `pull --side-tag` (with `--transfer-dest`): extra ROK RPM repo/distribution, versioned `pulp_results.json` merge, ORAS push, `--artifact-results` Tekton outputs, and optional `--snapshot-path` (`pulpResultsOciManifest`) for trusted-artifact release workspaces ([2a3f5c8](https://github.com/konflux-ci/pulp-tool/commit/2a3f5c8))

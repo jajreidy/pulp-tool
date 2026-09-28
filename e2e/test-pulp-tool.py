@@ -20,7 +20,6 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Dict, List
 
-from distribution_verify_queue import DistributionCheckRunner, DistributionVerifyQueue
 from distribution_fetch import (
     DistributionFetchError,
     distribution_client_from_config,
@@ -33,6 +32,7 @@ from distribution_fetch import (
     normalize_sha256_hex,
     probe_http_get_status,
 )
+from distribution_verify_queue import DistributionCheckRunner, DistributionVerifyQueue
 from large_upload import (
     LARGE_RPM_ARCH,
     LARGE_RPM_FILENAME,
@@ -44,23 +44,27 @@ from large_upload import (
 from names import (
     BASE_PATH_CREATE_REPOSITORY,
     BASE_PATH_CREATE_REPOSITORY_JSON,
+    BASE_PATH_E2E_ERROR_DUP,
+    BUILD_ID_E2E_ERROR_EMPTY,
+    BUILD_ID_PULL_SIDE_TAG,
+    BUILD_ID_PULL_SIDE_TAG_OCI,
     BUILD_ID_UPLOAD_FILES,
     BUILD_ID_UPLOAD_FULL,
     BUILD_ID_UPLOAD_LARGE,
     BUILD_ID_UPLOAD_MINIMAL,
-    BUILD_ID_PULL_SIDE_TAG,
-    BUILD_ID_PULL_SIDE_TAG_OCI,
     BUILD_ID_UPLOAD_ORAS,
     BUILD_ID_UPLOAD_RESULTS,
     BUILD_ID_UPLOAD_TARGET_ARCH,
     REPO_CREATE_REPOSITORY,
     REPO_CREATE_REPOSITORY_JSON,
-    side_tag_e2e_name,
+    REPO_E2E_ERROR_DUP,
+    e2e_error_upload_repo_names,
     normalize_oci_storage,
     resolve_run_id,
     scoped_base_path,
     scoped_build_id,
     scoped_oci_storage,
+    side_tag_e2e_name,
 )
 
 
@@ -199,6 +203,112 @@ class E2ETestSuite:
             self.log_error(f"{test_name} (expected exit code: {expected}, got: {actual})")
             self.stats.failed += 1
             return False
+
+    def expect_cli_failure(
+        self,
+        test_label: str,
+        cmd: List[str],
+        *,
+        substring: str | None = None,
+        cwd: Path | None = None,
+    ) -> bool:
+        """Assert a CLI invocation exits non-zero; optionally require ``substring`` in combined output."""
+        self.run_test(test_label)
+        exit_code, output = self.run_command(cmd, cwd=cwd)
+        if exit_code == 0:
+            self.log_error(f"{test_label}: expected non-zero exit, got 0")
+            if output:
+                self.log_error(output[:800])
+            self.stats.failed += 1
+            return False
+        if substring is not None and substring not in output:
+            self.log_error(f"{test_label}: output missing expected text: {substring!r}")
+            if output:
+                self.log_error(output[:800])
+            self.stats.failed += 1
+            return False
+        self.log_success(f"{test_label} (exit code: {exit_code})")
+        self.stats.passed += 1
+        return True
+
+    def _destroy_pulp_rpm_repo(self, name: str) -> None:
+        """Best-effort destroy of an RPM repository and its distribution (error-test cleanup)."""
+        for resource in ("repository", "distribution"):
+            subprocess.run(
+                [
+                    "pulp",
+                    "--config",
+                    str(self.config_file),
+                    "rpm",
+                    resource,
+                    "destroy",
+                    "--name",
+                    name,
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+
+    def _destroy_pulp_file_repo(self, name: str) -> None:
+        """Best-effort destroy of a file repository and its distribution (error-test cleanup)."""
+        for resource in ("repository", "distribution"):
+            subprocess.run(
+                [
+                    "pulp",
+                    "--config",
+                    str(self.config_file),
+                    "file",
+                    resource,
+                    "destroy",
+                    "--name",
+                    name,
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+
+    def _cleanup_e2e_error_upload_repos(self, build_id: str) -> None:
+        for repo_name in e2e_error_upload_repo_names(build_id):
+            if repo_name.endswith("/rpms"):
+                self._destroy_pulp_rpm_repo(repo_name)
+            else:
+                self._destroy_pulp_file_repo(repo_name)
+
+    def _write_transfer_dest_config_no_oci(self) -> Path:
+        """Transfer-dest config with credentials but without ``oci_storage`` (side-tag validation)."""
+        path = self.test_dir / "transfer-cli-no-oci.toml"
+        lines_out: list[str] = []
+        in_cli = False
+        for line in self.config_file.read_text(encoding="utf-8").splitlines():
+            stripped = line.strip()
+            if stripped == "[cli]":
+                in_cli = True
+                lines_out.append(line)
+                continue
+            if in_cli and stripped.startswith("[") and stripped != "[cli]":
+                in_cli = False
+            if in_cli and stripped.startswith("oci_storage"):
+                continue
+            lines_out.append(line)
+        if "[cli]" not in "\n".join(lines_out):
+            lines_out = ["[cli]", *lines_out]
+        cluster_line = 'cluster = "e2e-cluster"'
+        if cluster_line not in lines_out:
+            idx = next(i for i, line in enumerate(lines_out) if line.strip() == "[cli]")
+            lines_out.insert(idx + 1, cluster_line)
+        path.write_text("\n".join(lines_out).rstrip() + "\n", encoding="utf-8")
+        return path
+
+    def _write_minimal_pull_auth_config(self) -> Path:
+        """``cli.toml`` with ``base_url`` only (no distribution credentials)."""
+        path = self.test_dir / "pull-auth-none.toml"
+        path.write_text(
+            f'[cli]\nbase_url = "{self.base_url}"\n',
+            encoding="utf-8",
+        )
+        return path
 
     def assert_output_contains(self, output: str, expected: str, test_name: str) -> bool:
         """Assert output contains expected string"""
@@ -1046,6 +1156,357 @@ class E2ETestSuite:
         self.assert_exit_code(0, exit_code, "Triple -ddd flag works")
         if exit_code > 0:
             self.log_error(output)
+
+    def test_cli_validation_errors(self):
+        """CLI validation smoke (no Pulp mutations)."""
+        fixture_location = str(self.pulp_results)
+        cfg = str(self.config_file)
+
+        self.expect_cli_failure(
+            "pull: --side-tag requires --transfer-dest",
+            [
+                "pulp-tool",
+                "--config",
+                cfg,
+                "pull",
+                "--side-tag",
+                "e2e-side-tag-smoke",
+                "--artifact-location",
+                fixture_location,
+            ],
+            substring="--side-tag requires --transfer-dest",
+        )
+        self.expect_cli_failure(
+            "pull: --artifact-location with --build-id/--namespace",
+            [
+                "pulp-tool",
+                "--config",
+                cfg,
+                "--build-id",
+                "x",
+                "--namespace",
+                self.namespace,
+                "pull",
+                "--artifact-location",
+                fixture_location,
+            ],
+            substring="Cannot use --artifact-location with --build-id",
+        )
+        self.expect_cli_failure(
+            "pull: missing artifact location",
+            ["pulp-tool", "--config", cfg, "pull"],
+            substring="Either --artifact-location OR",
+        )
+        transfer_no_oci = self._write_transfer_dest_config_no_oci()
+        self.expect_cli_failure(
+            "pull: side-tag without oci_storage on transfer-dest",
+            [
+                "pulp-tool",
+                "--config",
+                cfg,
+                "pull",
+                "--artifact-location",
+                fixture_location,
+                "--transfer-dest",
+                str(transfer_no_oci),
+                "--side-tag",
+                "e2e-side-tag-smoke",
+            ],
+            substring="oci_storage",
+        )
+        self.expect_cli_failure(
+            "upload-build: missing --build-id",
+            [
+                "pulp-tool",
+                "--config",
+                cfg,
+                "--namespace",
+                self.namespace,
+                "upload-build",
+                "--rpm-path",
+                str(self.rpm_dir_arg),
+            ],
+            substring="--build-id is required",
+        )
+        self.expect_cli_failure(
+            "upload-build: missing --namespace",
+            [
+                "pulp-tool",
+                "--config",
+                cfg,
+                "--build-id",
+                "smoke-build",
+                "upload-build",
+                "--rpm-path",
+                str(self.rpm_dir_arg),
+            ],
+            substring="--namespace is required",
+        )
+        self.expect_cli_failure(
+            "upload-build: --files-base-path without --results-json",
+            [
+                "pulp-tool",
+                "--config",
+                cfg,
+                "--build-id",
+                "smoke-build",
+                "--namespace",
+                self.namespace,
+                "upload-build",
+                "--files-base-path",
+                str(self.test_dir),
+            ],
+            substring="--files-base-path can only be used with --results-json",
+        )
+        self.expect_cli_failure(
+            "upload-files: no file options",
+            [
+                "pulp-tool",
+                "--config",
+                cfg,
+                "--build-id",
+                "smoke-build",
+                "--namespace",
+                self.namespace,
+                "upload-files",
+                "--parent-package",
+                "smoke-pkg",
+            ],
+            substring="At least one file must be specified",
+        )
+        self.expect_cli_failure(
+            "search-by: missing --config",
+            ["pulp-tool", "search-by", "--checksums", "a" * 64],
+            substring="--config is required for search-by",
+        )
+        self.expect_cli_failure(
+            "search-by: --checksum without --results-json",
+            ["pulp-tool", "--config", cfg, "search-by", "--checksum"],
+            substring="--checksum requires --results-json",
+        )
+        self.expect_cli_failure(
+            "search-by: checksums and filenames mutually exclusive",
+            [
+                "pulp-tool",
+                "--config",
+                cfg,
+                "search-by",
+                "--checksums",
+                "3eb28dc3c8beb2082fb12c894e8b8dc8af050869725f170871ff5b96cd88ca79",
+                "--filenames",
+                "test.rpm",
+            ],
+            substring="checksums and filenames cannot be combined",
+        )
+
+    def test_live_readonly_errors(self):
+        """Live Pulp/registry failures without creating new repositories."""
+        if not self.real_server:
+            self.skip_test("live read-only CLI errors", "DRY RUN")
+            return
+
+        cfg = str(self.config_file)
+        auth_config = self._write_minimal_pull_auth_config()
+        https_fixture = (
+            f"{self.base_url}/api/pulp-content/{self.namespace}/"
+            f"{self.bid('nonexistent-build-e2e')}/artifacts/pulp_results.json"
+        )
+        self.expect_cli_failure(
+            "pull: HTTPS artifact without distribution auth",
+            [
+                "pulp-tool",
+                "--config",
+                str(auth_config),
+                "pull",
+                "--artifact-location",
+                https_fixture,
+            ],
+            substring="Authentication required",
+        )
+        self.expect_cli_failure(
+            "pull: 404 pulp_results on pulp-content",
+            [
+                "pulp-tool",
+                "--config",
+                cfg,
+                "pull",
+                "--artifact-location",
+                https_fixture,
+            ],
+        )
+        self.expect_cli_failure(
+            "search-by: invalid checksum hex",
+            ["pulp-tool", "--config", cfg, "search-by", "--checksums", "not-a-hex"],
+            substring="Invalid checksum format",
+        )
+        pull_dir = self.output_dir / "pull-filter-fail"
+        pull_dir.mkdir(parents=True, exist_ok=True)
+        self.expect_cli_failure(
+            "pull: invalid --content-types",
+            [
+                "pulp-tool",
+                "--config",
+                cfg,
+                "pull",
+                "--artifact-location",
+                str(self.pulp_results),
+                "--content-types",
+                "invalid",
+            ],
+            cwd=pull_dir,
+            substring="Invalid content type",
+        )
+        bad_json = self.test_dir / "invalid-pulp-results.json"
+        bad_json.write_text("{ not valid json", encoding="utf-8")
+        self.expect_cli_failure(
+            "pull: invalid local pulp_results JSON",
+            [
+                "pulp-tool",
+                "--config",
+                cfg,
+                "pull",
+                "--artifact-location",
+                str(bad_json),
+            ],
+        )
+
+        if self.oci_storage and shutil.which("oras"):
+            repo = self.oci_storage.split(":")[0] if ":" in self.oci_storage else self.oci_storage
+            bogus_ref = f"{repo}@sha256:{'0' * 64}"
+            self.expect_cli_failure(
+                "pull: bogus OCI manifest digest",
+                [
+                    "pulp-tool",
+                    "--config",
+                    cfg,
+                    "pull",
+                    "--artifact-location",
+                    bogus_ref,
+                ],
+            )
+
+    def test_live_mutating_errors(self):
+        """Live failures that may touch Pulp; uses isolated names and cleanup."""
+        if not self.real_server:
+            self.skip_test("live mutating CLI errors", "DRY RUN")
+            return
+
+        cfg = str(self.config_file)
+        build_id = self.bid(BUILD_ID_E2E_ERROR_EMPTY)
+        empty_rpm_dir = self.test_dir / "empty-rpm-path"
+        empty_rpm_dir.mkdir(parents=True, exist_ok=True)
+        try:
+            exit_code, output = self.run_command(
+                [
+                    "pulp-tool",
+                    "--config",
+                    cfg,
+                    "--build-id",
+                    build_id,
+                    "--namespace",
+                    self.namespace,
+                    "upload",
+                    "--rpm-path",
+                    str(empty_rpm_dir),
+                ]
+            )
+            self.run_test("upload: empty --rpm-path")
+            if exit_code == 0:
+                self.log_error("upload with empty rpm-path should fail (non-zero exit)")
+                self.stats.failed += 1
+            else:
+                self.log_success(f"upload empty rpm-path rejected (exit {exit_code})")
+                self.stats.passed += 1
+        finally:
+            self._cleanup_e2e_error_upload_repos(build_id)
+
+        missing_results = self.test_dir / "missing-results.json"
+        self.expect_cli_failure(
+            "upload-build: --results-json path does not exist",
+            [
+                "pulp-tool",
+                "--config",
+                cfg,
+                "--build-id",
+                build_id,
+                "--namespace",
+                self.namespace,
+                "upload-build",
+                "--results-json",
+                str(missing_results),
+            ],
+            substring="does not exist",
+        )
+        invalid_results = self.test_dir / "invalid-results.json"
+        invalid_results.write_text("{ not valid json", encoding="utf-8")
+        self.expect_cli_failure(
+            "upload-build: invalid --results-json contents",
+            [
+                "pulp-tool",
+                "--config",
+                cfg,
+                "--build-id",
+                build_id,
+                "--namespace",
+                self.namespace,
+                "upload-build",
+                "--results-json",
+                str(invalid_results),
+            ],
+            substring="Failed to read results JSON",
+        )
+
+        self.expect_cli_failure(
+            "upload-files: missing --rpm file path",
+            [
+                "pulp-tool",
+                "--config",
+                cfg,
+                "--build-id",
+                self.bid("test-error-upload-files"),
+                "--namespace",
+                self.namespace,
+                "upload-files",
+                "--rpm",
+                str(self.test_dir / "does-not-exist.rpm"),
+            ],
+        )
+
+        repo_name = self.bid(REPO_E2E_ERROR_DUP)
+        base_path = self.bpath(BASE_PATH_E2E_ERROR_DUP)
+        package_href = f"/api/pulp/{self.namespace}/api/v3/content/rpm/packages/019e1c81-287e-70bb-8009-ff05bd35415a/"
+        create_cmd = [
+            "pulp-tool",
+            "--config",
+            cfg,
+            "create-repository",
+            "--repository-name",
+            repo_name,
+            "--packages",
+            package_href,
+            "--base-path",
+            base_path,
+        ]
+        exit_code, output = self.run_command(create_cmd)
+        self.run_test("create-repository: first create (setup for duplicate)")
+        if exit_code != 0:
+            self.log_error(f"First create-repository failed: {output[:500]}")
+            self.stats.failed += 1
+        else:
+            self.stats.passed += 1
+            self.log_success("First create-repository succeeded")
+            self.run_test("create-repository: duplicate invoke reuses existing repo/distro")
+            dup_exit, dup_output = self.run_command(create_cmd)
+            if dup_exit != 0:
+                self.log_error(f"Duplicate create-repository should be idempotent (exit 0), got {dup_exit}")
+                self.stats.failed += 1
+            elif "existing" not in dup_output.lower():
+                self.log_error("Expected idempotent create-repository to log existing repo/distribution reuse")
+                self.stats.failed += 1
+            else:
+                self.log_success("Duplicate create-repository reuses existing resources (exit 0)")
+                self.stats.passed += 1
+        self._destroy_pulp_rpm_repo(repo_name)
 
     # Test: upload command with minimal options
     def test_upload_minimal(self):
@@ -1905,44 +2366,6 @@ class E2ETestSuite:
         if exit_code > 0:
             self.log_error(output)
 
-    # Test: error handling - missing required arguments
-    def test_error_missing_args(self):
-        self.run_test("Error: upload-files missing required args")
-        exit_code, output = self.run_command(["pulp-tool", "upload-files"])
-
-        if exit_code != 0:
-            self.log_success(f"Upload-files correctly fails without required args (exit: {exit_code})")
-            self.stats.passed += 1
-        else:
-            self.log_error("Upload-files should fail without required args")
-            self.stats.failed += 1
-
-    # Test: error handling - mutually exclusive options
-    def test_error_mutually_exclusive(self):
-        if not self.real_server:
-            self.skip_test("Error: mutually exclusive options", "DRY RUN")
-            return
-
-        self.run_test("Error: search-by checksums and filenames together")
-        cmd = [
-            "pulp-tool",
-            "--config",
-            str(self.config_file),
-            "search-by",
-            "--checksums",
-            "sha256:abc123",
-            "--filenames",
-            "test.rpm",
-        ]
-        exit_code, output = self.run_command(cmd)
-
-        if exit_code != 0 or "exclusive" in output.lower() or "mutually" in output.lower():
-            self.log_success(f"Mutually exclusive options handled (exit: {exit_code})")
-            self.stats.passed += 1
-        else:
-            self.log_warn("Mutually exclusive check may not apply")
-            self.stats.skipped += 1
-
     # Test: environment variable support
     def test_environment_variables(self):
         self.run_test("Environment: PULP_TOOL_JSON_LOG")
@@ -2056,6 +2479,16 @@ class E2ETestSuite:
         self.invoke_test_case(self.test_global_options, "test_global_options", "Validate --config and debug flags.")
 
         self.begin_section(
+            "CLI validation (error paths)",
+            description="Non-zero exits for invalid flags; no Pulp mutations.",
+        )
+        self.invoke_test_case(
+            self.test_cli_validation_errors,
+            "test_cli_validation_errors",
+            "Pull/upload/search-by CLI guards and missing required options.",
+        )
+
+        self.begin_section(
             "Upload (pulp-tool upload)",
             description="RPM/SBOM upload paths; cases marked live Pulp mutate the shared test domain.",
         )
@@ -2156,6 +2589,17 @@ class E2ETestSuite:
             requires_real_server=True,
         )
 
+        self.begin_section(
+            "Live read-only errors",
+            description="Real auth/HTTP/registry failures without new Pulp repositories.",
+        )
+        self.invoke_test_case(
+            self.test_live_readonly_errors,
+            "test_live_readonly_errors",
+            "404 pulp_results, missing pull auth, invalid search-by checksum, invalid pull content-types.",
+            requires_real_server=True,
+        )
+
         self.begin_section("Search (pulp-tool search-by)")
         self.invoke_test_case(
             self.test_search_by_checksums,
@@ -2196,16 +2640,14 @@ class E2ETestSuite:
             requires_real_server=True,
         )
 
-        self.begin_section("Error handling", description="CLI validation and mutually exclusive options.")
-        self.invoke_test_case(
-            self.test_error_missing_args,
-            "test_error_missing_args",
-            "upload-files fails when required args are missing.",
+        self.begin_section(
+            "Live mutating errors",
+            description="Isolated failure cases with in-test Pulp cleanup.",
         )
         self.invoke_test_case(
-            self.test_error_mutually_exclusive,
-            "test_error_mutually_exclusive",
-            "search-by rejects --checksums and --filenames together.",
+            self.test_live_mutating_errors,
+            "test_live_mutating_errors",
+            "Empty rpm-path upload, bad/missing results-json, missing upload-files path, idempotent create-repository.",
             requires_real_server=True,
         )
 
