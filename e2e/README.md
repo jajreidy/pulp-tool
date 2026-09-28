@@ -77,7 +77,17 @@ The e2e test suite follows a four-phase lifecycle:
   [--skip-distribution-verify]
 ```
 
-**Live-server test flow (inside step 2):** All `upload` / `upload-build` / `upload-files` cases run first. HTTP GET checks against pulp-content (`pulp_results.json`, RPM, SBOM URLs) are **queued** during upload and run together in a **distribution verification** section before any `pull` tests, so pulp-content propagation can catch up while uploads still run. See [`distribution_verify_queue.py`](distribution_verify_queue.py).
+**Live-server test flow (inside step 2):** CLI validation smoke runs early (no Pulp mutations). All `upload` / `upload-build` / `upload-files` cases run next. HTTP GET checks against pulp-content (`pulp_results.json`, RPM, SBOM URLs) are **queued** during upload and run together in a **distribution verification** section before any `pull` tests, so pulp-content propagation can catch up while uploads still run. Happy-path `pull` cases run after verification; **live read-only error** cases (auth, 404, bad checksum, invalid pull filters) run after pulls. **Live mutating error** cases run last (isolated build IDs, in-test `pulp` cleanup). See [`distribution_verify_queue.py`](distribution_verify_queue.py).
+
+**Error-handling cases (intentional non-zero exits):**
+
+| Test | Mode | What it checks |
+|------|------|----------------|
+| `test_cli_validation_errors` | dry-run or `--real-server` | Pull/upload/search-by CLI guards (side-tag, artifact-location, missing globals, upload-files, search-by exclusivity) |
+| `test_live_readonly_errors` | `--real-server` | HTTPS pull without distribution auth; 404 `pulp_results.json`; invalid search-by checksum; invalid `pull --content-types`; invalid local JSON; optional bogus OCI digest when `--oci-storage` and `oras` are available |
+| `test_live_mutating_errors` | `--real-server` | Empty `--rpm-path` upload; missing/invalid `--results-json`; missing `upload-files` path; idempotent duplicate `create-repository` (cleanup via `pulp` destroy) |
+
+Detailed CLI exit-code coverage remains in [`tests/cli/`](../tests/cli/) (mocked). E2e focuses on integration failures against a real Pulp/registry where practical.
 
 **Arguments:**
 - `--config`: Path to Pulp CLI config file (`cli.toml`) — **required**

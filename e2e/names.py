@@ -18,6 +18,9 @@ BUILD_ID_UPLOAD_LARGE: Final = "test-build-large"
 BUILD_ID_PULL_SIDE_TAG: Final = "test-pull-side-tag"
 BUILD_ID_PULL_SIDE_TAG_OCI: Final = "test-pull-side-tag-oci"
 BUILD_ID_UPLOAD_ORAS: Final = "test-upload-oras"
+BUILD_ID_E2E_ERROR_EMPTY: Final = "test-error-empty-upload"
+BASE_PATH_E2E_ERROR_DUP: Final = "repo_error/dup"
+REPO_E2E_ERROR_DUP: Final = "test-error-dup-repo"
 SIDE_TAG_E2E_NAME: Final = "e2e-test"
 SIDE_TAG_E2E_REPO_SUFFIX: Final = f"side-tag-{SIDE_TAG_E2E_NAME}"
 
@@ -32,6 +35,16 @@ def side_tag_e2e_name(run_id: str | None) -> str:
 def side_tag_e2e_repo_suffix(run_id: str | None) -> str:
     """Repository path segment ``side-tag-<name>`` for validation/cleanup keyed by run."""
     return f"side-tag-{side_tag_e2e_name(run_id)}"
+
+
+def e2e_error_upload_repo_names(build_id: str) -> list[str]:
+    """Repository names a standard ``upload`` may create (for error-test cleanup)."""
+    return [
+        f"{build_id}/rpms",
+        f"{build_id}/artifacts",
+        f"{build_id}/logs",
+        f"{build_id}/sbom",
+    ]
 
 
 def pull_side_tag_rpm_repo_key(run_id: str | None) -> str:
