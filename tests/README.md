@@ -13,6 +13,9 @@ Tests are grouped by package area. Prefer adding new tests next to the code they
 | `tests/services/` | Upload service and related orchestration |
 | `tests/utils/` | Utilities, capabilities, small pure helpers |
 | `tests/models/` | Pydantic models |
+| `tests/e2e/` | Unit tests for [`e2e/`](../e2e/) helpers (e.g. `distribution_fetch`, `distribution_verify_queue`) |
+
+**Konflux live e2e** (mutating Pulp in Tekton) is implemented under [`e2e/`](../e2e/), not under `tests/`. New `--real-server` cases must follow the upload → deferred pulp-content verification → pull structure documented in [e2e/README.md § Conventions for new live e2e tests](../e2e/README.md#conventions-for-new-live-e2e-tests).
 
 ## Hypothesis (property-based tests)
 

@@ -20,12 +20,14 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Dict, List
 
+from distribution_verify_queue import DistributionCheckRunner, DistributionVerifyQueue
 from distribution_fetch import (
     DistributionFetchError,
     distribution_client_from_config,
     distribution_fetch_retry_policy_summary,
     fetch_and_verify_sha256,
     fetch_bytes,
+    fetch_pulp_results_json,
     format_fetch_check_summary,
     format_pulp_results_for_diagnostics,
     normalize_sha256_hex,
@@ -58,6 +60,7 @@ from names import (
     resolve_run_id,
     scoped_base_path,
     scoped_build_id,
+    scoped_oci_storage,
 )
 
 
@@ -94,6 +97,7 @@ class E2ETestSuite:
         dry_run: bool = True,
         run_id: str | None = None,
         oci_storage: str | None = None,
+        skip_distribution_verify: bool = False,
     ):
         self.config_file = config_file
         self.rpm_dir_arg = rpm_dir
@@ -111,6 +115,11 @@ class E2ETestSuite:
         self._current_case_id: str | None = None
         self.last_oci_pulp_results_ref: str | None = None
         self.last_oci_build_id: str | None = None
+        self.skip_distribution_verify = skip_distribution_verify
+        self.distribution_verify_queue = DistributionVerifyQueue()
+        self._side_tag_source_pulp_results_url: str | None = None
+        self._side_tag_oci_ref: str | None = None
+        self._side_tag_oci_build_id: str | None = None
 
         with open(self.config_file, "rb") as f:
             config = tomllib.load(f)
@@ -362,6 +371,36 @@ class E2ETestSuite:
                         format_fetch_check_summary(label, url, expected_sha256, artifact_entry=artifact_entry)
                     )
                     diagnostics_logged = True
+
+    def defer_distribution_check(
+        self,
+        label: str,
+        run: DistributionCheckRunner,
+        *,
+        build_id: str | None = None,
+    ) -> None:
+        """Queue a pulp-content HTTP check to run after all uploads complete."""
+        if not self.real_server or self.skip_distribution_verify:
+            return
+        self.distribution_verify_queue.defer_callable(label, run, build_id=build_id)
+
+    def run_distribution_verification_phase(self) -> None:
+        """Run deferred pulp-content verifications (after upload phase)."""
+        if not self.real_server or self.skip_distribution_verify:
+            return
+        pending = self.distribution_verify_queue.pending()
+        if not pending:
+            return
+
+        self.begin_section(
+            "Distribution URL verification (pulp-content)",
+            description="HTTP GET artifact URLs after all uploads; uses distribution_fetch retry policy.",
+        )
+        self.log_info(f"Distribution fetch retry policy: {distribution_fetch_retry_policy_summary()}")
+        self.log_info(f"Running {len(pending)} deferred distribution check(s)")
+        for check in pending:
+            self.run_test(f"distribution verify: {check.label}", detail=check.build_id or "")
+            check.run(self)
 
     def begin_section(self, title: str, *, description: str = "") -> None:
         """Print a visible boundary between groups of related test cases."""
@@ -710,6 +749,7 @@ class E2ETestSuite:
         image_digest_path: Path | None = None,
     ) -> str:
         """Run ``upload-build`` with ORAS publish; return ``oci_manifest`` from Pulp."""
+        storage = scoped_oci_storage(oci_storage, build_id, self.run_id)
         upload_cmd = [
             "pulp-tool",
             "--config",
@@ -722,7 +762,7 @@ class E2ETestSuite:
             "--rpm-path",
             str(rpm_dir),
             "--oci-storage",
-            oci_storage,
+            storage,
         ]
         if image_url_path is not None and image_digest_path is not None:
             upload_cmd.extend(
@@ -803,11 +843,36 @@ class E2ETestSuite:
         self.last_oci_build_id = build_id
         self.log_success(f"ORAS-published pulp_results oci_manifest: {oci_ref}")
 
+        self.run_test("Konflux OCI artifact-results files", detail=f"url={image_url_path} digest={image_digest_path}")
+        self._assert_konflux_oci_results_match_manifest(
+            oci_ref,
+            image_url_path,
+            image_digest_path,
+            test_label="upload-build ORAS",
+        )
+
+        self.defer_distribution_check(
+            "upload-build ORAS pulp_results.json on pulp-content",
+            lambda suite: suite._execute_upload_build_oras_pulp_distribution_verification(
+                build_id=build_id,
+                oci_ref=oci_ref,
+            ),
+            build_id=build_id,
+        )
+
+    def _execute_upload_build_oras_pulp_distribution_verification(self, *, build_id: str, oci_ref: str) -> None:
         client = distribution_client_from_config(self.config_file)
         pulp_results_url = (
             f"{self.base_url}/api/pulp-content/{self.namespace}/{build_id}/artifacts/pulp_results.json"
         )
-        pulp_results_content = json.loads(fetch_bytes(client, pulp_results_url, label="pulp_results.json").decode("utf-8"))
+        try:
+            pulp_results_content = json.loads(
+                fetch_bytes(client, pulp_results_url, label="pulp_results.json").decode("utf-8")
+            )
+        except DistributionFetchError as exc:
+            self.stats.failed += 1
+            self.log_error(str(exc))
+            return
         oci_manifest = (pulp_results_content.get("oci_manifest") or "").strip()
         version = pulp_results_content.get("version")
         if not version or int(version) < 1:
@@ -820,14 +885,6 @@ class E2ETestSuite:
             return
         self.stats.passed += 1
         self.log_success("Pulp pulp_results.json includes oci_manifest aligned with ORAS publish")
-
-        self.run_test("Konflux OCI artifact-results files", detail=f"url={image_url_path} digest={image_digest_path}")
-        self._assert_konflux_oci_results_match_manifest(
-            oci_ref,
-            image_url_path,
-            image_digest_path,
-            test_label="upload-build ORAS",
-        )
 
     def test_update_build_pull_from_oras_target(self):
         """
@@ -1079,20 +1136,37 @@ class E2ETestSuite:
             self.stats.passed += 1
             self.log_success("SBOM results match expected value")
 
-        try:
-            if not self.assert_file_exists(image_url_path, "Konflux image URL result file"):
-                return
-            if not self.assert_file_exists(image_digest_path, "Konflux image digest result file"):
-                return
+        if not self.assert_file_exists(image_url_path, "Konflux image URL result file"):
+            return
+        if not self.assert_file_exists(image_digest_path, "Konflux image digest result file"):
+            return
 
+        self.defer_distribution_check(
+            "upload full (RPM, SBOM, pulp_results.json)",
+            lambda suite: suite._execute_upload_full_distribution_verification(
+                full_build_id=full_build_id,
+                image_url_path=image_url_path,
+                image_digest_path=image_digest_path,
+                sbom_results_content=sbom_results_content,
+                upload_output=output,
+            ),
+            build_id=full_build_id,
+        )
+
+    def _execute_upload_full_distribution_verification(
+        self,
+        *,
+        full_build_id: str,
+        image_url_path: Path,
+        image_digest_path: Path,
+        sbom_results_content: str,
+        upload_output: str,
+    ) -> None:
+        """Deferred pulp-content checks for test_upload_full."""
+        try:
             client = distribution_client_from_config(self.config_file)
             pulp_results_url = image_url_path.read_text(encoding="utf-8").strip()
             pulp_results_digest = image_digest_path.read_text(encoding="utf-8").strip()
-            self.run_test(
-                "distribution fetch setup",
-                detail=f"build_id={full_build_id} konflux_url={pulp_results_url}",
-            )
-            self.log_info(f"Distribution fetch retry policy: {distribution_fetch_retry_policy_summary()}")
             self.log_info(f"Konflux digest result: {pulp_results_digest}")
             pulp_results_content = json.loads(
                 fetch_bytes(client, pulp_results_url, label="pulp_results.json").decode("utf-8")
@@ -1112,7 +1186,7 @@ class E2ETestSuite:
                     pulp_results_digest=pulp_results_digest,
                     sbom_url=sbom_results_content,
                     failed_check="artifact keys",
-                    upload_output=output,
+                    upload_output=upload_output,
                 )
             else:
                 self.stats.passed += 1
@@ -1127,7 +1201,7 @@ class E2ETestSuite:
                     pulp_results_digest=pulp_results_digest,
                     sbom_url=sbom_results_content,
                     failed_check="distribution keys",
-                    upload_output=output,
+                    upload_output=upload_output,
                 )
             else:
                 self.stats.passed += 1
@@ -1144,29 +1218,31 @@ class E2ETestSuite:
         except DistributionFetchError as exc:
             self.stats.failed += 1
             self.log_error(f"Distribution fetch setup failed: {exc}")
-            if "client" in locals() and "sbom_results_content" in locals():
-                sbom_status = probe_http_get_status(client, sbom_results_content)
+            client = distribution_client_from_config(self.config_file)
+            sbom_status = probe_http_get_status(client, sbom_results_content)
+            self.log_error(
+                "Distribution probe (immediate GET, no retry): "
+                f"SBOM status={sbom_status} url={sbom_results_content}"
+            )
+            if sbom_status == 200:
                 self.log_error(
-                    "Distribution probe (immediate GET, no retry): "
-                    f"SBOM status={sbom_status} url={sbom_results_content}"
+                    "SBOM is reachable via pulp-content but pulp_results.json is not — "
+                    "likely artifacts-repo publish or pulp-content mapping for the artifacts "
+                    "distribution (Pulp/platform), not e2e URL or build_id construction."
                 )
-                if sbom_status == 200:
-                    self.log_error(
-                        "SBOM is reachable via pulp-content but pulp_results.json is not — "
-                        "likely artifacts-repo publish or pulp-content mapping for the artifacts "
-                        "distribution (Pulp/platform), not e2e URL or build_id construction."
-                    )
-                elif sbom_status in {404, 502, 503, 504}:
-                    self.log_error(
-                        "SBOM URL also returned a non-success status — pulp-content may not be "
-                        "serving this build's file distributions yet, or Basic Auth/path is wrong "
-                        "for the whole build prefix."
-                    )
-                    self.log_error(
-                        "post-test-validation uses the Pulp API (content in repo); distribution fetch "
-                        "uses pulp-content HTTP, which can lag after upload — see "
-                        "E2E_DISTRIBUTION_FETCH_MAX_WAIT_S (default 300s)."
-                    )
+            elif sbom_status in {404, 502, 503, 504}:
+                self.log_error(
+                    "SBOM URL also returned a non-success status — pulp-content may not be "
+                    "serving this build's file distributions yet, or Basic Auth/path is wrong "
+                    "for the whole build prefix."
+                )
+                self.log_error(
+                    "post-test-validation uses the Pulp API (content in repo); distribution fetch "
+                    "uses pulp-content HTTP, which can lag after upload — see "
+                    "E2E_DISTRIBUTION_FETCH_MAX_WAIT_S (default 300s)."
+                )
+            pulp_results_url = image_url_path.read_text(encoding="utf-8").strip()
+            pulp_results_digest = image_digest_path.read_text(encoding="utf-8").strip()
             if "pulp_results_content" in locals():
                 self.log_distribution_fetch_diagnostics(
                     pulp_results_content,
@@ -1175,24 +1251,26 @@ class E2ETestSuite:
                     sbom_url=sbom_results_content,
                     failed_check=getattr(exc, "label", None) or "setup",
                     failed_url=getattr(exc, "url", None) or pulp_results_url,
-                    upload_output=output,
+                    upload_output=upload_output,
                 )
         except json.JSONDecodeError as exc:
             self.stats.failed += 2
             self.log_error(f"Bad pulp_results.json file: {exc}")
-            if "pulp_results_url" in locals():
-                self.log_error(f"pulp_results URL: {pulp_results_url}")
+            pulp_results_url = image_url_path.read_text(encoding="utf-8").strip()
+            self.log_error(f"pulp_results URL: {pulp_results_url}")
         except KeyError as e:
             self.stats.failed += 2
             self.log_error(f"pulp_results.json file missing key: {e}")
             if "pulp_results_content" in locals():
+                pulp_results_url = image_url_path.read_text(encoding="utf-8").strip()
+                pulp_results_digest = image_digest_path.read_text(encoding="utf-8").strip()
                 self.log_distribution_fetch_diagnostics(
                     pulp_results_content,
                     pulp_results_url=pulp_results_url,
                     pulp_results_digest=pulp_results_digest,
                     sbom_url=sbom_results_content,
                     failed_check="structure validation",
-                    upload_output=output,
+                    upload_output=upload_output,
                 )
 
     # Test: upload command with results-json
@@ -1454,6 +1532,7 @@ class E2ETestSuite:
         transfer_config = self._write_transfer_dest_config()
         pull_dir = self.output_dir / "pull-side-tag-output"
         pull_dir.mkdir(parents=True, exist_ok=True)
+        storage = scoped_oci_storage(oci_storage, build_id, self.run_id)
 
         self.run_test(step_label, detail=f"side_tag={side_tag} artifact_location={artifact_location[:80]}…")
         pull_cmd = [
@@ -1468,7 +1547,7 @@ class E2ETestSuite:
             "--side-tag",
             side_tag,
             "--oci-storage",
-            oci_storage,
+            storage,
             "--artifact-results",
             f"{image_url_path},{image_digest_path}",
             "--content-types",
@@ -1485,22 +1564,20 @@ class E2ETestSuite:
         pulp_results_url = (
             f"{self.base_url}/api/pulp-content/{self.namespace}/{build_id}/artifacts/pulp_results.json"
         )
-        pulp_results_content = json.loads(fetch_bytes(client, pulp_results_url, label="pulp_results.json").decode("utf-8"))
-        version = pulp_results_content.get("version")
-        distributions = pulp_results_content.get("distributions") or {}
-        if not version or int(version) < 2:
+        try:
+            pulp_results_content = fetch_pulp_results_json(
+                client,
+                pulp_results_url,
+                label="pulp_results.json (post side-tag transfer)",
+                min_version=2,
+                required_distribution_keys=frozenset({side_tag}),
+                require_oci_manifest=True,
+            )
+        except DistributionFetchError as exc:
             self.stats.failed += 1
-            self.log_error(f"Expected version >= 2 after side-tag transfer, got {version!r}")
-            return False
-        if side_tag not in distributions:
-            self.stats.failed += 1
-            self.log_error(f"Expected distributions[{side_tag!r}], got {list(distributions.keys())}")
+            self.log_error(str(exc))
             return False
         oci_manifest = (pulp_results_content.get("oci_manifest") or "").strip()
-        if not oci_manifest or "sha256:" not in oci_manifest:
-            self.stats.failed += 1
-            self.log_error(f"Expected oci_manifest after side-tag ORAS publish, got {oci_manifest!r}")
-            return False
         if not self._assert_konflux_oci_results_match_manifest(
             oci_manifest,
             image_url_path,
@@ -1512,14 +1589,13 @@ class E2ETestSuite:
         self.log_success("pulp_results.json version bumped, side-tag distribution, oci_manifest, and Tekton OCI results")
         return True
 
-    def test_pull_side_tag_transfer(self):
-        """Upload, then pull --transfer-dest --side-tag with ORAS manifest push (requires --oci-storage)."""
-        oci_storage = self._oci_oras_prereqs("pull side-tag transfer")
-        if oci_storage is None:
+    def test_upload_side_tag_transfer_source(self):
+        """Upload source build for HTTPS side-tag pull (distribution verify deferred)."""
+        if not self.real_server:
+            self.skip_test("upload (side-tag transfer source)", "DRY RUN")
             return
 
         build_id = self.bid(BUILD_ID_PULL_SIDE_TAG)
-        side_tag = self.side_tag_name_for_run()
         rpm_dir = self.rpm_dirs[0]
         self.run_test(
             "pulp-tool upload (side-tag transfer setup)",
@@ -1545,43 +1621,31 @@ class E2ETestSuite:
         pulp_results_url = (
             f"{self.base_url}/api/pulp-content/{self.namespace}/{build_id}/artifacts/pulp_results.json"
         )
-        self.run_test(
-            "verify pulp_results.json on source distribution",
-            detail=pulp_results_url,
+        self._side_tag_source_pulp_results_url = pulp_results_url
+        self.defer_distribution_check(
+            "side-tag transfer source pulp_results.json",
+            lambda suite: suite._execute_side_tag_source_pulp_results_reachable(pulp_results_url),
+            build_id=build_id,
         )
+
+    def _execute_side_tag_source_pulp_results_reachable(self, pulp_results_url: str) -> None:
         try:
             client = distribution_client_from_config(self.config_file)
             fetch_bytes(client, pulp_results_url, label="pulp_results.json")
         except DistributionFetchError as exc:
             self.stats.failed += 1
-            self.log_error(f"Source pulp_results.json not available before pull: {exc}")
+            self.log_error(f"Source pulp_results.json not available: {exc}")
             return
         self.stats.passed += 1
         self.log_success("Source pulp_results.json is reachable")
 
-        image_url_path = self.output_dir / "side_tag_oras_image_url"
-        image_digest_path = self.output_dir / "side_tag_oras_image_digest"
-        self._run_pull_side_tag_transfer(
-            build_id=build_id,
-            artifact_location=pulp_results_url,
-            side_tag=side_tag,
-            image_url_path=image_url_path,
-            image_digest_path=image_digest_path,
-            step_label="pulp-tool pull --transfer-dest --side-tag (HTTPS pulp_results)",
-        )
-
-    def test_pull_side_tag_transfer_from_oci_artifact_location(self):
-        """
-        Side-tag transfer with ``--artifact-location`` set to ORAS ``oci_manifest@digest``.
-
-        Uses upload-build ORAS publish first (Tekton-style source), then pull reads the OCI target directly.
-        """
-        oci_storage = self._oci_oras_prereqs("pull side-tag transfer from OCI ref")
+    def test_upload_side_tag_oci_source(self):
+        """upload-build ORAS source for side-tag OCI pull (pull runs in a later phase)."""
+        oci_storage = self._oci_oras_prereqs("upload side-tag OCI source")
         if not oci_storage:
             return
 
         build_id = self.bid(BUILD_ID_PULL_SIDE_TAG_OCI)
-        side_tag = self.side_tag_name_for_run()
         rpm_dir = self.rpm_dirs[0] / "noarch"
         self.run_test(
             "upload-build (ORAS source for side-tag OCI pull)",
@@ -1602,6 +1666,48 @@ class E2ETestSuite:
             self.log_error(str(exc))
             return
 
+        self._side_tag_oci_ref = oci_ref
+        self._side_tag_oci_build_id = build_id
+
+    def test_pull_side_tag_transfer(self):
+        """Pull --transfer-dest --side-tag with ORAS manifest push (requires prior source upload)."""
+        oci_storage = self._oci_oras_prereqs("pull side-tag transfer")
+        if oci_storage is None:
+            return
+
+        build_id = self.bid(BUILD_ID_PULL_SIDE_TAG)
+        side_tag = self.side_tag_name_for_run()
+        pulp_results_url = self._side_tag_source_pulp_results_url
+        if not pulp_results_url:
+            self.stats.failed += 1
+            self.log_error("Missing side-tag source pulp_results URL; run upload phase first")
+            return
+
+        image_url_path = self.output_dir / "side_tag_oras_image_url"
+        image_digest_path = self.output_dir / "side_tag_oras_image_digest"
+        self._run_pull_side_tag_transfer(
+            build_id=build_id,
+            artifact_location=pulp_results_url,
+            side_tag=side_tag,
+            image_url_path=image_url_path,
+            image_digest_path=image_digest_path,
+            step_label="pulp-tool pull --transfer-dest --side-tag (HTTPS pulp_results)",
+        )
+
+    def test_pull_side_tag_transfer_from_oci_artifact_location(self):
+        """Side-tag transfer with ``--artifact-location`` set to ORAS ``oci_manifest@digest``."""
+        oci_storage = self._oci_oras_prereqs("pull side-tag transfer from OCI ref")
+        if not oci_storage:
+            return
+
+        build_id = self._side_tag_oci_build_id or self.bid(BUILD_ID_PULL_SIDE_TAG_OCI)
+        oci_ref = self._side_tag_oci_ref
+        if not oci_ref:
+            self.stats.failed += 1
+            self.log_error("Missing OCI ref from upload side-tag OCI source; run upload phase first")
+            return
+
+        side_tag = self.side_tag_name_for_run()
         self._run_pull_side_tag_transfer(
             build_id=build_id,
             artifact_location=oci_ref,
@@ -1902,6 +2008,8 @@ class E2ETestSuite:
         self.log_info(f"RPM directory: {self.rpm_dir_arg}")
         self.log_info(f"Real server mode: {self.real_server}")
         self.log_info(f"Dry run mode: {self.dry_run}")
+        if self.real_server:
+            self.log_info(f"Skip distribution verify: {self.skip_distribution_verify}")
         print()
 
         # Setup
@@ -1960,8 +2068,8 @@ class E2ETestSuite:
         self.invoke_test_case(
             self.test_upload_full,
             "test_upload_full",
-            f"Full upload with SBOM, signed RPMs, Konflux --artifact-results, and distribution URL fetch; "
-            f"build_id={self.bid(BUILD_ID_UPLOAD_FULL)}.",
+            f"Full upload with SBOM, signed RPMs, Konflux --artifact-results "
+            f"(pulp-content verify deferred); build_id={self.bid(BUILD_ID_UPLOAD_FULL)}.",
             requires_real_server=True,
         )
         self.invoke_test_case(
@@ -1989,6 +2097,28 @@ class E2ETestSuite:
             requires_real_server=True,
         )
         self.invoke_test_case(
+            self.test_upload_files,
+            "test_upload_files",
+            f"Upload RPM, logs, SBOM, and arbitrary file (RPM dir 4); build_id={self.bid(BUILD_ID_UPLOAD_FILES)}.",
+            requires_real_server=True,
+        )
+        self.invoke_test_case(
+            self.test_upload_side_tag_transfer_source,
+            "test_upload_side_tag_transfer_source",
+            f"Upload source for side-tag HTTPS pull; build_id={self.bid(BUILD_ID_PULL_SIDE_TAG)}.",
+            requires_real_server=True,
+        )
+        self.invoke_test_case(
+            self.test_upload_side_tag_oci_source,
+            "test_upload_side_tag_oci_source",
+            f"upload-build ORAS source for side-tag OCI pull; build_id={self.bid(BUILD_ID_PULL_SIDE_TAG_OCI)}.",
+            requires_real_server=True,
+        )
+
+        self.run_distribution_verification_phase()
+
+        self.begin_section("Pull (pulp-tool pull)", description="Download artifacts after pulp-content verification.")
+        self.invoke_test_case(
             self.test_update_build_pull_from_oras_target,
             "test_update_build_pull_from_oras_target",
             "Pull from ORAS-published pulp_results (update-build OCI target; requires --oci-storage and oras).",
@@ -2000,16 +2130,6 @@ class E2ETestSuite:
             "pull --artifact-location OCI manifest@digest (no build-id/namespace; pulp-tool ORAS-pulls JSON).",
             requires_real_server=True,
         )
-
-        self.begin_section("Upload files (pulp-tool upload-files)")
-        self.invoke_test_case(
-            self.test_upload_files,
-            "test_upload_files",
-            f"Upload RPM, logs, SBOM, and arbitrary file (RPM dir 4); build_id={self.bid(BUILD_ID_UPLOAD_FILES)}.",
-            requires_real_server=True,
-        )
-
-        self.begin_section("Pull (pulp-tool pull)", description="Download artifacts from Pulp distributions.")
         self.invoke_test_case(
             self.test_pull_by_build_id,
             "test_pull_by_build_id",
@@ -2185,6 +2305,11 @@ Examples:
         help="OCI registry for ORAS e2e (Konflux ociStorage; same as pulp-tool --oci-storage)",
     )
     parser.add_argument("--skip-setup", action="store_true", help="Skip test environment setup (files, dirs)")
+    parser.add_argument(
+        "--skip-distribution-verify",
+        action="store_true",
+        help="Skip deferred pulp-content HTTP verification phase (live server only)",
+    )
 
     # Mutually exclusive group for server mode
     server_mode = parser.add_mutually_exclusive_group()
@@ -2235,6 +2360,7 @@ Examples:
         dry_run=dry_run,
         run_id=args.run_id,
         oci_storage=args.oci_storage,
+        skip_distribution_verify=args.skip_distribution_verify,
     )
 
     try:

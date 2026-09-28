@@ -96,6 +96,40 @@ def normalize_oci_storage(oci_storage: str | None) -> str:
     return (oci_storage or "").strip()
 
 
+def oci_storage_repository_without_tag(oci_storage: str) -> str:
+    """Repository reference with any tag or digest removed (Konflux bare ``ociStorage``)."""
+    ref = normalize_oci_storage(oci_storage)
+    if not ref:
+        return ref
+    if "@" in ref:
+        ref = ref.split("@", 1)[0]
+    slash = ref.find("/")
+    if slash == -1:
+        return ref
+    head, tail = ref[:slash], ref[slash:]
+    if ":" in tail:
+        tail = tail.rsplit(":", 1)[0]
+    return head + tail
+
+
+def scoped_oci_storage(oci_storage: str, build_id: str, run_id: str | None) -> str:
+    """
+    Per-build OCI tag under ``oci_storage`` so parallel e2e uploads do not stomp ``:latest``.
+
+    Each ``upload-build`` / side-tag ORAS publish uses ``repo:e2e-<build-id>-<run>`` instead of
+    sharing one moving tag (which made later pulls of earlier ``oci_manifest`` digests fail).
+    """
+    repo = oci_storage_repository_without_tag(oci_storage)
+    if not repo:
+        return repo
+    if run_id and build_id.endswith(f"-{run_id}"):
+        tag_key = build_id
+    else:
+        tag_key = scoped_build_id(build_id, run_id)
+    safe_build = re.sub(r"[^a-zA-Z0-9._-]", "-", tag_key)[:64]
+    return f"{repo}:e2e-{safe_build}"
+
+
 def oci_storage_e2e_enabled(oci_storage: str | None) -> bool:
     """True when ORAS-dependent e2e tests are expected to have created Pulp repos."""
     return bool(normalize_oci_storage(oci_storage))

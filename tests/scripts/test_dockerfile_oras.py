@@ -7,6 +7,8 @@ ORAS_IMAGE = "quay.io/konflux-ci/oras"
 
 def test_dockerfile_installs_oras() -> None:
     root = Path(__file__).resolve().parents[2]
+    e2e_requirements = root / "e2e" / "requirements.txt"
+    assert e2e_requirements.is_file()
     for name in ("Dockerfile", "Dockerfile.e2e"):
         dockerfile = (root / name).read_text(encoding="utf-8")
         assert ORAS_IMAGE in dockerfile
@@ -16,3 +18,6 @@ def test_dockerfile_installs_oras() -> None:
         assert "COPY --from=oras /usr/local/bin/get-reference-base" in dockerfile
         assert "oras version" in dockerfile
         assert "yq --version" in dockerfile
+    e2e_dockerfile = (root / "Dockerfile.e2e").read_text(encoding="utf-8")
+    assert "e2e/requirements.txt" in e2e_dockerfile
+    assert "-r /opt/e2e/requirements.txt" in e2e_dockerfile

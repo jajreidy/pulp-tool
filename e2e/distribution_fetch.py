@@ -326,6 +326,135 @@ def fetch_bytes(client: DistributionClient, url: str, *, label: str) -> bytes:
     )
 
 
+def fetch_pulp_results_json(
+    client: DistributionClient,
+    url: str,
+    *,
+    label: str = "pulp_results.json",
+    min_version: int = 1,
+    required_distribution_keys: frozenset[str] | None = None,
+    require_oci_manifest: bool = False,
+) -> dict[str, Any]:
+    """
+    GET ``pulp_results.json`` from pulp-content until the document matches expectations.
+
+    pulp-content can return HTTP 200 with a stale body (e.g. version 1) shortly after Pulp
+    publishes an updated results document; poll until ``min_version`` and optional keys match.
+    """
+    LOGGER.info(
+        "Polling %s: min_version=%s required_distributions=%s require_oci_manifest=%s url=%s",
+        label,
+        min_version,
+        sorted(required_distribution_keys or ()),
+        require_oci_manifest,
+        url,
+    )
+    started = time.monotonic()
+    deadline = started + DISTRIBUTION_FETCH_MAX_WAIT_S
+    attempt = 0
+    last_stale: str | None = None
+
+    while True:
+        remaining_s = deadline - time.monotonic()
+        if remaining_s <= 0:
+            break
+        if DISTRIBUTION_FETCH_RETRY_ATTEMPTS and attempt >= DISTRIBUTION_FETCH_RETRY_ATTEMPTS:
+            break
+        attempt += 1
+        try:
+            _status_code, body = _fetch_bytes_once(client, url, label=label)
+        except httpx.HTTPStatusError as exc:
+            if exc.response.status_code not in DISTRIBUTION_FETCH_RETRY_STATUSES:
+                elapsed_ms = (time.monotonic() - started) * 1000
+                LOGGER.error("HTTP GET %s failed after %.0f ms: %s", label, elapsed_ms, exc)
+                raise DistributionFetchError(
+                    format_http_status_error(exc, url=url, label=label),
+                    url=url,
+                    label=label,
+                ) from exc
+            delay_s = min(_retry_delay_s(attempt - 1), remaining_s)
+            LOGGER.warning(
+                "HTTP GET %s returned %s; retrying in %.1fs (attempt %d, %.0fs left in max wait)",
+                label,
+                exc.response.status_code,
+                delay_s,
+                attempt,
+                remaining_s,
+            )
+            time.sleep(delay_s)
+            continue
+        except httpx.HTTPError as exc:
+            elapsed_ms = (time.monotonic() - started) * 1000
+            LOGGER.error("HTTP GET %s failed after %.0f ms: %s", label, elapsed_ms, exc)
+            raise DistributionFetchError(
+                f"{label}: HTTP GET failed for {url}: {exc}",
+                url=url,
+                label=label,
+            ) from exc
+
+        try:
+            content: dict[str, Any] = json.loads(body.decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise DistributionFetchError(
+                f"{label}: invalid JSON from {url}: {exc}",
+                url=url,
+                label=label,
+            ) from exc
+
+        version_raw = content.get("version")
+        try:
+            version = int(version_raw) if version_raw is not None else 0
+        except (TypeError, ValueError):
+            version = 0
+
+        distributions = content.get("distributions") or {}
+        if not isinstance(distributions, dict):
+            distributions = {}
+
+        oci_manifest = (content.get("oci_manifest") or "").strip()
+        stale_reasons: list[str] = []
+        if version < min_version:
+            stale_reasons.append(f"version={version_raw!r} want>={min_version}")
+        if required_distribution_keys:
+            missing = [key for key in required_distribution_keys if key not in distributions]
+            if missing:
+                stale_reasons.append(f"missing distributions {missing!r}")
+        if require_oci_manifest and (not oci_manifest or "sha256:" not in oci_manifest):
+            stale_reasons.append(f"oci_manifest={oci_manifest!r}")
+
+        if not stale_reasons:
+            elapsed_ms = (time.monotonic() - started) * 1000
+            LOGGER.info(
+                "HTTP GET %s ready: version=%s attempt=%d elapsed_ms=%.0f",
+                label,
+                version,
+                attempt,
+                elapsed_ms,
+            )
+            return content
+
+        last_stale = "; ".join(stale_reasons)
+        delay_s = min(_retry_delay_s(attempt - 1), remaining_s)
+        LOGGER.warning(
+            "HTTP GET %s body not ready (%s); retrying in %.1fs (attempt %d, %.0fs left)",
+            label,
+            last_stale,
+            delay_s,
+            attempt,
+            remaining_s,
+        )
+        time.sleep(delay_s)
+
+    elapsed_s = time.monotonic() - started
+    raise DistributionFetchError(
+        f"{label}: pulp_results.json not ready at {url} after {elapsed_s:.1f}s"
+        + (f" (last: {last_stale})" if last_stale else "")
+        + f" ({distribution_fetch_retry_policy_summary()})",
+        url=url,
+        label=label,
+    )
+
+
 def fetch_and_verify_sha256(
     client: DistributionClient,
     url: str,
