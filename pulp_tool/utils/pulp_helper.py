@@ -20,7 +20,6 @@ if TYPE_CHECKING:
 from .distribution_manager import DistributionManager
 from .repository_manager import RepositoryManager
 from .upload_orchestrator import UploadOrchestrator
-from .validation.build_id import sanitize_build_id_for_repository, strip_namespace_from_build_id
 from .validation.side_tag import side_tag_distribution_base_path
 
 
@@ -168,18 +167,19 @@ class PulpHelper:
         """
         Create or get an extra RPM repository and distribution for side-tag promotions.
 
+        Repository and distribution use global path ``side-tag-<name>`` so multiple source
+        builds can promote RPMs into the same side-tag. ``build_id`` is not used in the path
+        (callers use it for ``origin_build_id`` labels on uploaded content).
+
         Returns:
             Tuple of (repository_href, distribution_base_url)
         """
-        sanitized_build = sanitize_build_id_for_repository(build_id)
-        build_name = strip_namespace_from_build_id(sanitized_build)
-        tag_segment = side_tag_distribution_base_path(side_tag)
-        base_path = f"{build_name}/{tag_segment}"
+        base_path = side_tag_distribution_base_path(side_tag)
         full_name = base_path
         new_repo = RepositoryRequest(name=full_name, autopublish=True)
         new_distro = DistributionRequest(name=full_name, base_path=base_path)
         _prn, repository_href = self.create_or_get_repository(
-            sanitized_build,
+            full_name,
             "rpms",
             new_repository=new_repo,
             new_distribution=new_distro,
