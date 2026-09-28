@@ -1,0 +1,3 @@
+# E2e runner image (Dockerfile.e2e) and local venv installs for e2e scripts.
+pulp-cli>=0.40,<0.41
+rpm-rs>=0.24.0

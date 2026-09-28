@@ -19,6 +19,7 @@ from distribution_fetch import (  # noqa: E402
     distribution_fetch_retry_policy_summary,
     fetch_and_verify_sha256,
     fetch_bytes,
+    fetch_pulp_results_json,
     format_distribution_fetch_exhausted_message,
     format_http_status_error,
     normalize_sha256_hex,
@@ -224,3 +225,36 @@ def test_fetch_bytes_http_error() -> None:
 
     with pytest.raises(DistributionFetchError, match="HTTP GET failed"):
         fetch_bytes(client, "https://example.com/missing", label="artifact")
+
+
+def _mock_pulp_results_response(body: bytes) -> MagicMock:
+    response = MagicMock()
+    response.is_error = False
+    response.status_code = 200
+    response.raise_for_status = MagicMock()
+    response.iter_bytes = MagicMock(return_value=iter([body]))
+    return response
+
+
+def test_fetch_pulp_results_json_polls_stale_version() -> None:
+    stale = b'{"version": 1, "distributions": {}}'
+    ready = (
+        b'{"version": 2, "distributions": {"tag1": "https://example.com/tag1/"}, '
+        b'"oci_manifest": "quay.io/repo@sha256:abc"}'
+    )
+    client = MagicMock()
+    client.session.stream.return_value.__enter__.side_effect = [
+        _mock_pulp_results_response(stale),
+        _mock_pulp_results_response(ready),
+    ]
+
+    with patch("distribution_fetch.time.sleep"):
+        doc = fetch_pulp_results_json(
+            client,
+            "https://example.com/pulp_results.json",
+            min_version=2,
+            required_distribution_keys=frozenset({"tag1"}),
+            require_oci_manifest=True,
+        )
+    assert doc["version"] == 2
+    assert doc["distributions"]["tag1"].startswith("https://")

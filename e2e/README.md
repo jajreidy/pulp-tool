@@ -49,7 +49,7 @@ The e2e test suite follows a four-phase lifecycle:
         └── x86_64/test.large-1.0.0-1.x86_64.rpm
 ```
 
-**Dependencies:** `rpm-rs<0.25`
+**Dependencies:** [`requirements.txt`](requirements.txt) (`pulp-cli`, `rpm-rs==0.24.0`)
 
 ---
 
@@ -112,7 +112,7 @@ This is an **input file** (not output) containing references to pre-existing tes
   --oci-storage 'quay.io/org/repo:tag'
 ```
 
-**ORAS / `--oci-storage`:** Pass the same OCI reference Konflux uses for pipeline param **`ociStorage`** (pulp-tool **`--oci-storage`**). E2e scripts take **`--oci-storage`** on the command line rather than reading an environment variable or requiring `cli.oci_storage` in `cli.toml`. The e2e runner image ([`Dockerfile.e2e`](../Dockerfile.e2e)) and **`pulp-tool-container`** ship **`oras`**, **`select-oci-auth`**, and **`get-reference-base`** (Konflux `oras` image) (registry credentials from `~/.docker/config.json`, same as import-to-quay); local runs need both on `PATH` (or `docker login` so `select-oci-auth` can emit a config) or ORAS cases are skipped. When **`--oci-storage`** is omitted, `post-test-validation.py` and `post-test-cleanup.py` skip ORAS/side-tag build repos (see [`names.py`](names.py)).
+**ORAS / `--oci-storage`:** Pass the same OCI reference Konflux uses for pipeline param **`ociStorage`** (pulp-tool **`--oci-storage`**). E2e scripts take **`--oci-storage`** on the command line rather than reading an environment variable or requiring `cli.oci_storage` in `cli.toml`. Each ORAS publish uses a **per-build tag** (`scoped_oci_storage` in [`names.py`](names.py)) so multiple `upload-build` cases in one run do not overwrite the same `:latest` manifest. The e2e runner image ([`Dockerfile.e2e`](../Dockerfile.e2e)) and **`pulp-tool-container`** ship **`oras`**, **`select-oci-auth`**, and **`get-reference-base`** (Konflux `oras` image) (registry credentials from `~/.docker/config.json`, same as import-to-quay); local runs need both on `PATH` (or `docker login` so `select-oci-auth` can emit a config) or ORAS cases are skipped. When **`--oci-storage`** is omitted, `post-test-validation.py` and `post-test-cleanup.py` skip ORAS/side-tag build repos (see [`names.py`](names.py)).
 
 | Test | What it exercises |
 |------|-------------------|
@@ -125,6 +125,17 @@ This is an **input file** (not output) containing references to pre-existing tes
 | `test_pull_side_tag_transfer_from_oci_artifact_location` | Same flow with `--artifact-location` set to ORAS `oci_manifest@digest` (run-scoped `--side-tag` name) |
 
 For release workspaces, pair `pulp-tool pull --snapshot-path …` with **`create-trusted-artifact`** (see release-service-catalog `upload-src-rpm-sbom-attestation`).
+
+### Conventions for new live e2e tests
+
+When adding or extending **`--real-server`** cases in [`test-pulp-tool.py`](test-pulp-tool.py), keep the harness phases aligned so pulp-content propagation is less flaky:
+
+1. **Upload phase** — Register the test in `run_all_tests()` **before** `run_distribution_verification_phase()`. The test method should only run `pulp-tool` mutations (`upload`, `upload-build`, `upload-files`) and **local** assertions (exit code, files on disk, expected SBOM results URL strings). Split “setup upload” from “pull” when a flow needs both (see side-tag source tests).
+2. **Deferred pulp-content HTTP** — Any GET to pulp-content (`packages.redhat.com` / `…/pulp-content/…`) for `pulp_results.json`, RPM, or SBOM URLs must use `E2ETestSuite.defer_distribution_check()` (backed by [`distribution_verify_queue.py`](distribution_verify_queue.py)), not inline `fetch_bytes()` in the upload test. Implement the check in a `_execute_*` helper invoked from the deferred callback.
+3. **Pull phase** — Tests that `pull` (or depend on pulp-content URLs being warm) go **after** `run_distribution_verification_phase()` in `run_all_tests()`. Post-pull assertions (e.g. side-tag `version` / `oci_manifest` after transfer) stay in the pull test or shared pull helper.
+4. **`run_all_tests()` order** — When adding a case, place upload mutations with the other upload `invoke_test_case` calls; do not interleave new uploads after the verification phase unless you intentionally add another verification batch (avoid that—extend the queue instead).
+
+Unit tests for e2e helpers live under [`tests/e2e/`](../tests/e2e/). Agent entry point: [AGENTS.md](../AGENTS.md) (convention 6).
 
 ---
 
@@ -354,8 +365,7 @@ See [`skills/changing-pulp-container/SKILL.md`](../skills/changing-pulp-containe
 **Runtime dependencies:**
 
 - **Python 3.12+** (as specified in `pyproject.toml`)
-- **rpm-rs < 0.25** (for RPM generation in `pre-test.py`)
-- **pulp-cli** (for validation and cleanup scripts)
+- **[`e2e/requirements.txt`](requirements.txt)** — `pulp-cli` and pinned `rpm-rs` (installed in [`Dockerfile.e2e`](../Dockerfile.e2e); local: `pip install -r e2e/requirements.txt`)
 - **pulp-tool** (installed from source)
 
 **CI environment:**

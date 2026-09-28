@@ -12,6 +12,7 @@ from names import (  # noqa: E402
     BASE_PATH_CREATE_REPOSITORY,
     BASE_PATH_CREATE_REPOSITORY_JSON,
     BUILD_ID_PULL_SIDE_TAG,
+    BUILD_ID_PULL_SIDE_TAG_OCI,
     BUILD_ID_UPLOAD_MINIMAL,
     BUILD_ID_UPLOAD_ORAS,
     BUILD_ID_UPLOAD_TARGET_ARCH,
@@ -23,6 +24,7 @@ from names import (  # noqa: E402
     rpm_repos_for_run,
     scoped_base_path,
     scoped_build_id,
+    scoped_oci_storage,
     scoped_repo_name,
     side_tag_e2e_name,
 )
@@ -99,3 +101,17 @@ def test_oci_repos_included_when_oci_storage_set() -> None:
     assert oci_storage_e2e_enabled(oci)
     assert f"{BUILD_ID_UPLOAD_ORAS}-{run_id}/rpms" in rpm_repos_for_run(run_id, oci)
     assert f"{BUILD_ID_UPLOAD_ORAS}-{run_id}/artifacts" in file_repos_for_run(run_id, oci)
+
+
+def test_scoped_oci_storage_uses_per_build_tag() -> None:
+    base = "quay.io/redhat-user-workloads/artifact-storage-tenant/tooling/pulp-e2e-testing"
+    oras = scoped_oci_storage(base, BUILD_ID_UPLOAD_ORAS, "abc123")
+    side = scoped_oci_storage(base, BUILD_ID_PULL_SIDE_TAG_OCI, "abc123")
+    assert oras != side
+    assert oras.startswith(f"{base}:e2e-{BUILD_ID_UPLOAD_ORAS}-abc123")
+    assert side.startswith(f"{base}:e2e-{BUILD_ID_PULL_SIDE_TAG_OCI}-abc123")
+    assert scoped_oci_storage(f"{base}:latest", BUILD_ID_UPLOAD_ORAS, "run1") == (
+        f"{base}:e2e-{BUILD_ID_UPLOAD_ORAS}-run1"
+    )
+    run_scoped_build = f"{BUILD_ID_PULL_SIDE_TAG_OCI}-abc123"
+    assert scoped_oci_storage(base, run_scoped_build, "abc123") == f"{base}:e2e-{run_scoped_build}"

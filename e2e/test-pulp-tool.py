@@ -20,13 +20,14 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Dict, List
 
-from distribution_verify_queue import DistributionVerifyQueue
+from distribution_verify_queue import DistributionCheckRunner, DistributionVerifyQueue
 from distribution_fetch import (
     DistributionFetchError,
     distribution_client_from_config,
     distribution_fetch_retry_policy_summary,
     fetch_and_verify_sha256,
     fetch_bytes,
+    fetch_pulp_results_json,
     format_fetch_check_summary,
     format_pulp_results_for_diagnostics,
     normalize_sha256_hex,
@@ -59,6 +60,7 @@ from names import (
     resolve_run_id,
     scoped_base_path,
     scoped_build_id,
+    scoped_oci_storage,
 )
 
 
@@ -373,7 +375,7 @@ class E2ETestSuite:
     def defer_distribution_check(
         self,
         label: str,
-        run: Callable[[E2ETestSuite], None],
+        run: DistributionCheckRunner,
         *,
         build_id: str | None = None,
     ) -> None:
@@ -747,6 +749,7 @@ class E2ETestSuite:
         image_digest_path: Path | None = None,
     ) -> str:
         """Run ``upload-build`` with ORAS publish; return ``oci_manifest`` from Pulp."""
+        storage = scoped_oci_storage(oci_storage, build_id, self.run_id)
         upload_cmd = [
             "pulp-tool",
             "--config",
@@ -759,7 +762,7 @@ class E2ETestSuite:
             "--rpm-path",
             str(rpm_dir),
             "--oci-storage",
-            oci_storage,
+            storage,
         ]
         if image_url_path is not None and image_digest_path is not None:
             upload_cmd.extend(
@@ -1529,6 +1532,7 @@ class E2ETestSuite:
         transfer_config = self._write_transfer_dest_config()
         pull_dir = self.output_dir / "pull-side-tag-output"
         pull_dir.mkdir(parents=True, exist_ok=True)
+        storage = scoped_oci_storage(oci_storage, build_id, self.run_id)
 
         self.run_test(step_label, detail=f"side_tag={side_tag} artifact_location={artifact_location[:80]}…")
         pull_cmd = [
@@ -1543,7 +1547,7 @@ class E2ETestSuite:
             "--side-tag",
             side_tag,
             "--oci-storage",
-            oci_storage,
+            storage,
             "--artifact-results",
             f"{image_url_path},{image_digest_path}",
             "--content-types",
@@ -1560,22 +1564,20 @@ class E2ETestSuite:
         pulp_results_url = (
             f"{self.base_url}/api/pulp-content/{self.namespace}/{build_id}/artifacts/pulp_results.json"
         )
-        pulp_results_content = json.loads(fetch_bytes(client, pulp_results_url, label="pulp_results.json").decode("utf-8"))
-        version = pulp_results_content.get("version")
-        distributions = pulp_results_content.get("distributions") or {}
-        if not version or int(version) < 2:
+        try:
+            pulp_results_content = fetch_pulp_results_json(
+                client,
+                pulp_results_url,
+                label="pulp_results.json (post side-tag transfer)",
+                min_version=2,
+                required_distribution_keys=frozenset({side_tag}),
+                require_oci_manifest=True,
+            )
+        except DistributionFetchError as exc:
             self.stats.failed += 1
-            self.log_error(f"Expected version >= 2 after side-tag transfer, got {version!r}")
-            return False
-        if side_tag not in distributions:
-            self.stats.failed += 1
-            self.log_error(f"Expected distributions[{side_tag!r}], got {list(distributions.keys())}")
+            self.log_error(str(exc))
             return False
         oci_manifest = (pulp_results_content.get("oci_manifest") or "").strip()
-        if not oci_manifest or "sha256:" not in oci_manifest:
-            self.stats.failed += 1
-            self.log_error(f"Expected oci_manifest after side-tag ORAS publish, got {oci_manifest!r}")
-            return False
         if not self._assert_konflux_oci_results_match_manifest(
             oci_manifest,
             image_url_path,
