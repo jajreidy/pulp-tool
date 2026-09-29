@@ -27,9 +27,10 @@ from ..pull.side_tag import upload_rpms_to_side_tag_repository
 from ..utils import setup_logging
 from ..utils.config_manager import ConfigManager
 from ..utils.error_handling import handle_generic_error, handle_http_error
-from ..utils.oci_pull import is_oci_artifact_reference, pull_pulp_results_json
+from ..utils.oci_pull import is_oci_artifact_reference
 from ..utils.oci_storage_resolve import resolve_oci_storage
 from ..utils.oras_publish import OrasPublishError
+from ..utils.results_json_io import ResultsJsonIOError, resolve_results_json_path
 from ..utils.validation.build_id import sanitize_build_id_for_repository, strip_namespace_from_build_id
 
 
@@ -192,10 +193,10 @@ def pull(  # pylint: disable=too-many-positional-arguments
     if artifact_location and is_oci_artifact_reference(artifact_location):
         try:
             oci_pull_temp = tempfile.TemporaryDirectory(prefix="pulp-tool-oras-pull-")
-            local_json = pull_pulp_results_json(artifact_location, Path(oci_pull_temp.name))
+            local_json = resolve_results_json_path(artifact_location, Path(oci_pull_temp.name))
             logging.info("ORAS-pulled pulp_results.json to %s", local_json)
             artifact_location = str(local_json)
-        except OrasPublishError as e:
+        except (OrasPublishError, ResultsJsonIOError) as e:
             click.echo(f"Error: {e}", err=True)
             sys.exit(1)
 

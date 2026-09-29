@@ -11,6 +11,7 @@ import pytest
 from pulp_tool.models.artifacts import ContentData, FileInfoModel, PulpContentRow
 from pulp_tool.models.context import UploadContext, UploadRpmContext
 from pulp_tool.models.pulp_api import TaskResponse
+from pulp_tool.models.pulp_results import PulpResultsDocument
 from pulp_tool.models.repository import RepositoryRefs
 from pulp_tool.models.results import PulpResultsModel
 from pulp_tool.services import upload_collect as uc
@@ -40,6 +41,10 @@ def _minimal_refs() -> RepositoryRefs:
     )
 
 
+def _empty_results_document() -> PulpResultsDocument:
+    return PulpResultsDocument.from_raw({"artifacts": {}})
+
+
 class TestUploadAndExtract:
     def test_upload_and_get_results_url_success_paths(self, mock_pulp_client: Mock) -> None:
         """Happy path: upload, extract URL, log when no Konflux artifact_results, optional sbom (lines 95-116)."""
@@ -54,7 +59,7 @@ class TestUploadAndExtract:
             patch.object(uc, "_extract_results_url", return_value="https://example.com/results.json"),
             patch.object(uc, "_handle_sbom_results") as mock_sbom,
         ):
-            out = uc._upload_and_get_results_url(mock_pulp_client, ctx, "prn", "{}", "2024-01-01")
+            out = uc._upload_and_get_results_url(mock_pulp_client, ctx, "prn", _empty_results_document(), "2024-01-01")
         assert out == "https://example.com/results.json"
         mock_sbom.assert_called_once()
 
@@ -66,7 +71,7 @@ class TestUploadAndExtract:
             patch.object(uc, "_extract_results_url", return_value="https://u/x.json"),
             patch.object(uc, "_handle_artifact_results") as mock_h,
         ):
-            uc._upload_and_get_results_url(mock_pulp_client, ctx, "prn", "{}", "2024-01-01")
+            uc._upload_and_get_results_url(mock_pulp_client, ctx, "prn", _empty_results_document(), "2024-01-01")
         mock_h.assert_called_once_with(mock_pulp_client, ctx, tr)
 
     def test_konflux_artifact_results_paths_invalid_format(self) -> None:
@@ -85,7 +90,7 @@ class TestUploadAndExtract:
             patch.object(uc, "_extract_results_url", return_value="https://u/x.json"),
             patch.object(uc, "_write_konflux_results") as mock_write,
         ):
-            uc._upload_and_get_results_url(mock_pulp_client, ctx, "prn", '{"artifacts":{}}', "2024-01-01")
+            uc._upload_and_get_results_url(mock_pulp_client, ctx, "prn", _empty_results_document(), "2024-01-01")
         mock_sync.assert_called_once()
         mock_write.assert_not_called()
 
@@ -102,8 +107,10 @@ class TestUploadAndExtract:
             patch.object(uc, "_write_konflux_oci_results") as mock_write,
             patch.object(uc, "_handle_artifact_results") as mock_legacy,
         ):
-            uc._upload_and_get_results_url(mock_pulp_client, ctx, "prn", '{"artifacts":{}}', "2024-01-01")
+            doc = _empty_results_document()
+            uc._upload_and_get_results_url(mock_pulp_client, ctx, "prn", doc, "2024-01-01")
         mock_sync.assert_called_once()
+        assert mock_sync.call_args[0][2] is doc
         mock_write.assert_called_once_with("quay.io/ns/repo@sha256:abc", "/u", "/d")
         mock_legacy.assert_not_called()
 
@@ -134,7 +141,7 @@ class TestUploadAndExtract:
             patch("pulp_tool.services.upload_collect.logging") as log_mock,
             pytest.raises(RuntimeError, match="boom"),
         ):
-            uc._upload_and_get_results_url(mock_pulp_client, ctx, "prn", "{}", "2024-01-01")
+            uc._upload_and_get_results_url(mock_pulp_client, ctx, "prn", _empty_results_document(), "2024-01-01")
         log_mock.error.assert_called()
 
     def test_extract_results_url_raises_without_artifacts_distribution(self, mock_pulp_client: Mock) -> None:

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import shutil
 import subprocess
@@ -10,9 +11,10 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Iterator
 
+from pulp_tool.models.pulp_results import PULP_RESULTS_ORAS_MEDIA_TYPE
+
 from .constants import RESULTS_JSON_FILENAME
 from .oci_reference import oci_storage_oras_target, oci_storage_repository_name
-from .pulp_results_document import PULP_RESULTS_ORAS_MEDIA_TYPE
 
 logger = logging.getLogger(__name__)
 
@@ -81,6 +83,27 @@ def _parse_oras_resolve_output(oci_storage: str, resolved: str) -> tuple[str, st
     raise OrasPublishError(f"oras resolve returned unexpected value: {text}")
 
 
+def _parse_oras_json_digest(stdout: str, repository_name: str) -> tuple[str, str]:
+    """Parse ``(repo, digest)`` from ``oras --format json`` stdout (push/attach)."""
+    text = (stdout or "").strip()
+    if not text:
+        raise OrasPublishError("oras returned empty JSON output")
+    try:
+        data = json.loads(text)
+    except json.JSONDecodeError as e:
+        raise OrasPublishError(f"oras JSON output parse failed: {e}") from e
+    if not isinstance(data, dict):
+        raise OrasPublishError(f"oras JSON output must be an object, got: {type(data).__name__}")
+    digest = str(data.get("digest") or "").strip()
+    if not digest:
+        raise OrasPublishError(f"oras JSON output missing digest: {text[:200]}")
+    if not digest.startswith("sha256:"):
+        digest = f"sha256:{digest}"
+    ref = str(data.get("reference") or data.get("name") or repository_name).strip()
+    repo = oci_storage_repository_name(ref) if ref else repository_name
+    return repo, digest
+
+
 def resolve_oci_manifest(oci_storage: str) -> tuple[str, str]:
     """Resolve ``oci_storage`` to (image_ref_without_digest, digest with sha256: prefix)."""
     target = oci_storage.strip()
@@ -128,4 +151,50 @@ def push_pulp_results_manifest(oci_storage: str, json_content: str) -> tuple[str
         return resolve_oci_manifest(target)
 
 
-__all__ = ["OrasPublishError", "push_pulp_results_manifest", "resolve_oci_manifest"]
+def attach_pulp_results_manifest(subject_ref: str, json_content: str) -> tuple[str, str]:
+    """
+    ORAS-attach updated ``pulp_results.json`` to an existing digest-pinned subject.
+
+    Preserves the subject manifest and attestation chain; returns (repo, digest) for the **referrer**
+    artifact created by attach.
+    """
+    from .oci_pull import normalize_oci_artifact_reference
+
+    subject = normalize_oci_artifact_reference(subject_ref.strip())
+    if not subject or "@" not in subject:
+        raise OrasPublishError("attach subject must be digest-pinned (repo@sha256:…)")
+    digest_part = subject.rsplit("@", 1)[-1]
+    if not digest_part.startswith("sha256:"):
+        raise OrasPublishError(f"attach subject must use sha256 digest, got: {subject_ref!r}")
+    repository_name = oci_storage_repository_name(subject.rsplit("@", 1)[0])
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        artifact_path = Path(tmpdir) / RESULTS_JSON_FILENAME
+        artifact_path.write_text(json_content, encoding="utf-8")
+        logger.info("ORAS attach pulp_results to subject %s", subject)
+        attach_result = _run_oras(
+            [
+                "attach",
+                "--artifact-type",
+                PULP_RESULTS_ORAS_MEDIA_TYPE,
+                "--format",
+                "json",
+                subject,
+                f"{RESULTS_JSON_FILENAME}:{PULP_RESULTS_ORAS_MEDIA_TYPE}",
+            ],
+            subject,
+            cwd=tmpdir,
+        )
+        if attach_result.returncode != 0:
+            raise OrasPublishError(
+                f"oras attach failed (exit {attach_result.returncode}): {attach_result.stderr or attach_result.stdout}"
+            )
+        return _parse_oras_json_digest(attach_result.stdout or "", repository_name)
+
+
+__all__ = [
+    "OrasPublishError",
+    "attach_pulp_results_manifest",
+    "push_pulp_results_manifest",
+    "resolve_oci_manifest",
+]

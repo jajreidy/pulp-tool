@@ -15,8 +15,9 @@ from typing import TYPE_CHECKING, Any
 
 from ..models.artifacts import ExtraArtifactRef
 from ..models.context import UploadFilesContext, UploadRpmContext
+from ..models.pulp_results import PulpResultsDocument
 from ..models.repository import RepositoryRefs
-from ..models.results import PulpResultsModel, RpmUploadResult
+from ..models.results import RpmUploadResult
 from .artifact_detection import detect_arch_from_filepath, group_rpm_paths_by_arch
 from .constants import ARCH_DETECT_WARNING_MSG, ARCHITECTURE_THREAD_PREFIX, SUPPORTED_ARCHITECTURES
 from .error_handling import handle_generic_error
@@ -86,7 +87,7 @@ class UploadOrchestrator:
         rpm_href: str,
         logs_prn: str,
         date_str: str,
-        results_model: PulpResultsModel,
+        results_model: PulpResultsDocument,
         distribution_urls: dict[str, str],
         *,
         pulp_helper: PulpHelper | None = None,
@@ -174,7 +175,7 @@ class UploadOrchestrator:
         *,
         date_str: str,
         rpm_href: str,
-        results_model: PulpResultsModel,
+        results_model: PulpResultsDocument,
         distribution_urls: dict[str, str],
         pulp_helper: PulpHelper | None = None,
         target_arch_repo: bool = False,
@@ -262,7 +263,10 @@ class UploadOrchestrator:
         from .pulp_helper import PulpHelper as PulpHelperCls
 
         if args.results_json:
-            return process_uploads_from_results_json(client, args, repositories, pulp_helper=pulp_helper)
+            upload_out = process_uploads_from_results_json(client, args, repositories, pulp_helper=pulp_helper)
+            if isinstance(upload_out, str) or upload_out is None:
+                return upload_out
+            return None
 
         if args.target_arch_repo:
             if pulp_helper is None:
@@ -276,7 +280,7 @@ class UploadOrchestrator:
         date_str = args.date_str
 
         # Create unified results model at the start
-        results_model = PulpResultsModel(build_id=args.build_id, repositories=repositories)
+        results_model = PulpResultsDocument(build_id=args.build_id, repositories=repositories)
 
         repo_helper = pulp_helper or PulpHelperCls(client, parent_package=args.parent_package)
         distribution_urls = repo_helper.get_distribution_urls_for_upload_context(args.build_id, args)
@@ -390,7 +394,7 @@ class UploadOrchestrator:
         from .pulp_helper import PulpHelper as PulpHelperCls
 
         # Create unified results model
-        results_model = PulpResultsModel(build_id=context.build_id, repositories=repositories)
+        results_model = PulpResultsDocument(build_id=context.build_id, repositories=repositories)
         repo_helper = PulpHelperCls(client, parent_package=context.parent_package)
         distribution_urls = repo_helper.get_distribution_urls_for_upload_context(context.build_id, context)
         target_arch_repo = bool(getattr(context, "target_arch_repo", False))

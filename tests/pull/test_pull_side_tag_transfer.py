@@ -6,10 +6,10 @@ import pytest
 
 from pulp_tool.models.artifacts import ArtifactData, ArtifactJsonResponse, ArtifactMetadata
 from pulp_tool.models.context import PullContext
+from pulp_tool.models.pulp_results import PulpResultsDocument, SideTagRpmTransfer
 from pulp_tool.models.repository import RepositoryRefs
 from pulp_tool.models.results import PulpResultsModel
 from pulp_tool.pull.publish import publish_side_tag_results
-from pulp_tool.utils.pulp_results_document import SideTagRpmTransfer
 
 
 class TestPublishSideTagResults:
@@ -68,6 +68,31 @@ class TestPublishSideTagResults:
                 Mock(),
                 transfers,
                 side_tag_distribution_base="",
+            )
+
+    def test_publish_raises_when_repositories_missing(self) -> None:
+        context = PullContext(
+            build_id="b1",
+            namespace="ns",
+            side_tag="st",
+            oci_storage="quay.io/r:tag",
+        )
+        upload_info = PulpResultsDocument.model_construct(build_id="b1", repositories=None)
+        with pytest.raises(ValueError, match="repositories required"):
+            publish_side_tag_results(
+                Mock(),
+                ArtifactData(artifact_json=ArtifactJsonResponse(artifacts={})),
+                context,
+                upload_info,
+                [
+                    SideTagRpmTransfer(
+                        artifact_key="pkg.rpm",
+                        pulp_href="/pulp/new/",
+                        sha256="bb",
+                        distribution_url="https://rok/pkg.rpm",
+                    )
+                ],
+                side_tag_distribution_base="https://rok/side/",
             )
 
     def test_publish_side_tag_results_orchestration(self) -> None:

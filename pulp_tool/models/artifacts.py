@@ -1,5 +1,7 @@
 """Artifact-related models for Konflux Pulp."""
 
+from __future__ import annotations
+
 from typing import Any
 
 from pydantic import AnyHttpUrl, BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -176,21 +178,50 @@ class PulledArtifacts(KonfluxBaseModel):
         return namespaces
 
 
+class OciManifestField(KonfluxBaseModel):
+    """OCI manifest pointer on ``pulp_results.json`` (canonical object form)."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    ref: str
+    digest: str = ""
+
+
 class ArtifactMetadata(KonfluxBaseModel):
     """
     Metadata for one artifact: the same shape in ``pulp_results.json`` for upload (push) and pull.
 
-    Rows in :class:`~pulp_tool.models.results.PulpResultsModel` use this type. For ``pulp pull``,
-    load into :class:`ArtifactJsonResponse` and call :meth:`ArtifactJsonResponse.validate_for_pull`.
+    Rows in :class:`~pulp_tool.models.pulp_results.PulpResultsDocument` use this type. For ``pulp pull``,
+    load into :class:`~pulp_tool.models.pulp_results.PulpResultsDocument` and call :meth:`validate_for_pull`.
     Unknown keys on each artifact object are ignored when parsing JSON.
+
+    Serialized JSON uses ``pulp_labels``; legacy ``labels`` is accepted on input.
 
     ``url`` / ``sha256`` may be omitted for in-memory partial records (e.g. tests); pull requires a
     non-empty ``http``/``https`` ``url`` on every artifact.
     """
 
-    model_config = ConfigDict(extra="ignore", validate_assignment=True, frozen=False)
+    model_config = ConfigDict(
+        extra="ignore",
+        validate_assignment=True,
+        frozen=False,
+        populate_by_name=True,
+    )
 
-    labels: dict[str, str] = Field(default_factory=dict)
+    labels: dict[str, str] = Field(default_factory=dict, serialization_alias="pulp_labels")
+
+    @model_validator(mode="before")
+    @classmethod
+    def _accept_legacy_pulp_labels_key(cls, data: Any) -> Any:
+        if isinstance(data, dict):
+            d = dict(data)
+            if d.get("pulp_labels") and not d.get("labels"):
+                d["labels"] = d.pop("pulp_labels")
+            elif "pulp_labels" in d:
+                d.pop("pulp_labels", None)
+            return d
+        return data
+
     url: str | None = None
     sha256: str | None = None
     href: str | None = None
@@ -234,72 +265,10 @@ class ArtifactMetadata(KonfluxBaseModel):
         return self.labels.get("parent_package")  # pylint: disable=no-member
 
 
-class ArtifactJsonResponse(KonfluxBaseModel):
-    """
-    Full artifact JSON response structure.
+def _default_artifact_json_document() -> PulpResultsDocument:
+    from .pulp_results import PulpResultsDocument
 
-    Attributes:
-        artifacts: Dictionary of artifact names to their metadata
-        distributions: Optional map of distribution slot to base URL (may be omitted in JSON)
-    """
-
-    artifacts: dict[str, ArtifactMetadata] = Field(default_factory=dict)
-    distributions: dict[str, AnyHttpUrl] | None = None
-    version: int | None = None
-    oci_manifest: str | None = None
-    oci_manifest_history: list[dict[str, Any]] = Field(default_factory=list)
-
-    @property
-    def artifact_count(self) -> int:
-        """Total number of artifacts."""
-        return len(self.artifacts)
-
-    @property
-    def has_distributions(self) -> bool:
-        """Check if distributions are present."""
-        return bool(self.distributions)
-
-    @property
-    def rpms_distribution_url(self) -> str | None:
-        """Get RPMs distribution URL."""
-        v = (self.distributions or {}).get("rpms")
-        return str(v) if v is not None else None
-
-    @property
-    def logs_distribution_url(self) -> str | None:
-        """Get logs distribution URL."""
-        v = (self.distributions or {}).get("logs")
-        return str(v) if v is not None else None
-
-    @property
-    def sbom_distribution_url(self) -> str | None:
-        """Get SBOM distribution URL."""
-        v = (self.distributions or {}).get("sbom")
-        return str(v) if v is not None else None
-
-    def get_artifact(self, name: str) -> ArtifactMetadata | None:
-        """Get artifact metadata by name."""
-        return self.artifacts.get(name)  # pylint: disable=no-member
-
-    def validate_for_pull(self) -> None:
-        """Require non-empty ``artifacts`` and an ``http``/``https`` ``url`` on every row (``pulp pull``)."""
-        if not self.artifacts:
-            raise ValueError("artifacts must contain at least one entry")
-        for name, meta in self.artifacts.items():
-            if not meta.url:
-                raise ValueError(
-                    f"artifact {name!r} must include a non-empty http(s) url for pull",
-                )
-            lower = meta.url.lower()
-            if not (lower.startswith("http://") or lower.startswith("https://")):
-                raise ValueError(
-                    f"artifact {name!r} url must be an http or https URL for pull",
-                )
-            if not meta.sha256:
-                raise ValueError(f"artifact {name!r} must include sha256 for pull")
-            from ..utils.checksum_verify import validate_sha256_hex
-
-            validate_sha256_hex(meta.sha256, field_name=f"artifact {name!r} sha256")
+    return PulpResultsDocument()
 
 
 class ArtifactData(KonfluxBaseModel):
@@ -311,7 +280,7 @@ class ArtifactData(KonfluxBaseModel):
         artifacts: Dictionary of individual artifacts with their metadata
     """
 
-    artifact_json: ArtifactJsonResponse = Field(default_factory=ArtifactJsonResponse)
+    artifact_json: PulpResultsDocument = Field(default_factory=_default_artifact_json_document)
     artifacts: dict[str, ArtifactMetadata] = Field(default_factory=dict)
 
     @property
@@ -372,6 +341,7 @@ class FileInfoModel(KonfluxBaseModel):
 
 FileInfoMap = dict[str, FileInfoModel]
 
+from .pulp_results import ArtifactJsonResponse, PulpResultsDocument  # noqa: E402
 
 __all__ = [
     "DownloadTask",

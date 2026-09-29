@@ -18,6 +18,9 @@ BUILD_ID_UPLOAD_LARGE: Final = "test-build-large"
 BUILD_ID_PULL_SIDE_TAG: Final = "test-pull-side-tag"
 BUILD_ID_PULL_SIDE_TAG_OCI: Final = "test-pull-side-tag-oci"
 BUILD_ID_UPLOAD_ORAS: Final = "test-upload-oras"
+BUILD_ID_UPDATE_BUILD: Final = "test-update-build"
+BUILD_ID_UPDATE_BUILD_REPLACED: Final = "test-update-build-replaced"
+BUILD_ID_UPDATE_BUILD_PULL: Final = "test-update-build-pull"
 BUILD_ID_E2E_ERROR_EMPTY: Final = "test-error-empty-upload"
 BASE_PATH_E2E_ERROR_DUP: Final = "repo_error/dup"
 REPO_E2E_ERROR_DUP: Final = "test-error-dup-repo"
@@ -71,6 +74,9 @@ _RPM_REPOS_BASE: Final = {
         "test.0-1.0.0-1.x86_64.rpm",
     ],
     f"{BUILD_ID_UPLOAD_ORAS}/rpms": ["test.2-1.0.0-1.noarch.rpm"],
+    f"{BUILD_ID_UPDATE_BUILD}/rpms": ["test.2-1.0.0-1.noarch.rpm"],
+    f"{BUILD_ID_UPDATE_BUILD_REPLACED}/rpms": ["test.2-1.0.0-1.noarch.rpm"],
+    f"{BUILD_ID_UPDATE_BUILD_PULL}/rpms": ["test.2-1.0.0-1.noarch.rpm"],
     f"{BUILD_ID_PULL_SIDE_TAG}/rpms": ["test.0-1.0.0-1.noarch.rpm"],
     f"{BUILD_ID_PULL_SIDE_TAG_OCI}/rpms": ["test.0-1.0.0-1.noarch.rpm"],
     # Side-tag RPM repo key is run-scoped via ``pull_side_tag_rpm_repo_key`` in ``rpm_repos_for_run``.
@@ -90,6 +96,9 @@ _RPM_REPOS_BASE: Final = {
 _OCI_OPTIONAL_RPM_REPOS: Final = frozenset(
     {
         f"{BUILD_ID_UPLOAD_ORAS}/rpms",
+        f"{BUILD_ID_UPDATE_BUILD}/rpms",
+        f"{BUILD_ID_UPDATE_BUILD_REPLACED}/rpms",
+        f"{BUILD_ID_UPDATE_BUILD_PULL}/rpms",
         f"{BUILD_ID_PULL_SIDE_TAG}/rpms",
         f"{BUILD_ID_PULL_SIDE_TAG_OCI}/rpms",
     }
@@ -97,6 +106,9 @@ _OCI_OPTIONAL_RPM_REPOS: Final = frozenset(
 _OCI_OPTIONAL_FILE_REPOS: Final = frozenset(
     {
         f"{BUILD_ID_UPLOAD_ORAS}/artifacts",
+        f"{BUILD_ID_UPDATE_BUILD}/artifacts",
+        f"{BUILD_ID_UPDATE_BUILD_REPLACED}/artifacts",
+        f"{BUILD_ID_UPDATE_BUILD_PULL}/artifacts",
         f"{BUILD_ID_PULL_SIDE_TAG}/artifacts",
         f"{BUILD_ID_PULL_SIDE_TAG_OCI}/artifacts",
     }
@@ -163,6 +175,9 @@ _FILE_REPOS_BASE: Final = {
     f"{BUILD_ID_UPLOAD_FILES}/sbom": ["sbom.json"],
     f"{BUILD_ID_UPLOAD_MINIMAL}/artifacts": ["pulp_results.json"],
     f"{BUILD_ID_UPLOAD_ORAS}/artifacts": ["pulp_results.json"],
+    f"{BUILD_ID_UPDATE_BUILD}/artifacts": ["pulp_results.json"],
+    f"{BUILD_ID_UPDATE_BUILD_REPLACED}/artifacts": ["pulp_results.json"],
+    f"{BUILD_ID_UPDATE_BUILD_PULL}/artifacts": ["pulp_results.json"],
     f"{BUILD_ID_PULL_SIDE_TAG}/artifacts": ["pulp_results.json"],
     f"{BUILD_ID_PULL_SIDE_TAG_OCI}/artifacts": ["pulp_results.json"],
     f"{BUILD_ID_UPLOAD_FULL}/artifacts": ["pulp_results.json"],

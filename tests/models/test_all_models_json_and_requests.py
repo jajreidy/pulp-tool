@@ -11,7 +11,6 @@ from pulp_tool.models.artifacts import (
 from pulp_tool.models.context import PullContext, UploadContext
 from pulp_tool.models.pulp_api import DistributionRequest, RepositoryRequest
 from pulp_tool.models.statistics import UploadCounts
-from tests.support.model_test_helpers import _dist_map
 
 
 class TestArtifactJsonResponsePullLoad:
@@ -35,8 +34,7 @@ class TestArtifactJsonResponsePullLoad:
         data = ArtifactData(artifact_json=aj, artifacts=dict(aj.artifacts))
         assert data.artifacts["x.rpm"].url == "https://pulp.example/content/x.rpm"
         assert data.artifacts["x.rpm"].sha256 == "ab" * 32
-        assert data.artifact_json.distributions is not None
-        assert str(data.artifact_json.distributions["rpms"]) == "https://pulp.example/rpms/"
+        assert data.artifact_json.distributions.get("rpms") == "https://pulp.example/rpms/"
 
     def test_omitted_distributions_optional(self) -> None:
         aj = ArtifactJsonResponse.model_validate(
@@ -46,7 +44,7 @@ class TestArtifactJsonResponsePullLoad:
                 },
             }
         )
-        assert aj.distributions is None
+        assert aj.distributions == {}
         aj.validate_for_pull()
 
     def test_empty_artifacts_rejected_on_validate_for_pull(self) -> None:
@@ -83,11 +81,41 @@ class TestArtifactJsonResponsePullLoad:
         with pytest.raises(ValueError, match="must include sha256"):
             aj.validate_for_pull()
 
-    def test_extra_top_level_field_rejected(self) -> None:
-        with pytest.raises(ValidationError):
-            ArtifactJsonResponse.model_validate(
-                {"artifacts": {"a.rpm": {"url": "https://x/a.rpm"}}, "parent_package": "nope"}
-            )
+    def test_artifact_metadata_properties(self) -> None:
+        meta = ArtifactMetadata.model_validate(
+            {"pulp_labels": {"build_id": "b", "namespace": "ns", "arch": "x86_64", "parent_package": "pkg"}}
+        )
+        assert meta.build_id == "b"
+        assert meta.namespace == "ns"
+        assert meta.arch == "x86_64"
+        assert meta.parent_package == "pkg"
+
+    def test_oci_manifest_string_normalized(self) -> None:
+        from pulp_tool.models.pulp_results import parse_oci_manifest_field
+
+        parsed = parse_oci_manifest_field("quay.io/r@sha256:abcd")
+        assert parsed is not None
+        assert parsed.ref == "quay.io/r"
+        aj = ArtifactJsonResponse.from_raw(
+            {
+                "oci_manifest": "quay.io/r@sha256:abcd",
+                "artifacts": {
+                    "x.rpm": {
+                        "labels": {},
+                        "url": "https://pulp.example/content/x.rpm",
+                        "sha256": "ab" * 32,
+                    }
+                },
+            }
+        )
+        assert "oci_manifest" not in aj._mutable_dict()
+        aj.validate_for_pull()
+
+    def test_extra_top_level_field_ignored(self) -> None:
+        aj = ArtifactJsonResponse.model_validate(
+            {"artifacts": {"a.rpm": {"url": "https://x/a.rpm"}}, "parent_package": "legacy"}
+        )
+        assert "a.rpm" in aj.artifacts
 
     def test_non_http_url_rejected_on_validate_for_pull(self) -> None:
         aj = ArtifactJsonResponse.model_validate({"artifacts": {"a.rpm": {"labels": {}, "url": "relative/path.rpm"}}})
@@ -95,14 +123,14 @@ class TestArtifactJsonResponsePullLoad:
             aj.validate_for_pull()
 
     def test_invalid_distribution_base_url_rejected_at_parse(self) -> None:
-        """``distributions`` map values must be valid http(s) URLs."""
-        with pytest.raises(ValidationError):
-            ArtifactJsonResponse.model_validate(
-                {
-                    "artifacts": {"a.rpm": {"labels": {}, "url": "https://x/y.rpm"}},
-                    "distributions": {"rpms": "not-a-valid-url"},
-                }
-            )
+        """Invalid distribution URLs are kept as strings (canonical document uses plain URLs)."""
+        aj = ArtifactJsonResponse.model_validate(
+            {
+                "artifacts": {"a.rpm": {"labels": {}, "url": "https://x/y.rpm", "sha256": "a" * 64}},
+                "distributions": {"rpms": "not-a-valid-url"},
+            }
+        )
+        assert aj.distributions["rpms"] == "not-a-valid-url"
 
     def test_entry_ignores_unknown_artifact_keys(self) -> None:
         entry = ArtifactMetadata.model_validate({"labels": {}, "url": "https://x/y.rpm", "future_field": "ok"})
@@ -112,11 +140,16 @@ class TestArtifactJsonResponsePullLoad:
 class TestArtifactJsonResponse:
     """Test ArtifactJsonResponse model."""
 
+    def test_normalize_oci_manifest_before_non_dict(self) -> None:
+        from pulp_tool.models.pulp_results import parse_oci_manifest_field
+
+        assert parse_oci_manifest_field([]) is None
+
     def test_create_artifact_json_response_empty(self) -> None:
         """Test creating empty ArtifactJsonResponse."""
         response = ArtifactJsonResponse()
         assert response.artifacts == {}
-        assert response.distributions is None
+        assert response.distributions == {}
 
     def test_create_artifact_json_response_with_data(self) -> None:
         """Test creating ArtifactJsonResponse with data."""
@@ -125,20 +158,17 @@ class TestArtifactJsonResponse:
                 "test.rpm": ArtifactMetadata(labels={"build_id": "test-123", "arch": "x86_64"}),
                 "test2.rpm": ArtifactMetadata(labels={"build_id": "test-123", "arch": "aarch64"}),
             },
-            distributions=_dist_map(
-                {
-                    "rpms": "https://pulp.example.com/rpms/",
-                    "logs": "https://pulp.example.com/logs/",
-                    "sbom": "https://pulp.example.com/sbom/",
-                }
-            ),
+            distributions={
+                "rpms": "https://pulp.example.com/rpms/",
+                "logs": "https://pulp.example.com/logs/",
+                "sbom": "https://pulp.example.com/sbom/",
+            },
         )
         assert len(response.artifacts) == 2
         dists = response.distributions
-        assert dists is not None
         assert len(dists) == 3
         assert "test.rpm" in response.artifacts
-        assert str(dists["rpms"]) == "https://pulp.example.com/rpms/"
+        assert dists["rpms"] == "https://pulp.example.com/rpms/"
 
     def test_artifact_json_response_artifact_count(self) -> None:
         """Test artifact_count property."""
@@ -155,19 +185,17 @@ class TestArtifactJsonResponse:
         """Test has_distributions property."""
         response_empty = ArtifactJsonResponse()
         assert response_empty.has_distributions is False
-        response_with_dists = ArtifactJsonResponse(distributions=_dist_map({"rpms": "https://example.com/rpms/"}))
+        response_with_dists = ArtifactJsonResponse(distributions={"rpms": "https://example.com/rpms/"})
         assert response_with_dists.has_distributions is True
 
     def test_artifact_json_response_distribution_urls(self) -> None:
         """Test distribution URL properties."""
         response = ArtifactJsonResponse(
-            distributions=_dist_map(
-                {
-                    "rpms": "https://pulp.example.com/rpms/",
-                    "logs": "https://pulp.example.com/logs/",
-                    "sbom": "https://pulp.example.com/sbom/",
-                }
-            )
+            distributions={
+                "rpms": "https://pulp.example.com/rpms/",
+                "logs": "https://pulp.example.com/logs/",
+                "sbom": "https://pulp.example.com/sbom/",
+            }
         )
         assert response.rpms_distribution_url == "https://pulp.example.com/rpms/"
         assert response.logs_distribution_url == "https://pulp.example.com/logs/"
@@ -204,7 +232,7 @@ class TestArtifactData:
         """Test creating ArtifactData with data."""
         artifact_json = ArtifactJsonResponse(
             artifacts={"test.rpm": ArtifactMetadata(labels={"build_id": "test-123"})},
-            distributions=_dist_map({"rpms": "https://pulp.example.com/rpms/"}),
+            distributions={"rpms": "https://pulp.example.com/rpms/"},
         )
         data = ArtifactData(
             artifact_json=artifact_json, artifacts={"test.rpm": ArtifactMetadata(labels={"build_id": "test-123"})}
@@ -225,7 +253,7 @@ class TestArtifactData:
         data_without = ArtifactData()
         assert data_without.has_distributions is False
         data_with = ArtifactData(
-            artifact_json=ArtifactJsonResponse(distributions=_dist_map({"rpms": "https://example.com/rpms/"}))
+            artifact_json=ArtifactJsonResponse(distributions={"rpms": "https://example.com/rpms/"})
         )
         assert data_with.has_distributions is True
 
@@ -233,9 +261,10 @@ class TestArtifactData:
         """Test get_distributions method."""
         data = ArtifactData(
             artifact_json=ArtifactJsonResponse(
-                distributions=_dist_map(
-                    {"rpms": "https://pulp.example.com/rpms/", "logs": "https://pulp.example.com/logs/"}
-                )
+                distributions={
+                    "rpms": "https://pulp.example.com/rpms/",
+                    "logs": "https://pulp.example.com/logs/",
+                }
             )
         )
         distributions = data.get_distributions()

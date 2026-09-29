@@ -242,6 +242,9 @@ class PulpClientResultsMixin:
                 results_model.add_artifact(
                     key=artifact_key, url=artifact_url, sha256=file_info.sha256 or "", labels=labels
                 )
+                entry = results_model.artifacts.get(artifact_key)
+                if entry is not None:
+                    entry.href = pulp_href or artifact_href
 
         # Log summary statistics
         logging.info("Final results: %d artifacts processed", results_model.artifact_count)

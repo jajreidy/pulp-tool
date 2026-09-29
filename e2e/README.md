@@ -127,10 +127,12 @@ This is an **input file** (not output) containing references to pre-existing tes
 | Test | What it exercises |
 |------|-------------------|
 | `test_upload_build_oras_publish` | `upload-build` with `--oci-storage` and `--artifact-results`; pulp-content `oci_manifest` check is deferred until after all uploads |
+| `test_update_build_oras_live` | `upload-build` then live **`update-build`** with OCI `--results-json`, `--artifact-results`, re-upload from `--files-base-path`; asserts version bump, `href_history`, `signed_by`, new OCI digest, and deferred pulp-content check |
+| `test_update_build_replaced_rpm_checksum` | Same flow with a **rebuilt RPM** (same NEVRA filename, new payload/SHA256); asserts `sha256` change, `href_history` retains prior digest, deferred pulp-content GET verifies new checksum |
 | `test_upload_side_tag_transfer_source` | Upload source build for HTTPS side-tag pull; defers source `pulp_results.json` reachability |
 | `test_upload_side_tag_oci_source` | `upload-build` ORAS source for side-tag OCI pull (pull runs later) |
-| `test_update_build_pull_from_oras_target` | Manual `oras pull`, then `pull --artifact-location` on the local JSON (legacy two-step flow) |
-| `test_pull_artifact_location_oci_manifest_ref` | `pull --artifact-location` with `oci_manifest@digest` ref (pulp-tool ORAS-pulls JSON; no `--build-id` / `--namespace`) |
+| `test_upload_build_update_build_pull_pipeline` | **`upload-build` → `update-build` → `pull`**: subject digest (`oras discover`) and Tekton **`--artifact-results`** digest; verifies downloaded RPM SHA256 |
+| `test_pull_artifact_location_oci_manifest_ref` | `pull --artifact-location` with upload-build OCI ref only (no `update-build`; full attach flow is `test_upload_build_update_build_pull_pipeline`) |
 | `test_pull_side_tag_transfer` | `pull --transfer-dest --side-tag` from HTTPS `pulp_results`; writes Tekton-style OCI URL/digest via `--artifact-results` |
 | `test_pull_side_tag_transfer_from_oci_artifact_location` | Same flow with `--artifact-location` set to ORAS `oci_manifest@digest` (run-scoped `--side-tag` name) |
 

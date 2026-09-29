@@ -451,3 +451,30 @@ class TestUploadOrchestratorProcessUploads:
             result = orchestrator.process_uploads(mock_client, args, repositories)
         assert result == "https://example.com/results-from-json.json"
         mock_from_json.assert_called_once_with(mock_client, args, repositories, pulp_helper=None)
+
+    def test_process_uploads_results_json_model_returns_none(self) -> None:
+        from pulp_tool.models.results import PulpResultsModel
+
+        orchestrator = UploadOrchestrator()
+        args = UploadRpmContext(
+            build_id="test-build",
+            date_str="2024-01-01",
+            namespace="test-ns",
+            results_json="/test/pulp_results.json",
+        )
+        repositories = RepositoryRefs(
+            rpms_href="/r",
+            rpms_prn="",
+            logs_href="",
+            logs_prn="",
+            sbom_href="",
+            sbom_prn="",
+            artifacts_href="",
+            artifacts_prn="",
+        )
+        model = PulpResultsModel(build_id="test-build", repositories=repositories)
+        with patch(
+            "pulp_tool.services.upload_service.process_uploads_from_results_json",
+            return_value=model,
+        ):
+            assert orchestrator.process_uploads(Mock(), args, repositories) is None

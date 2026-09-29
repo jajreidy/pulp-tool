@@ -11,9 +11,9 @@ import httpx
 from ..api import PulpClient
 from ..models.artifacts import ArtifactData, PulledArtifacts
 from ..models.context import PullContext
+from ..models.pulp_results import SideTagRpmTransfer, resolve_predecessor_href, side_tag_upload_labels
 from ..utils import PulpHelper, determine_build_id, extract_metadata_from_artifacts
 from ..utils.error_handling import handle_generic_error
-from ..utils.pulp_results_document import SideTagRpmTransfer, resolve_predecessor_href, side_tag_upload_labels
 from ..utils.pulp_tasks import wait_for_successful_task
 from ..utils.rpm_operations import calculate_sha256_checksum, upload_rpms_parallel
 

@@ -1,20 +1,29 @@
 """Tests for pulp_results.json document merge helpers."""
 
+from datetime import date
+
 import pytest
 
-import pulp_tool.utils.pulp_results_document as prd
+import pulp_tool.models.pulp_results as prd
 from pulp_tool.models.artifacts import ArtifactJsonResponse
-from pulp_tool.utils.pulp_results_document import (
+from pulp_tool.models.pulp_results import (
+    BUILD_SIGN_OPERATION,
+    PULP_RESULTS_SCHEMA_VERSION,
     SideTagRpmTransfer,
     append_href_history,
-    append_oci_manifest_history,
     apply_side_tag_transfer_to_document,
     bump_document_version,
     document_from_artifact_json,
+    document_to_canonical_json,
     merge_origin_pulp_labels,
+    merge_signed_by,
+    normalize_document,
+    oci_manifest_ref,
+    prepare_document_for_mutation,
+    recompute_distributions,
     resolve_predecessor_href,
-    set_oci_manifest,
     side_tag_upload_labels,
+    touch_document_last_updated,
 )
 
 
@@ -31,7 +40,7 @@ class TestLineageHelpers:
         assert resolve_predecessor_href({"href": "/pulp/a/"}) == "/pulp/a/"
 
     def test_resolve_predecessor_href_from_labels(self) -> None:
-        assert resolve_predecessor_href({"labels": {"source_pulp_href": "/pulp/b/"}}) == "/pulp/b/"
+        assert resolve_predecessor_href({"pulp_labels": {"source_pulp_href": "/pulp/b/"}}) == "/pulp/b/"
 
     def test_resolve_predecessor_href_invalid_labels(self) -> None:
         assert resolve_predecessor_href({"labels": "bad"}) == ""
@@ -61,17 +70,19 @@ class TestLineageHelpers:
 
 
 class TestApplySideTagTransfer:
-    def test_apply_side_tag_transfer_bumps_version_and_history(self) -> None:
+    def test_apply_side_tag_transfer_touches_last_updated_and_history(self) -> None:
+        prior_day = "2020-06-15"
         source = {
-            "version": 2,
-            "oci_manifest": "quay.io/org/app@sha256:old",
+            "version": "1.0.0",
+            "last_updated": prior_day,
+            "oci_manifest": {"ref": "quay.io/org/app", "digest": "sha256:old"},
             "distributions": {"rpms": "https://example.com/rpms/"},
             "artifacts": {
                 "pkg.rpm": {
                     "href": "/pulp/old/",
                     "sha256": "abc",
                     "url": "https://example.com/pkg.rpm",
-                    "labels": {"signed_by": "key-1"},
+                    "pulp_labels": {"signed_by": "key-1"},
                     "distributions": {"rpms": "https://example.com/rpms/"},
                 }
             },
@@ -90,54 +101,42 @@ class TestApplySideTagTransfer:
             side_tag="mytest",
             top_level_side_tag_distribution_url="https://rok.example/side-tag-mytest/",
         )
-        assert merged["version"] == 3
+        assert merged["version"] == "1.0.0"
+        assert merged["last_updated"] == date.today().isoformat()
         art = merged["artifacts"]["pkg.rpm"]
         assert art["href"] == "/pulp/new/"
         assert art["distributions"]["mytest"].startswith("https://rok.example")
         assert art["distributions"]["rpms"] == "https://example.com/rpms/"
         assert len(art["href_history"]) == 1
         assert art["href_history"][0]["href"] == "/pulp/old/"
+        assert art["href_history"][0]["last_updated"] == prior_day
         assert merged["distributions"]["mytest"].startswith("https://rok.example")
 
-    def test_append_oci_manifest_history(self) -> None:
-        doc = {"version": 4, "oci_manifest": "quay.io/r@sha256:abcd"}
-        append_oci_manifest_history(doc)
-        history = doc["oci_manifest_history"]
-        assert isinstance(history, list)
-        assert len(history) == 1
-        assert history[0]["ref"] == "quay.io/r"
+    def test_normalize_strips_legacy_oci_fields(self) -> None:
+        raw = {
+            "version": 2,
+            "oci_manifest": {"ref": "quay.io/r", "digest": "sha256:abcd"},
+            "oci_manifest_history": [{"ref": "quay.io/r", "digest": "sha256:old"}],
+        }
+        doc = normalize_document(raw)
         assert "oci_manifest" not in doc
-
-    def test_set_oci_manifest(self) -> None:
-        doc: dict = {}
-        set_oci_manifest(doc, "quay.io/r", "deadbeef")
-        assert doc["oci_manifest"] == "quay.io/r@sha256:deadbeef"
-
-    def test_set_oci_manifest_ref_only_when_no_digest(self) -> None:
-        doc: dict = {}
-        set_oci_manifest(doc, "quay.io/r", "")
-        assert doc["oci_manifest"] == "quay.io/r"
+        assert "oci_manifest_history" not in doc
 
     def test_append_href_history_skips_empty_prior(self) -> None:
         art: dict = {"href_history": []}
-        append_href_history(art, prior_href="", prior_sha256="x", document_version=1)
+        append_href_history(art, prior_href="", prior_sha256="x", last_updated="2026-01-01")
         assert art["href_history"] == []
 
-    def test_append_oci_manifest_history_no_manifest(self) -> None:
-        doc = {"version": 1}
-        append_oci_manifest_history(doc)
-        assert "oci_manifest_history" not in doc
+    def test_touch_document_last_updated_sets_iso_date(self) -> None:
+        doc: dict = {"version": "1.0.0", "last_updated": "2019-01-01"}
+        assert touch_document_last_updated(doc) == date.today().isoformat()
+        assert doc["version"] == "1.0.0"
+        assert "revision" not in doc
 
-    def test_append_oci_manifest_history_invalid_version(self) -> None:
-        doc: dict[str, object] = {"version": "bad", "oci_manifest": "quay.io/r@sha256:ab"}
-        append_oci_manifest_history(doc)
-        history = doc["oci_manifest_history"]
-        assert isinstance(history, list)
-        assert history[0]["document_version"] == 1
-
-    def test_bump_document_version_invalid_current(self) -> None:
-        doc = {"version": "x"}
-        assert bump_document_version(doc) == 2
+    def test_bump_document_version_alias_touches_last_updated(self) -> None:
+        doc = {"version": "1.0.0", "last_updated": "2019-01-01"}
+        assert bump_document_version(doc) == date.today().isoformat()
+        assert doc["version"] == "1.0.0"
 
     def test_apply_side_tag_non_dict_artifacts(self) -> None:
         source = {"artifacts": "not-a-dict"}
@@ -149,15 +148,16 @@ class TestApplySideTagTransfer:
         )
         assert isinstance(merged["artifacts"], dict)
 
-    def test_apply_side_tag_invalid_prior_version(self) -> None:
-        source = {"version": "nope", "artifacts": {}}
+    def test_apply_side_tag_missing_last_updated_still_mutates(self) -> None:
+        source = {"artifacts": {}}
         merged = apply_side_tag_transfer_to_document(
             source,
             [],
             side_tag="t",
             top_level_side_tag_distribution_url="",
         )
-        assert merged["version"] == 2
+        assert merged["version"] == PULP_RESULTS_SCHEMA_VERSION
+        assert merged["last_updated"] == date.today().isoformat()
 
     def test_apply_side_tag_creates_artifact_entry(self) -> None:
         source = {"artifacts": {}}
@@ -263,8 +263,78 @@ class TestDocumentFromArtifactJson:
 
     def test_from_dict(self) -> None:
         doc = document_from_artifact_json({"version": 1})
-        assert doc["version"] == 1
+        assert doc["version"] == "1.0.0"
 
     def test_unsupported_type_raises(self) -> None:
         with pytest.raises(TypeError):
             document_from_artifact_json(42)
+
+
+class TestCanonicalSchema:
+    def test_normalize_legacy_labels_and_string_manifest(self) -> None:
+        raw = {
+            "version": 2,
+            "oci_manifest": "quay.io/r@sha256:abc",
+            "artifacts": {"a.rpm": {"labels": {"build_id": "b"}, "href": "/h/"}},
+        }
+        doc = normalize_document(raw)
+        assert "oci_manifest" not in doc
+        assert "oci_manifest_history" not in doc
+        assert doc["artifacts"]["a.rpm"]["pulp_labels"]["build_id"] == "b"
+        assert "labels" not in doc["artifacts"]["a.rpm"]
+
+    def test_oci_manifest_ref_legacy_embedded_only(self) -> None:
+        doc = {"oci_manifest": {"ref": "quay.io/r", "digest": "sha256:dead"}}
+        assert oci_manifest_ref(doc) == "quay.io/r@sha256:dead"
+
+    def test_merge_signed_by_semicolon(self) -> None:
+        assert merge_signed_by("a@x.com", "b@x.com") == "a@x.com;b@x.com"
+        assert merge_signed_by("a@x.com", "b@x.com", replace=True) == "b@x.com"
+
+    def test_prepare_document_for_mutation(self) -> None:
+        prior_day = "2024-03-01"
+        doc = {
+            "version": "1.0.0",
+            "last_updated": prior_day,
+            "oci_manifest": {"ref": "quay.io/r", "digest": "sha256:aa"},
+            "artifacts": {"p.rpm": {"href": "/old/", "sha256": "x"}},
+        }
+        old = prepare_document_for_mutation(doc, operation=BUILD_SIGN_OPERATION)
+        assert old == prior_day
+        assert doc["version"] == "1.0.0"
+        assert doc["last_updated"] == date.today().isoformat()
+        assert "oci_manifest_history" not in doc
+        artifacts = doc.get("artifacts")
+        assert isinstance(artifacts, dict)
+        art_row = artifacts["p.rpm"]
+        assert isinstance(art_row, dict)
+        art_history = art_row["href_history"]
+        assert isinstance(art_history, list)
+        assert art_history[0]["href"] == "/old/"
+        assert art_history[0]["last_updated"] == prior_day
+
+    def test_recompute_distributions_prunes(self) -> None:
+        art = {"distributions": {"rpms": "https://a/", "stale": "https://old/"}}
+        out = recompute_distributions(art, {"rpms"}, slot_updates={"rpms": "https://new/"})
+        assert out == {"rpms": "https://new/"}
+        assert "stale" not in out
+
+    def test_document_to_canonical_json_uses_pulp_labels(self) -> None:
+        doc = normalize_document({"artifacts": {"f.rpm": {"labels": {"arch": "x86_64"}}}})
+        text = document_to_canonical_json(doc)
+        assert '"pulp_labels"' in text
+        assert '"labels"' not in text
+
+    def test_initial_document_shell(self) -> None:
+        from pulp_tool.models.pulp_results import initial_document_shell
+
+        doc = initial_document_shell(build_id="b", namespace="ns", cluster="c1")
+        assert doc["version"] == PULP_RESULTS_SCHEMA_VERSION
+        assert doc["last_updated"] == date.today().isoformat()
+        assert doc["cluster"] == "c1"
+
+    def test_parse_oci_manifest_empty_object(self) -> None:
+        from pulp_tool.models.pulp_results import parse_oci_manifest_field
+
+        assert parse_oci_manifest_field({"ref": ""}) is None
+        assert parse_oci_manifest_field("  ") is None

@@ -93,6 +93,40 @@ Before merging changes that affect the above, re-read both task YAMLs and extend
 - Config/TLS/paths assumed in containers; image entrypoint and `pulp-tool` invocation
 - RPM discovery under `--rpm-path`
 - Upstream may change staging (ORAS, `oras-staging/`, etc.) — re-verify **rpmbuild-pipeline** and **release-service-catalog**; update this file if call sites move
+- **`update-build`**, **`pulp_results.json` schema**, **`--artifact-results`** (required on update-build), digest-pinned OCI reads (`repo@sha256:…`)
+- Global **`cli.cluster`** / document **`cluster`** and per-artifact **`origin_*`** lineage (RHELDST-44544)
+
+---
+
+## `pulp_results.json` (canonical schema)
+
+Single document from **`upload-build`** through **`update-build`**. Implementation: [`pulp_tool/models/pulp_results.py`](../pulp_tool/models/pulp_results.py). Field tables and examples: [cli-reference.md](cli-reference.md) (`pulp_results.json` schema).
+
+**Document-level:** **`version`** (JSON **schema** semver; bump only when the on-disk format changes), **`last_updated`** (ISO date, refreshed on each content mutation), `build_id`, `namespace`, `cluster`, optional aggregate `distributions`. **`oci_manifest` is not stored** in canonical JSON (current OCI identity is the registry digest / Tekton `--artifact-results` files).
+
+**Per-artifact (key = logical filename):** `href`, `sha256`, `url`, `href_history`, **`pulp_labels`** (authoritative; legacy `labels` still read), **`distributions`** (authoritative per file).
+
+**Mutations (upload re-run, `pull --side-tag`, `update-build`):** republish runs append prior hrefs to **`href_history`**, set **`last_updated`** to the current date (schema **`version`** unchanged), ORAS publish in-process, upload **new** JSON to Pulp. **`update-build`** with an OCI **`--results-json`** uses **`oras attach`** to the subject digest (referrer artifact) instead of **`oras push`** to `:latest`, so the original OCI object and attestation chain are not replaced. Initial **`upload-build`** still **`oras push`**es the first results artifact. Operations: `build_upload`, `build_sign`, `release_sign`, `bts_update`, `transfer`, …
+
+**OCI reads:** `pull --artifact-location`, `upload-build --results-json`, `search-by --results-json`, and **`update-build --results-json`** accept a local path or digest-pinned ref `quay.io/…/manifest@sha256:…`. Digest-pinned reads **`oras discover`** attached **`pulp_results`** referrers first (then pull the referrer whose JSON has the latest **`last_updated`** date). **`pulp-tool-container`** runs ORAS via `select-oci-auth`.
+
+**Tekton result files:** `--artifact-results url_path,digest_path` writes OCI URL (no digest) + `sha256:…` digest (same layout as import-to-quay; prefer this name over legacy **`PULP-IMAGE_*`** task result names in new docs).
+
+### `update-build` (signing / BTS)
+
+```bash
+pulp-tool --config /pulp-access/cli.toml update-build \
+  --results-json "quay.io/<tenant>/…/manifest@sha256:<digest>" \
+  --artifact-results "$(results.pulpImageURL.path),$(results.pulpImageDigest.path)" \
+  --oci-storage "$(params.ociStorage)" \
+  --files-base-path "/var/workdir/results" \
+  --operation build_sign \
+  --signed-by "<signer>"
+```
+
+**Required:** `--results-json`, **`--artifact-results`**, `--oci-storage` (or `cli.oci_storage`). Logs **`X-Correlation-ID`** (NF2) at command start.
+
+**vs `pull --transfer-dest`:** transfer copies content across Pulp domains; side-tag path merges lineage + ORAS. **`update-build`** updates the same build’s artifact pointers after signing/BTS in-place.
 
 ---
 

@@ -1225,7 +1225,7 @@ requires-dist = [
     { name = "respx", marker = "extra == 'dev'", specifier = ">=0.23.1" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.11.0" },
     { name = "setuptools", marker = "extra == 'dev'", specifier = ">=82.0.1" },
-    { name = "setuptools-scm", extras = ["toml"], marker = "extra == 'dev'", specifier = ">=8.0" },
+    { name = "setuptools-scm", extras = ["toml"], marker = "extra == 'dev'", specifier = ">=10.3.4" },
     { name = "wheel", marker = "extra == 'dev'", specifier = ">=0.47.0" },
     { name = "yamllint", marker = "extra == 'dev'", specifier = ">=1.37.0" },
 ]
@@ -1580,16 +1580,16 @@ wheels = [
 
 [[package]]
 name = "setuptools-scm"
-version = "10.3.0"
+version = "10.3.4"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "packaging" },
     { name = "setuptools" },
     { name = "vcs-versioning" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/e5/ec/4f0869ecb8ffb847537c64c43a53eeef731d81587985e9a46e0f1536dd53/setuptools_scm-10.3.0.tar.gz", hash = "sha256:7177457a181c3af30c1a524e6f919960665f9f153a39fe04906fe543c7eb5f80", size = 71052, upload-time = "2026-09-13T14:11:39.938Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/85/d8/fc143f88819ccf10ba2388ba86732ee2de193e578234e25a783f6cc14bf7/setuptools_scm-10.3.4.tar.gz", hash = "sha256:a69f28bfc245608781205e912faae437c2b2165773afa4e7b979d77447a69dd2", size = 78410, upload-time = "2026-09-23T19:21:42.95Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/cc/8a/97f90194a735caf517a2d9cecd9ad4c8519c4402e80b015a726176e98cb7/setuptools_scm-10.3.0-py3-none-any.whl", hash = "sha256:6ba119665ae859783321da7654a9fa45eda6afe5b804ebf1a3da8682c5ffe6c6", size = 30892, upload-time = "2026-09-13T14:11:38.637Z" },
+    { url = "https://files.pythonhosted.org/packages/da/f5/54538a1f17ea753c42b0928dc2e62986d463f8c393340b9a1e602f2d4dd9/setuptools_scm-10.3.4-py3-none-any.whl", hash = "sha256:82f34c3e3084fc2b57d397200637cc13f2338004052d2fee47baa5f0e902464e", size = 33366, upload-time = "2026-09-23T19:21:41.607Z" },
 ]
 
 [[package]]
@@ -1705,14 +1705,14 @@ wheels = [
 
 [[package]]
 name = "vcs-versioning"
-version = "2.4.0"
+version = "2.5.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "packaging" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/f5/58/81416f7801a139099c4b950dbb2f7ee25c91dc6f7d46b4e09bb197da53b5/vcs_versioning-2.4.0.tar.gz", hash = "sha256:cc4b66c02ae4cfb51e843910024f7142464c3391bb1f7e04608578b45046891b", size = 160078, upload-time = "2026-09-13T14:11:33.046Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/6f/a0/6977bb418312ad30f27e522c5040604d4bbf7e40ccd5a11d333afe549354/vcs_versioning-2.5.0.tar.gz", hash = "sha256:956a796e31f80fe714d219d6d1df15a6bf247d10f6d851bf4b98279d0a42da55", size = 165975, upload-time = "2026-09-23T19:21:10.795Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/fc/e7/01c03c7bf28e353812dccc22d3b9629ea71c88edd64c8452601ecc64b189/vcs_versioning-2.4.0-py3-none-any.whl", hash = "sha256:874a70bcd196b956a105852074554f498554d75399904fb1024002af79ad396c", size = 120412, upload-time = "2026-09-13T14:11:31.704Z" },
+    { url = "https://files.pythonhosted.org/packages/e4/e6/b4dedd1efea8a1e432123575896328dec83c26327164f7098db415d13f6f/vcs_versioning-2.5.0-py3-none-any.whl", hash = "sha256:dbf44f6303dc817e5792cb7d0e9cc90e3046ee1e32eaa357b20ad368811313d0", size = 122897, upload-time = "2026-09-23T19:21:09.3Z" },
 ]
 
 [[package]]

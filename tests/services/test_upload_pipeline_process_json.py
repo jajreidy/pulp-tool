@@ -600,3 +600,66 @@ class TestProcessUploadsFromResultsJson:
         call_kw = mock_upload_log.call_args[1]
         assert "signed_by" not in call_kw["labels"]
         assert mock_upload_log.call_args[0][1] == "logs-prn"
+
+    def test_defer_collect_empty_artifacts_returns_model(self, tmp_path, mock_pulp_client) -> None:
+        results_json_path = tmp_path / "pulp_results.json"
+        results_json_path.write_text('{"artifacts": {}}', encoding="utf-8")
+        context = UploadRpmContext(
+            build_id="test-build",
+            date_str="2024-01-01",
+            namespace="test-ns",
+            results_json=str(results_json_path),
+        )
+        repositories = RepositoryRefs(
+            rpms_href="/test/rpm-href",
+            rpms_prn="",
+            logs_href="",
+            logs_prn="",
+            sbom_href="",
+            sbom_prn="",
+            artifacts_href="",
+            artifacts_prn="artifacts-prn",
+        )
+        from pulp_tool.models.results import PulpResultsModel
+
+        out = process_uploads_from_results_json(mock_pulp_client, context, repositories, defer_collect=True)
+        assert isinstance(out, PulpResultsModel)
+
+    def test_defer_collect_after_uploads(self, tmp_path, mock_pulp_client) -> None:
+        rpm = tmp_path / "pkg.rpm"
+        rpm.write_bytes(b"rpm")
+        results_json_path = tmp_path / "pulp_results.json"
+        results_json_path.write_text(
+            json.dumps({"artifacts": {"pkg.rpm": {"pulp_labels": {"arch": "x86_64"}}}}),
+            encoding="utf-8",
+        )
+        context = UploadRpmContext(
+            build_id="test-build",
+            date_str="2024-01-01",
+            namespace="test-ns",
+            results_json=str(results_json_path),
+            files_base_path=str(tmp_path),
+        )
+        repositories = RepositoryRefs(
+            rpms_href="/test/rpm-href",
+            rpms_prn="rpms-prn",
+            logs_href="",
+            logs_prn="",
+            sbom_href="",
+            sbom_prn="",
+            artifacts_href="",
+            artifacts_prn="artifacts-prn",
+        )
+        from pulp_tool.models.results import PulpResultsModel
+
+        with (
+            patch("pulp_tool.utils.uploads.upload_rpms", return_value=[]),
+            patch("pulp_tool.utils.pulp_tasks.create_file_content_and_wait", return_value=Mock()),
+        ):
+            out = process_uploads_from_results_json(
+                mock_pulp_client,
+                context,
+                repositories,
+                defer_collect=True,
+            )
+        assert isinstance(out, PulpResultsModel)

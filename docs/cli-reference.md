@@ -17,7 +17,7 @@ These options are on the root `pulp-tool` group and apply before subcommands (se
 
 ## upload-build
 
-Upload RPM packages, logs, and SBOM files for a build. When **`--oci-storage`** is passed (Tekton pipeline param `ociStorage`, as in [build-rpm-package](https://github.com/konflux-ci/rpmbuild-pipeline/blob/main/pipeline/build-rpm-package.yaml)) or `cli.oci_storage` is in `--config`, the tool ORAS-publishes `pulp_results.json` (with `oci_manifest` and `version`) so downstream `pull` / **update-build** flows share the same OCI target. With **`--artifact-results`** `url_path,digest_path` (import-to-quay `PULP-IMAGE_URL` / `PULP-IMAGE_DIGEST`), ORAS publish writes the OCI image reference **without** digest to `url_path` and `sha256:…` to `digest_path` (same pattern as Quay `IMAGE_URL` + digest in that task). Without `--oci-storage`, Konflux result files use the Pulp artifacts distribution URL and file digest (legacy). In Tekton, ORAS uses the same registry credentials as the Quay push step: service-account-linked secrets merged into `~/.docker/config.json`, adapted via **`select-oci-auth`** (shipped in **`pulp-tool-container`**).
+When **`--oci-storage`** is passed (Tekton pipeline param `ociStorage`, as in [build-rpm-package](https://github.com/konflux-ci/rpmbuild-pipeline/blob/main/pipeline/build-rpm-package.yaml)) or `cli.oci_storage` is in `--config`, the tool ORAS-publishes `pulp_results.json` (with document `version`) so downstream `pull` / **update-build** flows share the same OCI target. With **`--artifact-results`** `url_path,digest_path` (import-to-quay `PULP-IMAGE_URL` / `PULP-IMAGE_DIGEST`), ORAS publish writes the OCI image reference **without** digest to `url_path` and `sha256:…` to `digest_path` (same pattern as Quay `IMAGE_URL` + digest in that task). The JSON file does **not** embed `oci_manifest` (registry identity is the digest you pull or the Tekton result files). Without `--oci-storage`, Konflux result files use the Pulp artifacts distribution URL and file digest (legacy). In Tekton, ORAS uses the same registry credentials as the Quay push step: service-account-linked secrets merged into `~/.docker/config.json`, adapted via **`select-oci-auth`** (shipped in **`pulp-tool-container`**).
 
 The **`upload`** command is a deprecated alias for **`upload-build`** (Tekton tasks still call `upload` until pipelines migrate).
 
@@ -28,7 +28,7 @@ Requires global `--build-id` and `--namespace` unless `--results-json` is used (
 | `--parent-package` | No | Parent package name |
 | `--rpm-path` | No | Path to RPM directory (default: current dir) |
 | `--sbom-path` | No | Path to SBOM file |
-| `--results-json` | No | Path to `pulp_results.json`; upload artifacts from this file (files resolved from its directory or `--files-base-path`). When used, `--build-id` and `--namespace` are optional (extracted from artifact labels in the JSON) |
+| `--results-json` | No | Path or OCI `@sha256:…` ref to `pulp_results.json`; upload artifacts from this file (files resolved from its directory or `--files-base-path`). When used, `--build-id` and `--namespace` are optional (document-level or artifact `pulp_labels`) |
 | `--files-base-path` | No | Base path for resolving artifact keys to file paths (default: directory of `--results-json`; requires `--results-json`) |
 | `--signed-by` | No | Add `signed_by` pulp_label and upload to separate signed repos/distributions. Pulp rejects `,`, `(`, and `)` in label values; the tool replaces `,` with `:` and `(` / `)` with `[` / `]`. Pass the same raw `--signed-by` string when using `search-by`. |
 | `--overwrite` | No | RPM only: before upload, find packages in the target RPM repo by each local RPM’s NVRA filename (and `signed_by` when set) and remove them via `remove_content_units` |
@@ -60,7 +60,49 @@ Requires global `--build-id` and `--namespace`.
 | `--oci-storage` | No | OCI registry for ORAS publish (Konflux `ociStorage`) |
 | `--sbom-results` | No | SBOM output path |
 
-**update-build:** Planned Konflux command for promoting builds; it will use the same **`--oci-storage`** / `ociStorage` wiring as `upload-build` to read and publish versioned `pulp_results.json` OCI targets.
+**update-build:** Mutate a versioned `pulp_results.json` after build-time signing, release signing, or BTS updates. **Required:** `--results-json` (path or OCI `@sha256:…` ref), **`--artifact-results`** `url_path,digest_path`, and **`--oci-storage`** (or `cli.oci_storage`). When **`--results-json`** is a digest-pinned OCI ref, pulp-tool ORAS-**attach**es the updated JSON to that subject (referrer artifact; original digest and attestations unchanged). Local JSON paths still use **`oras push`** to **`--oci-storage`**. Optional: `--files-base-path`, `--operation`, `--signed-by`, `--replace-signed-by`. See [CLAUDE.md](CLAUDE.md) and the schema section below.
+
+| Argument | Required | Description |
+|----------|----------|-------------|
+| `--results-json` | Yes | Path or OCI `@sha256:…` ref to current `pulp_results.json` |
+| `--artifact-results` | Yes | Konflux `url_path,digest_path` Tekton result files after ORAS publish |
+| `--oci-storage` | Yes* | OCI registry for ORAS publish (`ociStorage`); overrides `cli.oci_storage` |
+| `--files-base-path` | No | Base path for artifact keys (default: workspace beside resolved JSON) |
+| `--operation` | No | History label (default `build_sign`) |
+| `--signed-by` | No | Merged into `pulp_labels.signed_by` (semicolon-separated) |
+| `--replace-signed-by` | No | Replace `signed_by` instead of merge |
+
+\* Or `cli.oci_storage` in `--config`.
+
+## `pulp_results.json` schema
+
+Canonical JSON written by `upload-build`, `update-build`, and side-tag transfer. Legacy reads accept artifact `labels` and strip embedded `oci_manifest` (not stored in canonical JSON).
+
+| Level | Fields |
+|-------|--------|
+| Document | **`version`** (JSON schema semver `x.y.z`), **`last_updated`** (ISO date, set on each mutation), `build_id`, `namespace`, `cluster`, optional `distributions` aggregate |
+| Each artifact | `href`, `sha256`, `url`, `href_history[]`, `pulp_labels`, `distributions` (authoritative slots) |
+
+**Example (abbreviated):**
+
+```json
+{
+  "version": "1.0.0",
+  "last_updated": "2026-09-30",
+  "build_id": "pipelinerun-abc",
+  "namespace": "tenant-ns",
+  "cluster": "appsre",
+  "artifacts": {
+    "pkg-1.0-1.el10.x86_64.rpm": {
+      "href": "/pulp/api/v3/content/rpm/packages/…/",
+      "sha256": "…",
+      "url": "https://packages.example.com/…/pkg.rpm",
+      "pulp_labels": { "build_id": "pipelinerun-abc", "arch": "x86_64" },
+      "distributions": { "rpms": "https://packages.example.com/…/rpms/" }
+    }
+  }
+}
+```
 
 ## pull
 
@@ -84,16 +126,16 @@ Global `--build-id` and `--namespace` are required when using `--build-id` + `--
 
 \* Use `--artifact-location` OR global `--build-id` + `--namespace`. For remote URLs, provide cert/key **or** username/password via `--distribution-config`, `--transfer-dest`, `--config`, or explicit cert/key flags, and **`cli.base_url`** in that config (HTTP fetches are limited to that host under `/api/pulp-content/`). OCI manifest refs use ORAS without path-traversal extraction. Every artifact in the results JSON must include **`sha256`**; after each download, pulp-tool verifies the file against that digest and fails the pull on mismatch.
 
-**ORAS-published `pulp_results.json`:** After **`upload-build`** (or side-tag transfer) with **`--oci-storage`**, the authoritative metadata lives in the registry as an OCI artifact (`oci_manifest` on the Pulp copy, or Konflux **`PULP-IMAGE_URL`** + **`PULP-IMAGE_DIGEST`** Tekton results from **`--artifact-results`**). **`pull --artifact-location`** accepts:
+**ORAS-published `pulp_results.json`:** After **`upload-build`** (or side-tag transfer) with **`--oci-storage`**, the authoritative metadata lives in the registry as an OCI artifact. Konflux **`PULP-IMAGE_URL`** + **`PULP-IMAGE_DIGEST`** Tekton results from **`--artifact-results`** hold the current digest-pinned ref; prior revisions are discoverable via OCI referrers ( **`update-build`** attach) or registry history outside the JSON document. **`pull --artifact-location`** accepts:
 
 - a local file path,
 - a Pulp content **HTTPS** URL, or
 - an **OCI manifest ref** (`quay.io/org/repo@sha256:…` or Konflux-style `oci:…@sha256:…`).
 
-For OCI refs, **`pulp-tool`** ORAS-pulls `pulp_results.json` internally ( **`select-oci-auth`** + **`oras --registry-config`**, same as [import-to-quay](https://github.com/konflux-ci/rpmbuild-pipeline/blob/main/task/import-to-quay.yaml); shipped in **`pulp-tool-container`**). RPM/SBOM downloads inside the JSON still use Pulp distribution auth from **`--config`** / **`--distribution-config`**.
+For OCI refs, **`pulp-tool`** ORAS-pulls `pulp_results.json` internally ( **`select-oci-auth`** + **`oras --registry-config`**, same as [import-to-quay](https://github.com/konflux-ci/rpmbuild-pipeline/blob/main/task/import-to-quay.yaml); shipped in **`pulp-tool-container`**). When the ref is digest-pinned, **`oras discover`** runs first for attached **`application/vnd.pulp.results.v0`** referrers (from **`update-build`** attach); the newest attached results JSON is pulled when present, otherwise the subject artifact. RPM/SBOM downloads inside the JSON still use Pulp distribution auth from **`--config`** / **`--distribution-config`**.
 
 ```bash
-# update-build style: pass the manifest ref from oci_manifest or Tekton PULP-IMAGE_* results
+# update-build style: pass the manifest ref from Tekton PULP-IMAGE_* results
 OCI_REF='quay.io/org/build-artifacts@sha256:abc…'
 
 pulp-tool --config /pulp-access/cli.toml pull \
@@ -108,7 +150,7 @@ For transfer to another Pulp domain, add **`--transfer-dest`** (and **`--side-ta
 
 **Transfer behavior:** Destination repository creation and re-upload run **only** when `--transfer-dest` is set. Group-level `--config` alone supplies auth (and `base_url` for `--build-id` + `--namespace`) but does not create destination repos or upload.
 
-**Side-tag transfer (`--side-tag`):** Mainline transfer is unchanged. When `--side-tag` is set, RPMs are also uploaded to an extra repository with distribution base path `side-tag-<name>` (global per tag name, not under source `build_id`), so multiple source builds can promote into the same side-tag; `origin_build_id` (and related `origin_*` labels) on uploaded RPMs record which build each unit came from. `pulp_results.json` is versioned (href/distribution lineage), ORAS-pushed using **`--oci-storage`** or `cli.oci_storage` in **`--transfer-dest`** (including a second push after `oci_manifest` is set, then a final Pulp upload aligned with the registry digest). **`--artifact-results`** writes Tekton OCI URL/digest files (ORAS manifest ref split like `PULP-IMAGE_*`); optional **`--snapshot-path`** updates release snapshot JSON with `pulpResultsOciManifest` so a following Tekton **`create-trusted-artifact`** step can push the workspace to `ociStorage` (same pattern as [upload-src-rpm-sbom-attestation](https://github.com/konflux-ci/release-service-catalog/blob/development/tasks/managed/upload-src-rpm-sbom-attestation/upload-src-rpm-sbom-attestation.yaml)). Also set `cli.cluster` in that config for `origin_cluster` labels when absent from source JSON. The Konflux **`pulp-tool-container`** image includes the **`oras`** CLI; local environments need `oras` on `PATH` for this path.
+**Side-tag transfer (`--side-tag`):** Mainline transfer is unchanged. When `--side-tag` is set, RPMs are also uploaded to an extra repository with distribution base path `side-tag-<name>` (global per tag name, not under source `build_id`), so multiple source builds can promote into the same side-tag; `origin_build_id` (and related `origin_*` labels) on uploaded RPMs record which build each unit came from. `pulp_results.json` is versioned (href/distribution lineage), ORAS-pushed using **`--oci-storage`** or `cli.oci_storage` in **`--transfer-dest`**, then uploaded to Pulp aligned with the registry digest. **`--artifact-results`** writes Tekton OCI URL/digest files (ORAS manifest ref split like `PULP-IMAGE_*`); optional **`--snapshot-path`** updates release snapshot JSON with `pulpResultsOciManifest` so a following Tekton **`create-trusted-artifact`** step can push the workspace to `ociStorage` (same pattern as [upload-src-rpm-sbom-attestation](https://github.com/konflux-ci/release-service-catalog/blob/development/tasks/managed/upload-src-rpm-sbom-attestation/upload-src-rpm-sbom-attestation.yaml)). Also set `cli.cluster` in that config for `origin_cluster` labels when absent from source JSON. The Konflux **`pulp-tool-container`** image includes the **`oras`** CLI; local environments need `oras` on `PATH` for this path.
 
 **File layout:** RPMs/SBOMs → current folder; logs → `logs/<arch>/`.
 
@@ -147,7 +189,7 @@ Search RPM packages in Pulp by checksum, filename, or `signed_by` label.
 | `--checksums` | Conditional* | Comma-separated SHA256 checksums |
 | `--filenames` | Conditional* | Comma-separated RPM filenames (e.g. `pkg-1.0-1.x86_64.rpm`) |
 | `--signed-by` | No | Filter by `signed_by` label value (same substitution as `upload`) |
-| `--results-json` | No | Path to `pulp_results.json` to filter (remove RPMs found in Pulp) |
+| `--results-json` | No | Path or OCI `@sha256:…` ref to filter (remove RPMs found in Pulp) |
 | `--output-results` | Yes** | Output path for filtered `pulp_results.json` (requires `--results-json`) |
 | `--checksum` | No | Extract checksums from `--results-json` (requires `--results-json`) |
 | `--filename` | No | Extract filenames from `--results-json` (requires `--results-json`) |

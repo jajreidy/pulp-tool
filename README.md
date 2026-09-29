@@ -68,8 +68,18 @@ pulp-tool --config ~/.config/pulp/cli.toml search-by --checksums <sha256>
 ```
 
 ```bash
+pulp-tool --config ~/.config/pulp/cli.toml \
+  update-build \
+  --results-json quay.io/org/repo@sha256:… \
+  --artifact-results /tekton/results/pulp-image-url,/tekton/results/pulp-image-digest \
+  --oci-storage quay.io/org/repo:tag \
+  --signed-by key-id-123
+```
+
+```bash
 pulp-tool --help
 pulp-tool upload --help
+pulp-tool update-build --help
 pulp-tool search-by --help
 ```
 

@@ -48,6 +48,9 @@ from names import (
     BUILD_ID_E2E_ERROR_EMPTY,
     BUILD_ID_PULL_SIDE_TAG,
     BUILD_ID_PULL_SIDE_TAG_OCI,
+    BUILD_ID_UPDATE_BUILD,
+    BUILD_ID_UPDATE_BUILD_PULL,
+    BUILD_ID_UPDATE_BUILD_REPLACED,
     BUILD_ID_UPLOAD_FILES,
     BUILD_ID_UPLOAD_FULL,
     BUILD_ID_UPLOAD_LARGE,
@@ -66,6 +69,9 @@ from names import (
     scoped_oci_storage,
     side_tag_e2e_name,
 )
+from rpm_variant import TEST2_NOARCH_RPM_NAME, build_test2_noarch_rpm
+
+from pulp_tool.models.pulp_results import oci_manifest_ref
 
 
 # ANSI color codes
@@ -836,17 +842,30 @@ class E2ETestSuite:
             raise RuntimeError(f"No .json file under {dest_dir} after oras pull of {oci_ref}")
         return json_files[0]
 
+    def _oci_ref_from_konflux_results(self, image_url_path: Path, image_digest_path: Path) -> str:
+        """Build ``repo@sha256:…`` from Tekton-style OCI result files."""
+        url = image_url_path.read_text(encoding="utf-8").strip()
+        digest = image_digest_path.read_text(encoding="utf-8").strip()
+        if not digest.startswith("sha256:"):
+            digest = f"sha256:{digest}"
+        return f"{url}@{digest}"
+
     def _oci_ref_from_pulp_results(self, build_id: str) -> str:
-        """Read ``oci_manifest`` from Pulp ``pulp_results.json`` after ORAS publish."""
+        """Legacy helper: embedded ``oci_manifest`` on pulp-content (pre-canonical JSON only)."""
         client = distribution_client_from_config(self.config_file)
         pulp_results_url = (
             f"{self.base_url}/api/pulp-content/{self.namespace}/{build_id}/artifacts/pulp_results.json"
         )
-        pulp_results_content = json.loads(fetch_bytes(client, pulp_results_url, label="pulp_results.json").decode("utf-8"))
-        oci_manifest = (pulp_results_content.get("oci_manifest") or "").strip()
-        if not oci_manifest or "sha256:" not in oci_manifest:
-            raise RuntimeError(f"Expected oci_manifest on pulp_results.json, got {oci_manifest!r}")
-        return oci_manifest
+        pulp_results_content = json.loads(
+            fetch_bytes(client, pulp_results_url, label="pulp_results.json").decode("utf-8")
+        )
+        oci_ref = oci_manifest_ref(pulp_results_content).strip()
+        if oci_ref and "sha256:" in oci_ref:
+            return oci_ref
+        raise RuntimeError(
+            "pulp_results.json on pulp-content has no embedded oci_manifest; "
+            "use Tekton --artifact-results files for the current OCI digest"
+        )
 
     def _run_upload_build_oras(
         self,
@@ -890,6 +909,8 @@ class E2ETestSuite:
                     "PipelineRun service account; see e2e/README.md (ORAS registry auth)."
                 )
             raise RuntimeError("upload-build ORAS failed")
+        if image_url_path is not None and image_digest_path is not None:
+            return self._oci_ref_from_konflux_results(image_url_path, image_digest_path)
         return self._oci_ref_from_pulp_results(build_id)
 
     def _assert_konflux_oci_results_match_manifest(
@@ -988,86 +1009,535 @@ class E2ETestSuite:
             self.stats.failed += 1
             self.log_error(str(exc))
             return
-        oci_manifest = (pulp_results_content.get("oci_manifest") or "").strip()
         version = pulp_results_content.get("version")
-        if not version or int(version) < 1:
+        schema_version = str(version).strip() if version is not None else ""
+        if not schema_version:
             self.stats.failed += 1
             self.log_error(f"Expected version on pulp_results.json, got {version!r}")
             return
-        if oci_ref.split("@", 1)[0] not in oci_manifest:
+        if pulp_results_content.get("oci_manifest"):
             self.stats.failed += 1
-            self.log_error(f"Pulp oci_manifest {oci_manifest!r} does not match Konflux ref {oci_ref!r}")
+            self.log_error(
+                "pulp_results.json must not embed oci_manifest "
+                "(OCI identity is registry digest + Tekton artifact-results)"
+            )
             return
         self.stats.passed += 1
-        self.log_success("Pulp pulp_results.json includes oci_manifest aligned with ORAS publish")
+        self.log_success(f"Pulp pulp_results.json version {schema_version}; no embedded oci_manifest")
 
-    def test_update_build_pull_from_oras_target(self):
-        """
-        Stand-in for update-build: pull using pulp_results.json ORAS-pulled from upload-build target.
+    def _load_pulp_results_from_distribution(self, build_id: str) -> dict | None:
+        client = distribution_client_from_config(self.config_file)
+        pulp_results_url = (
+            f"{self.base_url}/api/pulp-content/{self.namespace}/{build_id}/artifacts/pulp_results.json"
+        )
+        try:
+            return json.loads(fetch_bytes(client, pulp_results_url, label="pulp_results.json").decode("utf-8"))
+        except DistributionFetchError as exc:
+            self.stats.failed += 1
+            self.log_error(str(exc))
+            return None
 
-        Reuses ``last_oci_pulp_results_ref`` when ``test_upload_build_oras_publish`` ran first; otherwise
-        runs upload-build in this case.
+    def _run_update_build_oras(
+        self,
+        oci_storage: str,
+        build_id: str,
+        results_json_ref: str,
+        files_base_path: Path,
+        *,
+        image_url_path: Path,
+        image_digest_path: Path,
+        signed_by: str | None = None,
+    ) -> str:
+        """Run ``update-build`` with OCI ``--results-json``; return new ``oci_manifest`` from Pulp."""
+        storage = scoped_oci_storage(oci_storage, build_id, self.run_id)
+        update_cmd = [
+            "pulp-tool",
+            "--config",
+            str(self.config_file),
+            "--build-id",
+            build_id,
+            "--namespace",
+            self.namespace,
+            "update-build",
+            "--results-json",
+            results_json_ref,
+            "--artifact-results",
+            f"{image_url_path},{image_digest_path}",
+            "--oci-storage",
+            storage,
+            "--files-base-path",
+            str(files_base_path),
+            "--operation",
+            "build_sign",
+        ]
+        if signed_by:
+            update_cmd.extend(["--signed-by", signed_by])
+        exit_code, output = self.run_command(update_cmd)
+        if not self.assert_exit_code(0, exit_code, "update-build with OCI results-json completes successfully"):
+            self.log_error(output)
+            raise RuntimeError("update-build failed")
+        return self._oci_ref_from_konflux_results(image_url_path, image_digest_path)
+
+    def test_update_build_oras_live(self):
         """
-        oci_storage = self._oci_oras_prereqs("update-build pull from OCI target")
+        Live ``update-build``: ORAS-pull prior manifest, re-upload RPMs, bump version, republish OCI target.
+
+        Requires ``--real-server``, ``--oci-storage``, and ``oras`` on PATH (same as upload-build ORAS cases).
+        """
+        oci_storage = self._oci_oras_prereqs("update-build live")
         if not oci_storage:
             return
 
-        build_id = getattr(self, "last_oci_build_id", None) or self.bid(BUILD_ID_UPLOAD_ORAS)
-        oci_ref = getattr(self, "last_oci_pulp_results_ref", None)
-        if not oci_ref:
-            rpm_dir = self.rpm_dirs[2] / "noarch"
-            self.run_test("upload-build (setup OCI target for update-build e2e)", detail=f"build_id={build_id}")
-            try:
-                oci_ref = self._run_upload_build_oras(oci_storage, build_id, rpm_dir)
-            except RuntimeError as exc:
-                self.stats.failed += 1
-                self.log_error(str(exc))
-                return
+        build_id = self.bid(BUILD_ID_UPDATE_BUILD)
+        rpm_dir = self.rpm_dirs[2] / "noarch"
+        image_url_path = self.output_dir / "update_build_image_url"
+        image_digest_path = self.output_dir / "update_build_image_digest"
+        e2e_signer = "e2e-update-build-signer@example.com"
 
-        oci_pull_dir = self.output_dir / "oci-pulp-results"
-        self.run_test("oras pull pulp_results OCI manifest", detail=f"ref={oci_ref}")
+        self.run_test(
+            "upload-build (setup OCI target for update-build)",
+            detail=f"build_id={build_id}",
+        )
         try:
-            local_results = self._fetch_pulp_results_json_from_oci(oci_ref, oci_pull_dir)
+            oci_ref_before = self._run_upload_build_oras(
+                oci_storage,
+                build_id,
+                rpm_dir,
+                image_url_path=self.output_dir / "update_build_setup_url",
+                image_digest_path=self.output_dir / "update_build_setup_digest",
+            )
         except RuntimeError as exc:
             self.stats.failed += 1
             self.log_error(str(exc))
             return
-        self.stats.passed += 1
-        self.log_success(f"Fetched pulp_results.json from OCI: {local_results}")
 
-        pull_dir = self.output_dir / "update-build-pull-output"
-        pull_dir.mkdir(parents=True, exist_ok=True)
+        doc_before = self._load_pulp_results_from_distribution(build_id)
+        if doc_before is None:
+            return
+
         self.run_test(
-            "pulp-tool pull --artifact-location (OCI-sourced pulp_results)",
-            detail=f"build_id={build_id} local_json={local_results}",
+            "pulp-tool update-build (OCI --results-json)",
+            detail=f"build_id={build_id} ref={oci_ref_before}",
         )
+        try:
+            oci_ref_after = self._run_update_build_oras(
+                oci_storage,
+                build_id,
+                oci_ref_before,
+                rpm_dir,
+                image_url_path=image_url_path,
+                image_digest_path=image_digest_path,
+                signed_by=e2e_signer,
+            )
+        except RuntimeError as exc:
+            self.stats.failed += 1
+            self.log_error(str(exc))
+            return
+
+        if oci_ref_before == oci_ref_after:
+            self.stats.failed += 1
+            self.log_error(f"Expected new OCI digest after update-build, still {oci_ref_after!r}")
+            return
+
+        self.run_test("Konflux OCI artifact-results after update-build", detail=str(image_url_path))
+        if not self._assert_konflux_oci_results_match_manifest(
+            oci_ref_after,
+            image_url_path,
+            image_digest_path,
+            test_label="update-build",
+        ):
+            return
+
+        doc_after = self._load_pulp_results_from_distribution(build_id)
+        if doc_after is None:
+            return
+
+        rpm_key = "test.2-1.0.0-1.noarch.rpm"
+        artifacts = doc_after.get("artifacts") or {}
+        rpm_row = artifacts.get(rpm_key) if isinstance(artifacts, dict) else None
+        if not isinstance(rpm_row, dict):
+            self.stats.failed += 1
+            self.log_error(f"Missing artifact {rpm_key!r} in pulp_results.json after update-build")
+            return
+        labels = rpm_row.get("pulp_labels") or rpm_row.get("labels") or {}
+        if e2e_signer not in str(labels.get("signed_by") or ""):
+            self.stats.failed += 1
+            self.log_error(f"Expected signed_by to include {e2e_signer!r}, got {labels.get('signed_by')!r}")
+            return
+        history = rpm_row.get("href_history")
+        if not isinstance(history, list) or not history:
+            self.stats.failed += 1
+            self.log_error("Expected href_history on RPM artifact after update-build")
+            return
+        if not any(str(entry.get("operation") or "") == "build_sign" for entry in history if isinstance(entry, dict)):
+            self.stats.failed += 1
+            self.log_error(f"Expected href_history operation build_sign, got {history!r}")
+            return
+
+        self.log_success(
+            "update-build live: href_history recorded, OCI republished, signed_by set",
+        )
+
+        self.defer_distribution_check(
+            "update-build pulp_results.json on pulp-content",
+            lambda suite: suite._execute_update_build_pulp_distribution_verification(
+                build_id=build_id,
+                oci_ref=oci_ref_after,
+            ),
+            build_id=build_id,
+        )
+
+    def _execute_update_build_pulp_distribution_verification(
+        self,
+        *,
+        build_id: str,
+        oci_ref: str,
+    ) -> None:
+        doc = self._load_pulp_results_from_distribution(build_id)
+        if doc is None:
+            return
+        artifacts = doc.get("artifacts")
+        if not isinstance(artifacts, dict) or not any(
+            isinstance(row, dict) and row.get("href_history") for row in artifacts.values()
+        ):
+            self.stats.failed += 1
+            self.log_error("Deferred check: expected href_history on at least one artifact after update-build")
+            return
+        if doc.get("oci_manifest"):
+            self.stats.failed += 1
+            self.log_error("pulp_results.json must not embed oci_manifest after update-build")
+            return
+        self.stats.passed += 1
+        self.log_success("update-build pulp_results.json reachable on pulp-content with mutation metadata")
+
+    def _artifact_sha256_from_doc(self, doc: dict, artifact_key: str) -> str:
+        artifacts = doc.get("artifacts")
+        if not isinstance(artifacts, dict):
+            return ""
+        row = artifacts.get(artifact_key)
+        if not isinstance(row, dict):
+            return ""
+        return normalize_sha256_hex(str(row.get("sha256") or ""))
+
+    def _pull_rpm_via_artifact_location(
+        self,
+        artifact_location: str,
+        pull_dir: Path,
+        *,
+        label: str,
+        expected_rpm_key: str,
+        expected_sha256: str,
+    ) -> bool:
+        """Run ``pull --artifact-location`` and verify the expected RPM checksum."""
+        pull_dir.mkdir(parents=True, exist_ok=True)
+        for path in pull_dir.iterdir():
+            if path.is_file():
+                path.unlink()
+        self.run_test(label, detail=f"location={artifact_location}")
         pull_cmd = [
             "pulp-tool",
             "--config",
             str(self.config_file),
             "pull",
             "--artifact-location",
-            str(local_results),
+            artifact_location,
             "--content-types",
             "rpm",
             "--archs",
             "noarch",
         ]
         exit_code, output = self.run_command(pull_cmd, cwd=pull_dir)
-        if not self.assert_exit_code(0, exit_code, "Pull from OCI-sourced pulp_results completes"):
+        if not self.assert_exit_code(0, exit_code, f"{label} completes"):
             self.log_error(output)
-            return
-        expected_rpm = "test.2-1.0.0-1.noarch.rpm"
-        if not self.assert_file_exists(pull_dir / expected_rpm, f"Pull directory contains {expected_rpm}"):
+            return False
+        rpm_path = pull_dir / expected_rpm_key
+        if not self.assert_file_exists(rpm_path, f"{label} wrote {expected_rpm_key}"):
             self.log_error(output)
+            return False
+        with rpm_path.open("rb") as rpm_file:
+            actual = normalize_sha256_hex(hashlib.file_digest(rpm_file, "sha256").hexdigest())
+        if actual != expected_sha256:
+            self.stats.failed += 1
+            self.log_error(f"{label}: RPM SHA256 mismatch expected={expected_sha256} actual={actual}")
+            return False
+        self.stats.passed += 1
+        self.log_success(f"{label}: downloaded {expected_rpm_key} with expected SHA256")
+        return True
+
+    def _execute_update_build_replaced_rpm_distribution_verification(
+        self,
+        *,
+        build_id: str,
+        artifact_key: str,
+        expected_sha256: str,
+    ) -> None:
+        doc = self._load_pulp_results_from_distribution(build_id)
+        if doc is None:
             return
-        self.log_success("update-build e2e: pull consumed ORAS-published pulp_results target")
+        artifacts = doc.get("artifacts")
+        if not isinstance(artifacts, dict):
+            self.stats.failed += 1
+            self.log_error("pulp_results.json missing artifacts for replaced RPM verify")
+            return
+        row = artifacts.get(artifact_key)
+        if not isinstance(row, dict):
+            self.stats.failed += 1
+            self.log_error(f"Missing artifact {artifact_key!r} for distribution verify")
+            return
+        url = str(row.get("url") or "").strip()
+        if not url.startswith("http"):
+            self.stats.failed += 1
+            self.log_error(f"Artifact {artifact_key!r} has no http(s) url for distribution verify")
+            return
+        client = distribution_client_from_config(self.config_file)
+        try:
+            fetch_and_verify_sha256(client, url, expected_sha256, label=f"RPM ({artifact_key}) after update-build")
+        except DistributionFetchError as exc:
+            self.stats.failed += 1
+            self.log_error(str(exc))
+            return
+        self.stats.passed += 1
+        self.log_success(f"Replaced RPM distribution URL matches SHA256 {expected_sha256}")
+
+    def test_update_build_replaced_rpm_checksum(self):
+        """
+        Live ``update-build`` with a **new RPM payload** (same NEVRA filename, different SHA256).
+
+        Ensures ``pulp_results.json`` updates checksum/href lineage and ``href_history`` records the prior state.
+        """
+        oci_storage = self._oci_oras_prereqs("update-build replaced RPM checksum")
+        if not oci_storage:
+            return
+
+        build_id = self.bid(BUILD_ID_UPDATE_BUILD_REPLACED)
+        original_rpm_dir = self.rpm_dirs[2] / "noarch"
+        workspace = self.output_dir / "update-build-replaced-rpms"
+        image_url_path = self.output_dir / "update_build_replaced_url"
+        image_digest_path = self.output_dir / "update_build_replaced_digest"
+        rpm_key = TEST2_NOARCH_RPM_NAME
+
+        self.run_test("upload-build (baseline RPM for replaced checksum test)", detail=f"build_id={build_id}")
+        try:
+            oci_ref_before = self._run_upload_build_oras(
+                oci_storage,
+                build_id,
+                original_rpm_dir,
+                image_url_path=self.output_dir / "update_build_replaced_setup_url",
+                image_digest_path=self.output_dir / "update_build_replaced_setup_digest",
+            )
+        except RuntimeError as exc:
+            self.stats.failed += 1
+            self.log_error(str(exc))
+            return
+
+        doc_before = self._load_pulp_results_from_distribution(build_id)
+        if doc_before is None:
+            return
+        sha_before = self._artifact_sha256_from_doc(doc_before, rpm_key)
+        if not sha_before:
+            self.stats.failed += 1
+            self.log_error(f"Missing baseline SHA256 for {rpm_key!r} in pulp_results.json")
+            return
+
+        self.run_test("Build modified RPM payload (same NEVRA filename)", detail=f"variant={build_id}")
+        try:
+            build_test2_noarch_rpm(workspace, variant=build_id)
+        except RuntimeError as exc:
+            self.stats.failed += 1
+            self.log_error(str(exc))
+            return
+        modified_path = workspace / rpm_key
+        with modified_path.open("rb") as rpm_file:
+            sha_workspace = normalize_sha256_hex(hashlib.file_digest(rpm_file, "sha256").hexdigest())
+        if sha_workspace == sha_before:
+            self.stats.failed += 1
+            self.log_error("Modified RPM workspace file must differ from baseline pulp_results SHA256")
+            return
+
+        self.run_test(
+            "pulp-tool update-build with replaced RPM workspace",
+            detail=f"build_id={build_id} ref={oci_ref_before}",
+        )
+        try:
+            oci_ref_after = self._run_update_build_oras(
+                oci_storage,
+                build_id,
+                oci_ref_before,
+                workspace,
+                image_url_path=image_url_path,
+                image_digest_path=image_digest_path,
+                signed_by="e2e-replaced-rpm@example.com",
+            )
+        except RuntimeError as exc:
+            self.stats.failed += 1
+            self.log_error(str(exc))
+            return
+        if oci_ref_before == oci_ref_after:
+            self.stats.failed += 1
+            self.log_error(f"Expected new OCI digest after replaced-RPM update-build, still {oci_ref_after!r}")
+            return
+
+        doc_after = self._load_pulp_results_from_distribution(build_id)
+        if doc_after is None:
+            return
+        sha_after = self._artifact_sha256_from_doc(doc_after, rpm_key)
+        if not sha_after or sha_after == sha_before:
+            self.stats.failed += 1
+            self.log_error(f"Expected new SHA256 after update-build, before={sha_before} after={sha_after!r}")
+            return
+
+        artifacts = doc_after.get("artifacts") or {}
+        rpm_row = artifacts.get(rpm_key) if isinstance(artifacts, dict) else None
+        if not isinstance(rpm_row, dict):
+            self.stats.failed += 1
+            self.log_error(f"Missing artifact row {rpm_key!r} after update-build")
+            return
+        history = rpm_row.get("href_history")
+        if not isinstance(history, list) or not history:
+            self.stats.failed += 1
+            self.log_error("Expected href_history after replaced RPM update-build")
+            return
+        history_sha_values = {
+            normalize_sha256_hex(str(entry.get("sha256") or ""))
+            for entry in history
+            if isinstance(entry, dict) and entry.get("sha256")
+        }
+        if sha_before not in history_sha_values:
+            self.stats.failed += 1
+            self.log_error(
+                f"href_history should record prior SHA256 {sha_before}, got entries {history!r}",
+            )
+            return
+
+        self.log_success(
+            f"update-build replaced RPM: sha256 {sha_before} -> {sha_after}, href_history records prior digest",
+        )
+
+        self.defer_distribution_check(
+            "update-build replaced RPM on pulp-content",
+            lambda suite: suite._execute_update_build_replaced_rpm_distribution_verification(
+                build_id=build_id,
+                artifact_key=rpm_key,
+                expected_sha256=sha_after,
+            ),
+            build_id=build_id,
+        )
+
+    def test_upload_build_update_build_pull_pipeline(self):
+        """
+        End-to-end Konflux flow: ``upload-build`` (ORAS push) → ``update-build`` (attach) → ``pull``.
+
+        ``pull --artifact-location`` uses the **subject** digest from the initial upload (``oras discover``
+        for attached ``pulp_results``), then the Tekton **artifact-results** digest from ``update-build``.
+        """
+        oci_storage = self._oci_oras_prereqs("upload-build → update-build → pull")
+        if not oci_storage:
+            return
+
+        build_id = self.bid(BUILD_ID_UPDATE_BUILD_PULL)
+        rpm_dir = self.rpm_dirs[2] / "noarch"
+        rpm_key = "test.2-1.0.0-1.noarch.rpm"
+        pipeline_signer = "e2e-pipeline-signer@example.com"
+        setup_url = self.output_dir / "pipeline_setup_image_url"
+        setup_digest = self.output_dir / "pipeline_setup_image_digest"
+        update_url = self.output_dir / "pipeline_update_image_url"
+        update_digest = self.output_dir / "pipeline_update_image_digest"
+
+        self.run_test("upload-build (pipeline subject)", detail=f"build_id={build_id}")
+        try:
+            subject_ref = self._run_upload_build_oras(
+                oci_storage,
+                build_id,
+                rpm_dir,
+                image_url_path=setup_url,
+                image_digest_path=setup_digest,
+            )
+        except RuntimeError as exc:
+            self.stats.failed += 1
+            self.log_error(str(exc))
+            return
+
+        self.run_test("update-build (attach referrer)", detail=f"subject={subject_ref}")
+        try:
+            artifact_ref = self._run_update_build_oras(
+                oci_storage,
+                build_id,
+                subject_ref,
+                rpm_dir,
+                image_url_path=update_url,
+                image_digest_path=update_digest,
+                signed_by=pipeline_signer,
+            )
+        except RuntimeError as exc:
+            self.stats.failed += 1
+            self.log_error(str(exc))
+            return
+
+        if subject_ref == artifact_ref:
+            self.stats.failed += 1
+            self.log_error(f"Expected new artifact digest after update-build attach, still {artifact_ref!r}")
+            return
+        if not self._assert_konflux_oci_results_match_manifest(
+            artifact_ref,
+            update_url,
+            update_digest,
+            test_label="pipeline update-build",
+        ):
+            return
+
+        doc = self._load_pulp_results_from_distribution(build_id)
+        if doc is None:
+            return
+        artifacts = doc.get("artifacts")
+        rpm_row = artifacts.get(rpm_key) if isinstance(artifacts, dict) else None
+        if not isinstance(rpm_row, dict) or not rpm_row.get("href_history"):
+            self.stats.failed += 1
+            self.log_error("Expected href_history on RPM artifact after update-build pipeline")
+            return
+        expected_sha256 = self._artifact_sha256_from_doc(doc, rpm_key)
+        if not expected_sha256:
+            self.stats.failed += 1
+            self.log_error(f"Missing SHA256 for {rpm_key!r} in pulp_results.json")
+            return
+        artifacts = doc.get("artifacts")
+        rpm_row = artifacts.get(rpm_key) if isinstance(artifacts, dict) else None
+        if isinstance(rpm_row, dict):
+            pulp_labels = rpm_row.get("pulp_labels") or rpm_row.get("labels") or {}
+            if pipeline_signer not in str(pulp_labels.get("signed_by") or ""):
+                self.stats.failed += 1
+                self.log_error(f"Expected signed_by to include {pipeline_signer!r} before pull")
+                return
+
+        subject_pull_dir = self.output_dir / "pipeline-pull-subject"
+        if not self._pull_rpm_via_artifact_location(
+            subject_ref,
+            subject_pull_dir,
+            label="pull --artifact-location (upload-build subject; oras discover)",
+            expected_rpm_key=rpm_key,
+            expected_sha256=expected_sha256,
+        ):
+            return
+
+        artifact_pull_dir = self.output_dir / "pipeline-pull-artifact-results"
+        if not self._pull_rpm_via_artifact_location(
+            artifact_ref,
+            artifact_pull_dir,
+            label="pull --artifact-location (update-build Tekton digest)",
+            expected_rpm_key=rpm_key,
+            expected_sha256=expected_sha256,
+        ):
+            return
+
+        self.log_success(
+            "upload-build → update-build → pull: subject discover and artifact-results digest both download signed RPM",
+        )
 
     def test_pull_artifact_location_oci_manifest_ref(self):
         """
-        ``pull --artifact-location`` accepts an OCI manifest ref (update-build style).
+        ``pull --artifact-location`` with an OCI manifest ref after **upload-build** only (no ``update-build``).
 
-        pulp-tool ORAS-pulls ``pulp_results.json`` internally; no ``--build-id`` / ``--namespace``.
+        pulp-tool ORAS-pulls the subject ``pulp_results.json``; see ``test_upload_build_update_build_pull_pipeline``
+        for attach + discover after ``update-build``.
         """
         oci_storage = self._oci_oras_prereqs("pull --artifact-location OCI ref")
         if not oci_storage:
@@ -1440,7 +1910,7 @@ class E2ETestSuite:
                 "--results-json",
                 str(missing_results),
             ],
-            substring="does not exist",
+            substring="results JSON not found",
         )
         invalid_results = self.test_dir / "invalid-results.json"
         invalid_results.write_text("{ not valid json", encoding="utf-8")
@@ -2035,24 +2505,28 @@ class E2ETestSuite:
                 client,
                 pulp_results_url,
                 label="pulp_results.json (post side-tag transfer)",
-                min_version=2,
                 required_distribution_keys=frozenset({side_tag}),
-                require_oci_manifest=True,
             )
         except DistributionFetchError as exc:
             self.stats.failed += 1
             self.log_error(str(exc))
             return False
-        oci_manifest = (pulp_results_content.get("oci_manifest") or "").strip()
+        oci_ref = self._oci_ref_from_konflux_results(image_url_path, image_digest_path)
+        if pulp_results_content.get("oci_manifest"):
+            self.stats.failed += 1
+            self.log_error("Side-tag pulp_results.json must not embed oci_manifest")
+            return False
         if not self._assert_konflux_oci_results_match_manifest(
-            oci_manifest,
+            oci_ref,
             image_url_path,
             image_digest_path,
             test_label="side-tag transfer",
         ):
             return False
         self.stats.passed += 1
-        self.log_success("pulp_results.json version bumped, side-tag distribution, oci_manifest, and Tekton OCI results")
+        self.log_success(
+            "pulp_results.json version bumped, side-tag distribution, and Tekton OCI results"
+        )
         return True
 
     def test_upload_side_tag_transfer_source(self):
@@ -2535,6 +3009,20 @@ class E2ETestSuite:
             requires_real_server=True,
         )
         self.invoke_test_case(
+            self.test_update_build_oras_live,
+            "test_update_build_oras_live",
+            f"update-build ORAS mutation (build_id={self.bid(BUILD_ID_UPDATE_BUILD)}; "
+            "requires --oci-storage and oras).",
+            requires_real_server=True,
+        )
+        self.invoke_test_case(
+            self.test_update_build_replaced_rpm_checksum,
+            "test_update_build_replaced_rpm_checksum",
+            f"update-build with replaced RPM SHA256 (build_id={self.bid(BUILD_ID_UPDATE_BUILD_REPLACED)}; "
+            "requires --oci-storage and oras).",
+            requires_real_server=True,
+        )
+        self.invoke_test_case(
             self.test_upload_files,
             "test_upload_files",
             f"Upload RPM, logs, SBOM, and arbitrary file (RPM dir 4); build_id={self.bid(BUILD_ID_UPLOAD_FILES)}.",
@@ -2557,9 +3045,10 @@ class E2ETestSuite:
 
         self.begin_section("Pull (pulp-tool pull)", description="Download artifacts after pulp-content verification.")
         self.invoke_test_case(
-            self.test_update_build_pull_from_oras_target,
-            "test_update_build_pull_from_oras_target",
-            "Pull from ORAS-published pulp_results (update-build OCI target; requires --oci-storage and oras).",
+            self.test_upload_build_update_build_pull_pipeline,
+            "test_upload_build_update_build_pull_pipeline",
+            f"upload-build → update-build → pull (build_id={self.bid(BUILD_ID_UPDATE_BUILD_PULL)}; "
+            "subject discover + Tekton artifact-results; requires --oci-storage and oras).",
             requires_real_server=True,
         )
         self.invoke_test_case(

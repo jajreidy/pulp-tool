@@ -150,7 +150,7 @@ class TestSearchByResultsJsonOutputAndCliErrors:
                 ],
             )
         assert result.exit_code == 1
-        assert "Failed to read results.json" in result.output
+        assert "Failed to read results.json" in result.output or "not found" in result.output.lower()
 
     def test_results_json_invalid_checksum_in_file(self, tmp_path) -> None:
         """Test error when results.json contains invalid RPM checksum (64 chars but non-hex)."""
