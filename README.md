@@ -16,7 +16,7 @@ In Konflux, Pulp access is provisioned by the **[pulp-access-controller](https:/
 1. Create a `PulpAccessRequest` in your namespace (see the [operator README](https://github.com/pulp/pulp-access-controller/blob/main/README.md) and [Konflux: Getting access to Pulp storage](https://konflux-ci.dev/docs/building/pulp-access/)).
 2. The controller creates a **`pulp-access`** secret with `cli.toml`, authentication material, and domain name (`konflux-<namespace>`). It uses Red Hat's [terms-based registry](https://access.redhat.com/terms-based-registry/accounts) for credentials—you do not create those credentials yourself; the controller generates and manages them.
 
-Tekton tasks mount that secret (for example `/pulp-access/cli.toml`) and run `pulp-tool --config …`. See **[CLAUDE.md](CLAUDE.md)** for downstream flag and path contracts.
+Tekton tasks mount that secret (for example `/pulp-access/cli.toml`) and run `pulp-tool --config …`. See **[CLAUDE.md](docs/CLAUDE.md)** for downstream flag and path contracts.
 
 ### Local install and manual config
 
@@ -107,7 +107,7 @@ dist.pull_data(filename="pkg.rpm", file_url="...", arch="x86_64", artifact_type=
 
 ## Development
 
-**Konflux / Tekton:** pulp-tool runs in RPM build (`import-to-quay`) and release (`push-artifacts-to-storage`) tasks. If you change `upload`, SBOM/artifact behavior, or the container image, read **[CLAUDE.md](CLAUDE.md)** for contracts and regression checks; re-verify **konflux-ci/rpmbuild-pipeline** (`task/import-to-quay.yaml`) and **konflux-ci/release-service-catalog** (`tasks/managed/push-artifacts-to-storage/`). Pipelines evolve (e.g. ORAS or `oras-staging/`); update **CLAUDE.md** when upstream staging changes. Architecture overview: **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)**.
+**Konflux / Tekton:** pulp-tool runs in RPM build (`import-to-quay`) and release (`push-artifacts-to-storage`) tasks. If you change `upload`, SBOM/artifact behavior, or the container image, read **[CLAUDE.md](docs/CLAUDE.md)** for contracts and regression checks; re-verify **konflux-ci/rpmbuild-pipeline** (`task/import-to-quay.yaml`) and **konflux-ci/release-service-catalog** (`tasks/managed/push-artifacts-to-storage/`). Pipelines evolve (e.g. ORAS or `oras-staging/`); update **CLAUDE.md** when upstream staging changes. Architecture overview: **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)**.
 
 ```bash
 make install-dev          # editable install + pre-commit (+ pre-push) hooks
@@ -124,7 +124,7 @@ make check                # lint + test
 
 **Dependency lockfile:** **`uv.lock`** is generated from **`pyproject.toml`**; after changing dependencies, run `make lock`.
 
-Before a PR, ensure `make pre-commit-ci` (or commit + pre-push pre-commit stages) and `make test` are green. For AI-assisted work see **[AGENTS.md](AGENTS.md)** (start with § **Bootstrap**), **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)**, and **[CLAUDE.md](CLAUDE.md)** (Konflux contracts); also [CONTRIBUTING.md](CONTRIBUTING.md) and [tests/README.md](tests/README.md). **Maintainers:** release with **`make release-please`** → **`make release-publish`** → Konflux release — see **[docs/releasing.md](docs/releasing.md)**. Optional [AgentReady](https://github.com/ambient-code/agentready): `pip install agentready && agentready assess .` ([.agentready-config.yaml](.agentready-config.yaml); reports under `.agentready/`, gitignored).
+Before a PR, ensure `make pre-commit-ci` (or commit + pre-push pre-commit stages) and `make test` are green. For AI-assisted work see **[AGENTS.md](docs/AGENTS.md)** (start with § **Bootstrap**), **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)**, and **[CLAUDE.md](docs/CLAUDE.md)** (Konflux contracts); also [CONTRIBUTING.md](CONTRIBUTING.md) and [tests/README.md](tests/README.md). **Maintainers:** release with **`make release-please`** → **`make release-publish`** → Konflux release — see **[docs/releasing.md](docs/releasing.md)**. Optional [AgentReady](https://github.com/ambient-code/agentready): `pip install agentready && agentready assess .` ([.agentready-config.yaml](.agentready-config.yaml); reports under `.agentready/`, gitignored).
 
 **Troubleshooting**
 

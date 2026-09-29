@@ -18,7 +18,7 @@ cd "$REPO_ROOT"
 RELEASE_PLEASE_VERSION="${RELEASE_PLEASE_VERSION:-17.2.0}"
 TARGET_BRANCH="${RELEASE_PLEASE_TARGET_BRANCH:-main}"
 RELEASE_GIT_REMOTE="${RELEASE_GIT_REMOTE:-origin}"
-CONFIG_FILE="${RELEASE_PLEASE_CONFIG_FILE:-release-please-config.json}"
+CONFIG_FILE="${RELEASE_PLEASE_CONFIG_FILE:-.github/release-please-config.json}"
 MANIFEST_FILE="${RELEASE_PLEASE_MANIFEST_FILE:-.release-please-manifest.json}"
 
 # BUMP (make) or RELEASE_BUMP: major | minor | bugfix (patch accepted as bugfix).
@@ -80,7 +80,7 @@ Usage: release-please.sh <command> [-- extra release-please flags]
 
 Commands:
   pr        Create or update the release pull request (run on main after feature merges).
-            Also syncs .tekton/pulp-tool-container.build-args, VERSION, and pulp_tool/_version.py
+            Also syncs container/pulp-tool-container.build-args, VERSION, and pulp_tool/_version.py
             on the release PR branch.
   publish   Create and push v* tag from .release-please-manifest.json (triggers release.yml)
             Optional BUMP=major|minor|bugfix tags a bumped version instead of the manifest.
@@ -219,7 +219,7 @@ sync_container_build_args_to_release_pr() {
   "${REPO_ROOT}/scripts/sync-container-build-args.sh"
 
   local -a version_paths=(
-    .tekton/pulp-tool-container.build-args
+    container/pulp-tool-container.build-args
     VERSION
     pulp_tool/_version.py
   )

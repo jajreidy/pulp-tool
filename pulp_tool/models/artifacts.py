@@ -57,10 +57,17 @@ class DownloadTask(KonfluxBaseModel):
     file_url: AnyHttpUrl
     arch: str
     artifact_type: str
+    expected_sha256: str | None = None
 
-    def to_tuple(self) -> tuple:
-        """Convert to tuple format (artifact_name, file_url, arch, artifact_type)."""
-        return (self.artifact_name, str(self.file_url), self.arch, self.artifact_type)
+    def to_tuple(self) -> tuple[str, str, str, str, str | None]:
+        """Convert to tuple for :meth:`~pulp_tool.api.DistributionClient.pull_data_async`."""
+        return (
+            self.artifact_name,
+            str(self.file_url),
+            self.arch,
+            self.artifact_type,
+            self.expected_sha256,
+        )
 
 
 class ArtifactFile(KonfluxBaseModel):
@@ -288,6 +295,11 @@ class ArtifactJsonResponse(KonfluxBaseModel):
                 raise ValueError(
                     f"artifact {name!r} url must be an http or https URL for pull",
                 )
+            if not meta.sha256:
+                raise ValueError(f"artifact {name!r} must include sha256 for pull")
+            from ..utils.checksum_verify import validate_sha256_hex
+
+            validate_sha256_hex(meta.sha256, field_name=f"artifact {name!r} sha256")
 
 
 class ArtifactData(KonfluxBaseModel):

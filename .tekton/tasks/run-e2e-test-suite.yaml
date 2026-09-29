@@ -6,7 +6,7 @@ metadata:
 spec:
   params:
     - name: e2e-image
-      description: Pre-built e2e test runner image (python3, pulp-cli, rpm-rs, oras)
+      description: Pre-built e2e test runner image (pulp-tool, pulp-cli, rpm-rs, oras)
       type: string
     - name: e2e-run-id
       description: Unique suffix for build-scoped Pulp resources (PipelineRun UID from the pipeline)
@@ -22,7 +22,18 @@ spec:
   stepTemplate:
     image: $(params.e2e-image)
     imagePullPolicy: Always
+    securityContext:
+      allowPrivilegeEscalation: false
+      capabilities:
+        drop:
+          - ALL
+      seccompProfile:
+        type: RuntimeDefault
     env:
+      - name: HOME
+        value: /tmp
+      - name: XDG_CACHE_HOME
+        value: $(workspaces.test.path)/.pulp-cli-cache
       - name: PULP_CLI_CONFIG
         value: /etc/pulp-access/cli.toml
       - name: TEST_WORKSPACE
@@ -46,7 +57,6 @@ spec:
       script: |
         #!/usr/bin/env sh
         set -eu
-        pip3 install -e "${PULP_TOOL_PATH}"
 
         "${PULP_TOOL_PATH}/e2e/test-pulp-tool.py" --real-server \
           --config "${PULP_CLI_CONFIG}" \

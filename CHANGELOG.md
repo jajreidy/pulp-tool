@@ -23,6 +23,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Repository layout: `container/Dockerfile`, `config/` linter configs, agent docs under `docs/AGENTS.md` and `docs/CLAUDE.md` (root stubs retained); CI bot config under `.github/`; expanded `make clean`
+
 ### Added
 
 - E2e harness: CLI validation smoke, live read-only error paths (auth, 404 `pulp_results`, bad checksum, pull filters, bad local/OCI refs), and live mutating errors (empty `--rpm-path`, bad `--results-json`, missing `upload-files` path, duplicate `create-repository`) with isolated build IDs and in-test `pulp` cleanup; documented in `e2e/README.md` ([ec3d824](https://github.com/konflux-ci/pulp-tool/commit/ec3d824))
@@ -44,11 +48,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Security (Glasswing / supply chain):** Pin GitHub Actions to full commit SHAs (FIND-001); workflow-level least-privilege `permissions` on security scanning (FIND-003); verify hadolint release binaries with published SHA256 in CI and `scripts/run-hadolint.sh` (FIND-002 analogue—no `tkn` in this repo); Tekton e2e tasks add defense-in-depth `securityContext` on step templates (FIND-004); `pull` SSRF allowlist, ORAS extraction hardening, and mandatory per-artifact SHA256 verification ([932d6f8](https://github.com/konflux-ci/pulp-tool/commit/932d6f8))
+- Konflux e2e: install `pulp-tool` in [`e2e/Dockerfile.e2e`](e2e/Dockerfile.e2e) at image build time instead of `pip install -e` in the `pulp-tool-test` Tekton step
+- Konflux e2e: [`e2e/Dockerfile.e2e-cleanup`](e2e/Dockerfile.e2e-cleanup) and **build-e2e-cleanup-image** pipeline task; `post-test-cleanup` no longer runs `microdnf`/`pip` at step time
+- Konflux e2e: move runner and cleanup Dockerfiles under [`e2e/`](e2e/)
 - **Breaking:** Side-tag RPM repository and distribution use global path `side-tag-{tag}` (not `{build_id}/side-tag-{tag}`), so multiple source builds can promote into the same side-tag; `origin_build_id` labels record provenance; Konflux e2e validation/cleanup keys updated accordingly; existing build-scoped side-tag repos are not used by new runs ([cea604e](https://github.com/konflux-ci/pulp-tool/commit/cea604e))
 - Maintainer release documentation: canonical flow `make release-please` → `make release-publish` → Konflux release; version-file table; updates in `docs/releasing.md`, `CONTRIBUTING.md`, `README.md`, and agent skills
-- `scripts/sync-container-build-args.sh` (run by `make release-please` on the release PR branch or `make test-container` locally) syncs `.tekton/pulp-tool-container.build-args`, `VERSION`, and `pulp_tool/_version.py` from `.release-please-manifest.json`
+- `scripts/sync-container-build-args.sh` (run by `make release-please` on the release PR branch or `make test-container` locally) syncs `container/pulp-tool-container.build-args`, `VERSION`, and `pulp_tool/_version.py` from `.release-please-manifest.json`
 - `CHANGELOG.md` compare links for `v1.2.0` / `[Unreleased]`
-- Konflux `pulp-tool-container` PipelineRuns pass `build-args-file` (`.tekton/pulp-tool-container.build-args`) so image OCI labels and `pulp-tool --version` use the Release Please manifest version instead of hardcoded `Dockerfile` defaults
+- Konflux `pulp-tool-container` PipelineRuns pass `build-args-file` (`container/pulp-tool-container.build-args`) so image OCI labels and `pulp-tool --version` use the Release Please manifest version instead of hardcoded `Dockerfile` defaults
 - Konflux `pulp-tool-container` PipelineRuns migrated from deprecated `single-arch-build-pipeline` (`olm-operator-konflux-sample`) to `docker-build-oci-ta` (`container-build-catalog`), adding Conforma-required SAST and RPM signature scan tasks and dropping expired `sbom-json-check`
 - Pytest configuration consolidated in `pyproject.toml` only (removed duplicate `.pytest.ini`; 85% coverage threshold unified)
 - CHANGELOG entries link to implementing commits; `docs/releasing.md` and PR-drafting templates document link preservation when curating releases
@@ -72,7 +80,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `i686` architecture support in `SUPPORTED_ARCHITECTURES`, RPM path detection, upload orchestration, and content queries ([e06cf41](https://github.com/konflux-ci/pulp-tool/commit/e06cf41))
 - `upload --overwrite`: remove matching RPM content units in the target repo before upload (RPM-only; respects `signed_by` when set) ([01c9750](https://github.com/konflux-ci/pulp-tool/commit/01c9750))
-- E2e reusable test image ([`Dockerfile.e2e`](Dockerfile.e2e)) and concurrent run isolation via `E2E_RUN_ID` / [`e2e/names.py`](e2e/names.py) ([c060d79](https://github.com/konflux-ci/pulp-tool/commit/c060d79))
+- E2e reusable test image ([`e2e/Dockerfile.e2e`](e2e/Dockerfile.e2e)) and concurrent run isolation via `E2E_RUN_ID` / [`e2e/names.py`](e2e/names.py) ([c060d79](https://github.com/konflux-ci/pulp-tool/commit/c060d79))
 - Release automation for maintainers: local [Release Please](https://github.com/googleapis/release-please) ([`scripts/release-please.sh`](scripts/release-please.sh), `make release-please`, `make release-publish`), [`.github/workflows/release.yml`](.github/workflows/release.yml), and [`docs/releasing.md`](docs/releasing.md) ([c02a88b](https://github.com/konflux-ci/pulp-tool/commit/c02a88b))
 - `make lock-check` (`uv lock --check`) in CI ([6f3b1cf](https://github.com/konflux-ci/pulp-tool/commit/6f3b1cf))
 - `drafting-pulp-tool-pr` agent skill for paste-ready PR drafts ([e06cf41](https://github.com/konflux-ci/pulp-tool/commit/e06cf41))

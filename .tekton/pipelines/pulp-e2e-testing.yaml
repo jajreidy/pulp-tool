@@ -15,16 +15,23 @@ spec:
       description: Git revision to checkout
       type: string
     - name: output-image
-      description: Fully qualified image name for the output
+      description: Fully qualified image name for the e2e runner output
+      type: string
+    - name: cleanup-output-image
+      description: Fully qualified image name for the post-test-cleanup image (Dockerfile.e2e-cleanup)
       type: string
     - name: image-expires-after
       description: Image expiration time
       type: string
       default: 5d
     - name: dockerfile
-      description: Path to the e2e Dockerfile inside the cloned source tree (under source/)
+      description: Path to the e2e runner Dockerfile inside the cloned source tree (under source/)
       type: string
-      default: Dockerfile.e2e
+      default: e2e/Dockerfile.e2e
+    - name: cleanup-dockerfile
+      description: Path to the e2e cleanup Dockerfile inside the cloned source tree (under source/)
+      type: string
+      default: e2e/Dockerfile.e2e-cleanup
     - name: path-context
       description: Build context relative to the cloned source tree (Konflux buildah SOURCE_CODE_DIR)
       type: string
@@ -116,6 +123,40 @@ spec:
       workspaces:
         - name: source
           workspace: repository
+    - name: build-e2e-cleanup-image
+      runAfter:
+        - clone-repository
+      params:
+        - name: IMAGE
+          value: $(params.cleanup-output-image)
+        - name: DOCKERFILE
+          value: $(params.cleanup-dockerfile)
+        - name: CONTEXT
+          value: $(params.path-context)
+        - name: IMAGE_EXPIRES_AFTER
+          value: $(params.image-expires-after)
+        - name: COMMIT_SHA
+          value: $(tasks.clone-repository.results.commit)
+        - name: SOURCE_URL
+          value: $(params.git-url)
+        - name: SKIP_SBOM_GENERATION
+          value: "true"
+        - name: HTTP_PROXY
+          value: $(tasks.init.results.http-proxy)
+        - name: NO_PROXY
+          value: $(tasks.init.results.no-proxy)
+      taskRef:
+        params:
+          - name: name
+            value: buildah
+          - name: bundle
+            value: quay.io/konflux-ci/tekton-catalog/task-buildah:0.12.3@sha256:2b574fd079661fa52b176496ce912d70d09e467f2a9b18384d7c78d1455d4646
+          - name: kind
+            value: task
+        resolver: bundles
+      workspaces:
+        - name: source
+          workspace: repository
     - name: run-e2e-test-suite
       runAfter:
         - build-e2e-image
@@ -143,6 +184,8 @@ spec:
   finally:
     - name: post-test-cleanup
       params:
+        - name: cleanup-image
+          value: $(tasks.build-e2e-cleanup-image.results.IMAGE_REF)
         - name: e2e-run-id
           value: $(context.pipelineRun.uid)
         - name: ociStorage

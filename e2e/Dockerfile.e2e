@@ -1,6 +1,7 @@
 # E2e test runner image for Konflux pulp-e2e-testing pipeline.
 # Pre-installs dependencies shared across all e2e Tekton steps.
 # Base image: UBI 10 minimal (system python3 is 3.12)
+# Build: docker build -f e2e/Dockerfile.e2e -t pulp-e2e:test .
 
 # ORAS CLI + select-oci-auth (Konflux release-service-utils pattern).
 FROM quay.io/konflux-ci/oras:latest@sha256:1cc659b4d30536ec98300ac551739ef36dee345a7dcfe06129fd78abdc3688ac AS oras
@@ -23,7 +24,8 @@ RUN python3 -m pip install --no-cache-dir --upgrade pip && \
     python3 -m pip install --no-cache-dir --root-user-action=ignore \
         -r /opt/e2e/requirements.txt && \
     pulp --version && \
-    python3 -c "import rpm_rs"
+    python3 -c "import rpm_rs" && \
+    rm -rf /root/.cache /tmp/.cache
 
 COPY --from=oras /usr/bin/oras /usr/bin/oras
 COPY --from=oras /usr/bin/yq /usr/bin/yq
@@ -31,4 +33,17 @@ COPY --from=oras /usr/local/bin/select-oci-auth /usr/local/bin/select-oci-auth
 COPY --from=oras /usr/local/bin/get-reference-base /usr/local/bin/get-reference-base
 RUN oras version && yq --version && test -x /usr/local/bin/select-oci-auth && test -x /usr/local/bin/get-reference-base
 
+# Konflux runs as arbitrary UID with HOME=/; runtime cache is workspace-scoped (see pulp_cli_env.py).
+ENV HOME=/tmp
+
+# pulp-tool CLI for the same git revision as this image build (Konflux build-e2e-image + run-e2e-test-suite).
 WORKDIR /workspace
+COPY pyproject.toml uv.lock README.md MANIFEST.in VERSION ./
+COPY pulp_tool/ ./pulp_tool/
+RUN python3 -m pip install --no-cache-dir --root-user-action=ignore uv && \
+    uv export --frozen --no-dev --no-emit-project -o /tmp/pulp-tool-requirements.txt && \
+    python3 -m pip install --no-cache-dir --root-user-action=ignore \
+        -r /tmp/pulp-tool-requirements.txt && \
+    SETUPTOOLS_SCM_PRETEND_VERSION="$(tr -d ' \t\r\n' < VERSION)" python3 -m pip install --no-cache-dir --root-user-action=ignore --no-deps . && \
+    rm -f /tmp/pulp-tool-requirements.txt && \
+    pulp-tool --version

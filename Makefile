@@ -3,7 +3,7 @@
 COMPARE_BRANCH ?= origin/main
 AUDIT_VENV ?= .audit-venv
 
-.PHONY: help install install-dev test test-container test-e2e-container test-diff-coverage lint format check clean audit lock lock-check pre-commit-ci release-please release-publish
+.PHONY: help install install-dev test test-container test-e2e-container test-e2e-cleanup-container test-diff-coverage lint format check clean audit lock lock-check pre-commit-ci release-please release-publish
 
 # Default target
 help:
@@ -13,6 +13,7 @@ help:
 	@echo "  make test         - Run tests with coverage"
 	@echo "  make test-container - Optional local Dockerfile smoke-test (Konflux Tekton builds on PR/push)"
 	@echo "  make test-e2e-container - Optional local Dockerfile.e2e smoke-test (e2e Tekton runner image)"
+	@echo "  make test-e2e-cleanup-container - Optional local Dockerfile.e2e-cleanup smoke-test (e2e finally cleanup image)"
 	@echo "  make test-diff-coverage - make test + diff-cover 100% vs COMPARE_BRANCH (same gate as PR CI)"
 	@echo "  make lint         - Run all linters"
 	@echo "  make format       - Format code with Ruff"
@@ -54,7 +55,7 @@ test:
 test-container:
 	@command -v podman >/dev/null 2>&1 && ENGINE=podman || ENGINE=docker; \
 	./scripts/sync-container-build-args.sh; \
-	$$ENGINE build --build-arg-file .tekton/pulp-tool-container.build-args -t pulp-tool:test . && \
+	$$ENGINE build -f container/Dockerfile --build-arg-file container/pulp-tool-container.build-args -t pulp-tool:test . && \
 	$$ENGINE run --rm pulp-tool:test python3 --version && \
 	$$ENGINE run --rm pulp-tool:test pulp-tool --version && \
 	$$ENGINE run --rm pulp-tool:test pulp-tool --help && \
@@ -63,13 +64,20 @@ test-container:
 
 test-e2e-container:
 	@command -v podman >/dev/null 2>&1 && ENGINE=podman || ENGINE=docker; \
-	$$ENGINE build -f Dockerfile.e2e -t pulp-e2e:test . && \
+	$$ENGINE build -f e2e/Dockerfile.e2e -t pulp-e2e:test . && \
 	$$ENGINE run --rm pulp-e2e:test python3 --version && \
+	$$ENGINE run --rm pulp-e2e:test pulp-tool --version && \
 	$$ENGINE run --rm pulp-e2e:test pulp --help && \
 	$$ENGINE run --rm pulp-e2e:test python3 -c "import rpm_rs; print('rpm-rs OK')" && \
 	$$ENGINE run --rm pulp-e2e:test oras version && \
 	$$ENGINE run --rm pulp-e2e:test yq --version && \
 	$$ENGINE run --rm pulp-e2e:test test -x /usr/local/bin/get-reference-base
+
+test-e2e-cleanup-container:
+	@command -v podman >/dev/null 2>&1 && ENGINE=podman || ENGINE=docker; \
+	$$ENGINE build -f e2e/Dockerfile.e2e-cleanup -t pulp-e2e-cleanup:test . && \
+	$$ENGINE run --rm pulp-e2e-cleanup:test python3 --version && \
+	$$ENGINE run --rm pulp-e2e-cleanup:test pulp --help
 
 test-diff-coverage: test
 	@command -v diff-cover >/dev/null 2>&1 || { echo "diff-cover not found. Run: make install-dev"; exit 1; }
@@ -93,7 +101,7 @@ lint-ruff:
 	python3 -m ruff format --check pulp_tool/ tests/
 
 lint-pylint:
-	python3 -m pylint pulp_tool/ tests/ --errors-only
+	python3 -m pylint --rcfile=config/pylintrc pulp_tool/ tests/ --errors-only
 
 lint-mypy:
 	python3 -m mypy pulp_tool/ tests/ --show-error-codes
@@ -129,12 +137,15 @@ audit:
 clean:
 	rm -rf build/
 	rm -rf dist/
-	rm -rf *.egg-info
+	rm -rf htmlcov/
 	rm -rf .pytest_cache
 	rm -rf .mypy_cache
-	rm -rf htmlcov/
+	rm -rf .ruff_cache
+	rm -rf .hypothesis
 	rm -f coverage.xml
 	rm -f .coverage
+	rm -f .checkton.sarif
+	rm -rf pulp_tool.egg-info
 	find . -type d -name __pycache__ -exec rm -r {} + 2>/dev/null || true
 	find . -type f -name "*.pyc" -delete
 	find . -type f -name "*.pyo" -delete

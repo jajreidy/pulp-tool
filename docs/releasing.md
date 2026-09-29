@@ -10,7 +10,7 @@ Maintainer guide for publishing **`pulp-tool`** to [PyPI](https://pypi.org/proje
 | **Container image (release)** | After **`make release-publish`** and PyPI upload | Manual **Konflux release** (tenant Release Plan / RPA; see [Konflux container build and release](#konflux-container-build-and-release)) |
 | **Python package (PyPI)** | **`v*`** tag on **`main`** | [`.github/workflows/release.yml`](../.github/workflows/release.yml) — build, GitHub Release, PyPI upload |
 
-**Release PR automation** uses [Release Please](https://github.com/googleapis/release-please) run **locally** by maintainers ([`scripts/release-please.sh`](../scripts/release-please.sh)). It opens a Release PR with [`CHANGELOG.md`](../CHANGELOG.md) and [`.release-please-manifest.json`](../.release-please-manifest.json) updates, then syncs [`VERSION`](../VERSION), [`pulp_tool/_version.py`](../pulp_tool/_version.py), and [`.tekton/pulp-tool-container.build-args`](../.tekton/pulp-tool-container.build-args) onto that PR branch via [`scripts/sync-container-build-args.sh`](../scripts/sync-container-build-args.sh).
+**Release PR automation** uses [Release Please](https://github.com/googleapis/release-please) run **locally** by maintainers ([`scripts/release-please.sh`](../scripts/release-please.sh)). It opens a Release PR with [`CHANGELOG.md`](../CHANGELOG.md) and [`.release-please-manifest.json`](../.release-please-manifest.json) updates, then syncs [`VERSION`](../VERSION), [`pulp_tool/_version.py`](../pulp_tool/_version.py), and [`container/pulp-tool-container.build-args`](../container/pulp-tool-container.build-args) onto that PR branch via [`scripts/sync-container-build-args.sh`](../scripts/sync-container-build-args.sh).
 
 Manual tagging (below) remains supported for hotfixes or when Release Please is skipped.
 
@@ -97,7 +97,7 @@ Release Please does **not** run in GitHub Actions for this repository. Maintaine
 
 | File | Role |
 |------|------|
-| [`release-please-config.json`](../release-please-config.json) | `simple` release type (no `pyproject.toml` version bump — [setuptools-scm](../pyproject.toml) reads the git tag), Keep a Changelog sections |
+| [`.github/release-please-config.json`](../.github/release-please-config.json) | `simple` release type (no `pyproject.toml` version bump — [setuptools-scm](../pyproject.toml) reads the git tag), Keep a Changelog sections |
 | [`.release-please-manifest.json`](../.release-please-manifest.json) | Last released version (updated in the release PR) |
 
 Tags use the **`v` prefix** (e.g. **`v1.2.3`**) to match [`.github/workflows/release.yml`](../.github/workflows/release.yml) and [setuptools-scm](../pyproject.toml).
@@ -160,7 +160,7 @@ After the **`v*`** tag is pushed and PyPI / GitHub Release succeed, run the **Ko
 | File | Role |
 |------|------|
 | [`.release-please-manifest.json`](../.release-please-manifest.json) | Source of truth during the release PR (becomes the tag at publish) |
-| [`.tekton/pulp-tool-container.build-args`](../.tekton/pulp-tool-container.build-args) | Konflux `VERSION` / `RELEASE` build args |
+| [`container/pulp-tool-container.build-args`](../container/pulp-tool-container.build-args) | Konflux `VERSION` / `RELEASE` build args |
 | [`VERSION`](../VERSION) | Copied into the Docker build context; setuptools-scm fallback without `.git` |
 | [`pulp_tool/_version.py`](../pulp_tool/_version.py) | Pinned `__version__` for `pulp-tool --version` from a source checkout |
 

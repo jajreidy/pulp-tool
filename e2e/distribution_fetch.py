@@ -20,6 +20,7 @@ from typing import Any
 import httpx
 
 from pulp_tool.api import DistributionClient
+from pulp_tool.utils.checksum_verify import normalize_sha256_hex
 
 RESULTS_JSON_FILENAME = "pulp_results.json"
 LOGGER = logging.getLogger("e2e.distribution_fetch")
@@ -220,14 +221,6 @@ def format_distribution_fetch_exhausted_message(
         f"appear in the Pulp API and in post-test-validation). Compare GET status for SBOM vs "
         f"pulp_results.json on failure."
     )
-
-
-def normalize_sha256_hex(value: str) -> str:
-    """Strip optional ``sha256:`` prefix and return lowercase hex."""
-    normalized = value.strip().lower()
-    if normalized.startswith("sha256:"):
-        normalized = normalized.removeprefix("sha256:")
-    return normalized
 
 
 def _fetch_bytes_once(client: DistributionClient, url: str, *, label: str) -> tuple[int, bytes]:

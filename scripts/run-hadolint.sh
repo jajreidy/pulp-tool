@@ -23,6 +23,15 @@ if [[ ! -x "${HADOLINT_BIN}" ]]; then
     curl -sSfL \
         "https://github.com/hadolint/hadolint/releases/download/${HADOLINT_VERSION}/${HADOLINT_ASSET}" \
         -o "${HADOLINT_BIN}"
+    expected=$(curl -sSfL \
+        "https://github.com/hadolint/hadolint/releases/download/${HADOLINT_VERSION}/${HADOLINT_ASSET}.sha256" \
+        | awk '{print $1}')
+    actual=$(sha256sum "${HADOLINT_BIN}" | awk '{print $1}')
+    if [[ "${actual}" != "${expected}" ]]; then
+        rm -f "${HADOLINT_BIN}"
+        echo "hadolint: checksum mismatch (expected ${expected}, got ${actual})" >&2
+        exit 1
+    fi
     chmod +x "${HADOLINT_BIN}"
 fi
 

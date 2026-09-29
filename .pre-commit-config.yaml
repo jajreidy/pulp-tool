@@ -54,7 +54,7 @@ repos:
 
       - id: pylint
         name: pylint (errors only)
-        entry: pylint pulp_tool tests --errors-only
+        entry: pylint --rcfile=config/pylintrc pulp_tool tests --errors-only
         language: system
         pass_filenames: false
         always_run: true
@@ -81,7 +81,7 @@ repos:
     hooks:
       - id: yamllint
         name: yamllint
-        entry: yamllint --strict .
+        entry: yamllint -c config/yamllint.yml --strict .
         language: system
         pass_filenames: false
         always_run: true
@@ -98,7 +98,7 @@ repos:
       - id: codespell
         args:
           - --skip=uv.lock,htmlcov,.git
-          - --ignore-words=.codespell-ignore-words.txt
+          - --ignore-words=config/codespell-ignore-words.txt
         pass_filenames: false
         always_run: true
 
@@ -108,7 +108,7 @@ repos:
         name: hadolint
         entry: scripts/run-hadolint.sh
         language: script
-        files: ^Dockerfile$
+        files: ^(container/Dockerfile|e2e/Dockerfile\.e2e(-cleanup)?)$
 
   # tekton-lint + test-diff-coverage jobs (PR CI; run on pre-push)
   - repo: local

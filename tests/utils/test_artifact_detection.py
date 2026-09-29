@@ -5,6 +5,7 @@ from unittest.mock import patch
 
 from pulp_tool.models.artifacts import ArtifactMetadata
 from pulp_tool.utils.artifact_detection import (
+    _embedded_artifact_sha256,
     _embedded_artifact_url,
     build_artifact_url,
     categorize_artifacts_by_type,
@@ -139,6 +140,15 @@ class TestExtractArchitectureFromMetadata:
         assert extract_architecture_from_metadata(metadata) == "noarch"
 
 
+class TestEmbeddedArtifactSha256:
+    def test_generic_object_with_sha256_attribute(self) -> None:
+        digest = "a" * 64
+        assert _embedded_artifact_sha256(SimpleNamespace(sha256=f"  {digest}  ")) == digest
+
+    def test_generic_object_without_sha256_returns_none(self) -> None:
+        assert _embedded_artifact_sha256(SimpleNamespace()) is None
+
+
 class TestEmbeddedArtifactUrl:
     """Tests for _embedded_artifact_url generic-object branch (getattr url)."""
 
@@ -195,9 +205,9 @@ class TestCategorizeArtifactsByType:
         }
         result = categorize_artifacts_by_type(artifacts, distros)
         assert len(result) == 3
-        assert ("package.rpm", "https://example.com/rpms/Packages/p/package.rpm", "x86_64", "rpm") in result
-        assert ("build.log", "https://example.com/logs/build.log", "noarch", "log") in result
-        assert ("sbom.json", "https://example.com/sbom/sbom.json", "noarch", "sbom") in result
+        assert ("package.rpm", "https://example.com/rpms/Packages/p/package.rpm", "x86_64", "rpm", None) in result
+        assert ("build.log", "https://example.com/logs/build.log", "noarch", "log", None) in result
+        assert ("sbom.json", "https://example.com/sbom/sbom.json", "noarch", "sbom", None) in result
 
     def test_categorize_unknown_type(self) -> None:
         """Test categorization skips unknown artifact types (lines 120-121)."""
@@ -230,7 +240,7 @@ class TestCategorizeArtifactsByType:
         with patch("pulp_tool.utils.artifact_detection.logging") as mock_logging:
             result = categorize_artifacts_by_type(artifacts, distros, content_types=["rpm"])
             assert len(result) == 1
-            assert ("package.rpm", "https://example.com/rpms/Packages/p/package.rpm", "x86_64", "rpm") in result
+            assert ("package.rpm", "https://example.com/rpms/Packages/p/package.rpm", "x86_64", "rpm", None) in result
             mock_logging.debug.assert_called_once_with(
                 "Skipping %s: content type %s not in filter %s", "build.log", "log", ["rpm"]
             )
@@ -245,7 +255,7 @@ class TestCategorizeArtifactsByType:
         with patch("pulp_tool.utils.artifact_detection.logging") as mock_logging:
             result = categorize_artifacts_by_type(artifacts, distros, archs=["x86_64"])
             assert len(result) == 1
-            assert ("package1.rpm", "https://example.com/rpms/Packages/p/package1.rpm", "x86_64", "rpm") in result
+            assert ("package1.rpm", "https://example.com/rpms/Packages/p/package1.rpm", "x86_64", "rpm", None) in result
             mock_logging.debug.assert_called_once_with(
                 "Skipping %s: architecture %s not in filter %s", "package2.rpm", "aarch64", ["x86_64"]
             )
@@ -266,8 +276,8 @@ class TestCategorizeArtifactsByType:
             artifacts, distros, content_types=["rpm", "log"], archs=["x86_64", "noarch"]
         )
         assert len(result) == 2
-        assert ("package.rpm", "https://example.com/rpms/Packages/p/package.rpm", "x86_64", "rpm") in result
-        assert ("build.log", "https://example.com/logs/build.log", "noarch", "log") in result
+        assert ("package.rpm", "https://example.com/rpms/Packages/p/package.rpm", "x86_64", "rpm", None) in result
+        assert ("build.log", "https://example.com/logs/build.log", "noarch", "log", None) in result
 
     def test_categorize_embedded_urls_only_skips_without_url(self) -> None:
         """Pull mode: no synthesized URL from distributions when url is missing."""

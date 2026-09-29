@@ -9,7 +9,7 @@ pulp-tool **does not** vendor this pipeline; it is fetched via `pipelineRef.reso
 | Param | Default | pulp-tool usage |
 |-------|---------|-----------------|
 | `path-context` | `.` | Repo root |
-| `dockerfile` | `Dockerfile` | Root [Dockerfile](../../Dockerfile) |
+| `dockerfile` | `container/Dockerfile` | [container/Dockerfile](../../container/Dockerfile) (set on pulp-tool PipelineRuns) |
 | `hermetic` | `false` | Network allowed during image build (`dnf`, `pip`) |
 | `prefetch-input` | `''` | No Hermeto/Cachi2 prefetch config in-repo |
 | `skip-checks` | `false` | Post-build scans run on PR and main |
@@ -18,9 +18,9 @@ pulp-tool **does not** vendor this pipeline; it is fetched via `pipelineRef.reso
 | `buildah-format` | `docker` | Docker-format image mediaType |
 | `image-expires-after` | `''` | PR PipelineRun sets `5d` |
 
-pulp-tool PipelineRuns pass: `git-url`, `revision`, `output-image`, **`build-source-image: "true"`**, **`build-args-file: .tekton/pulp-tool-container.build-args`**; PR also passes `image-expires-after`.
+pulp-tool PipelineRuns pass: `git-url`, `revision`, `output-image`, **`build-source-image: "true"`**, **`build-args-file: container/pulp-tool-container.build-args`**; PR also passes `image-expires-after`.
 
-[`scripts/sync-container-build-args.sh`](../../scripts/sync-container-build-args.sh) (run by `make release-please` on the release PR branch) writes `.tekton/pulp-tool-container.build-args`, [`VERSION`](../../VERSION), and [`pulp_tool/_version.py`](../../pulp_tool/_version.py) from [`.release-please-manifest.json`](../../.release-please-manifest.json).
+[`scripts/sync-container-build-args.sh`](../../scripts/sync-container-build-args.sh) (run by `make release-please` on the release PR branch) writes `container/pulp-tool-container.build-args`, [`VERSION`](../../VERSION), and [`pulp_tool/_version.py`](../../pulp_tool/_version.py) from [`.release-please-manifest.json`](../../.release-please-manifest.json).
 
 ## Task flow
 
@@ -82,5 +82,5 @@ A failing `pip install` or bad base image digest typically fails **`build-contai
 | `cancel-in-progress` | `false` | `true` |
 | `output-image` tag | `:latest` | `:on-pr-{{revision}}` |
 | `build-source-image` | `"true"` | `"true"` |
-| `build-args-file` | `.tekton/pulp-tool-container.build-args` | `.tekton/pulp-tool-container.build-args` |
+| `build-args-file` | `container/pulp-tool-container.build-args` | `container/pulp-tool-container.build-args` |
 | `image-expires-after` | (pipeline default empty) | `5d` |

@@ -31,18 +31,19 @@ make test                         # full suite; loop until green
 | Tool | Config / script |
 |------|-----------------|
 | Ruff (E/W/F/I/S) | `pyproject.toml` `[tool.ruff]` |
-| Pylint, Mypy | `pyproject.toml` |
-| yamllint | `.yamllint.yml` |
+| Pylint (errors only) | `config/pylintrc` (+ matching `[tool.pylint.messages_control]` in `pyproject.toml`) |
+| Mypy | `pyproject.toml` |
+| yamllint | `config/yamllint.yml` |
 | hadolint | `scripts/run-hadolint.sh` (DL3041/DL3013 ignored) |
 | Checkton | `scripts/run-checkton.sh` |
-| codespell | `.codespell-ignore-words.txt` |
+| codespell | `config/codespell-ignore-words.txt` |
 
 Per-tool targets: `Makefile`, `.pre-commit-config.yaml`.
 
 ## Other references
 
-- **Agent scaffold:** [AGENTS.md](../../AGENTS.md)
+- **Agent scaffold:** [AGENTS.md](../../docs/AGENTS.md)
 - **Architecture:** [docs/ARCHITECTURE.md](../../docs/ARCHITECTURE.md)
-- **Konflux / upload:** [CLAUDE.md](../../CLAUDE.md)
+- **Konflux / upload:** [CLAUDE.md](../../docs/CLAUDE.md)
 - **Property-based tests:** [tests/README.md](../../tests/README.md)
 - **Pulp upstream:** [pulpproject.org](https://pulpproject.org/)

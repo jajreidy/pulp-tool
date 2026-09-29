@@ -1,4 +1,5 @@
-# Dockerfile for pulp-tool
+# Konflux pulp-tool-container image (build context: repository root).
+# Local: make test-container
 # Base image: UBI 10 minimal (Python 3.12 in builder/runtime stages)
 #
 # Multi-stage layout: builder installs deps (network); runtime copies /app/install
@@ -35,7 +36,7 @@ RUN uv export --frozen --no-dev --no-emit-project -o /tmp/requirements.txt && \
 
 FROM registry.access.redhat.com/ubi10/ubi-minimal:10.2-1789645153
 
-# Konflux passes VERSION/RELEASE via build-args-file (.tekton/pulp-tool-container.build-args).
+# Konflux passes VERSION/RELEASE via build-args-file (container/pulp-tool-container.build-args).
 ARG VERSION=1.0.0
 ARG RELEASE=1
 

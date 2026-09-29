@@ -69,4 +69,4 @@ Prefer Makefile targets over invoking tools directly.
 
 ## Config files
 
-`.pre-commit-config.yaml`, `pyproject.toml`, `.yamllint.yml`, `Makefile` (`make pre-commit-ci`).
+`.pre-commit-config.yaml`, `pyproject.toml`, `config/yamllint.yml`, `Makefile` (`make pre-commit-ci`, `make clean`).

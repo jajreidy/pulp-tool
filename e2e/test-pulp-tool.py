@@ -819,7 +819,6 @@ class E2ETestSuite:
                 "--registry-config",
                 str(registry_config),
                 "pull",
-                "--allow-path-traversal",
                 oci_ref,
                 "-o",
                 str(dest_dir),
@@ -884,6 +883,12 @@ class E2ETestSuite:
         exit_code, output = self.run_command(upload_cmd)
         if not self.assert_exit_code(0, exit_code, "upload-build with ORAS completes successfully"):
             self.log_error(output)
+            if "unauthorized" in output.lower() and "oras" in output.lower():
+                self.log_error(
+                    "ORAS registry push was rejected (not a Pulp API error). On Konflux, link a "
+                    "dockerconfigjson secret with push access to the ociStorage repo to the e2e "
+                    "PipelineRun service account; see e2e/README.md (ORAS registry auth)."
+                )
             raise RuntimeError("upload-build ORAS failed")
         return self._oci_ref_from_pulp_results(build_id)
 

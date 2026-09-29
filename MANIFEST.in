@@ -2,8 +2,6 @@
 include README.md
 include LICENSE
 include pyproject.toml
-include pylintrc
-
 # Include all Python files
 recursive-include pulp_tool *.py
 

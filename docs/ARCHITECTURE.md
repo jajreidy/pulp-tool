@@ -2,7 +2,7 @@
 
 Living overview of **system design, boundaries, and constraints**.
 
-Complements [README.md](../README.md) (users), [AGENTS.md](../AGENTS.md) (agents: start with **Bootstrap**), and [CLAUDE.md](../CLAUDE.md) (Tekton flags and paths). Detailed CLI flags: [cli-reference.md](cli-reference.md).
+Complements [README.md](../README.md) (users), [AGENTS.md](AGENTS.md) (agents: start with **Bootstrap**), and [CLAUDE.md](CLAUDE.md) (Tekton flags and paths). Detailed CLI flags: [cli-reference.md](cli-reference.md).
 
 Template inspiration: [architecture.md](https://architecture.md/) · examples: [awesome-architecture-md](https://github.com/noahbald/awesome-architecture-md).
 
@@ -13,6 +13,24 @@ Template inspiration: [architecture.md](https://architecture.md/) · examples: [
 **pulp-tool** is a Python **library and Click CLI** that talks to a **[Pulp](https://pulpproject.org/)** instance over HTTP (RPM/file content, repositories, uploads, pulls). It is used **interactively** and **inside Konflux** (Tekton) steps to push build artifacts and write metadata consumed by downstream automation.
 
 **Where it fits:** Artifact storage and CI integration for builds that land in Pulp-backed distributions—not a Brew/dist-git/Errata Tool component. Those systems are outside this repo; this client assumes a reachable Pulp API and (in Konflux) Tekton-staged workspaces.
+
+### Repository layout (top level)
+
+| Path | Purpose |
+|------|---------|
+| `pulp_tool/` | Library and Click CLI implementation |
+| `tests/` | Pytest suite and fixtures |
+| `e2e/` | Live Konflux e2e harness, Dockerfiles for e2e/cleanup images |
+| `container/` | Konflux **`pulp-tool-container`** image (`Dockerfile`, build-args) |
+| `docs/` | Architecture, CLI reference, agent docs (`AGENTS.md`, `CLAUDE.md`), ADRs |
+| `skills/` | Portable agent skills (symlinked under `.cursor/skills`, `.agents/skills`) |
+| `scripts/` | Maintainer and CI helper scripts |
+| `.tekton/` | Konflux PipelineRuns and in-repo Tekton tasks |
+| `.github/` | GitHub Actions, PR template, Renovate, Release Please, Codecov config |
+| `config/` | Shared linter config (`pylintrc`, yamllint, codespell ignore list) |
+| Root stubs | `AGENTS.md`, `CLAUDE.md` redirect to `docs/`; `pyproject.toml`, `uv.lock`, `Makefile`, `VERSION` |
+
+Run **`make clean`** to remove local coverage, caches, and egg-info artifacts.
 
 ---
 
@@ -49,7 +67,7 @@ flowchart TB
 
 **Upload data path:** CLI → `PulpHelper.setup_repositories` / `process_uploads` → `UploadOrchestrator` + `upload_service` / `upload_collect` → `PulpClient` → Pulp.
 
-**Konflux:** Tasks invoke the same CLI with mounted config and `/var/workdir/results`; see [CLAUDE.md](../CLAUDE.md) for exact flags and guardrails.
+**Konflux:** Tasks invoke the same CLI with mounted config and `/var/workdir/results`; see [CLAUDE.md](CLAUDE.md) for exact flags and guardrails.
 
 ---
 
@@ -68,7 +86,7 @@ flowchart TB
 | ORAS results sync | `pulp_tool/utils/pulp_results_oci_publish.py` | Shared Pulp + ORAS publish for `upload-build` and pull side-tag |
 | Models | `pulp_tool/models/` | Pydantic: context, Pulp DTOs, results |
 | Utils | `pulp_tool/utils/` | Validation, logging, RPM helpers, session retries |
-| Container | `Dockerfile`, `.tekton/pulp-tool-container-build-*.yaml` | Konflux Tekton → upstream `docker-build-oci-ta` (`buildah-oci-ta`); **changing-pulp-container** skill + [reference.md](../skills/changing-pulp-container/reference.md) |
+| Container | `container/Dockerfile`, `.tekton/pulp-tool-container-build-*.yaml` | Konflux Tekton → upstream `docker-build-oci-ta` (`buildah-oci-ta`); **changing-pulp-container** skill + [reference.md](../skills/changing-pulp-container/reference.md) |
 | Tests | `tests/` (see [tests/README.md](../tests/README.md)), `tests/support/` | Fixtures, TLS helpers |
 
 **Invariant:** `UploadService` delegates to **`PulpHelper`**; do not maintain a second upload implementation.
@@ -95,7 +113,7 @@ No application database: state is on Pulp and in generated JSON artifacts.
 | **Pulp** | Primary API; plugins (e.g. RPM) assumed per deployment |
 | **[pulp-access-controller](https://github.com/pulp/pulp-access-controller)** | Konflux operator: `PulpAccessRequest` → `pulp-access` secret (`cli.toml`, domain `konflux-<namespace>`); uses [terms-based registry](https://access.redhat.com/terms-based-registry/accounts) for credentials (controller-generated, not manual user setup) |
 | **Konflux / Tekton** | Runs `pulp-tool` in `import-to-quay` and `push-artifacts-to-storage` (different config mounts and flags) |
-| **Container registry** | Quay image for tooling (`pulp-tool-container`); ORAS publish uses `select-oci-auth` + Tekton-injected `~/.docker/config.json` (same pattern as import-to-quay Quay push); details in [CLAUDE.md](../CLAUDE.md) |
+| **Container registry** | Quay image for tooling (`pulp-tool-container`); ORAS publish uses `select-oci-auth` + Tekton-injected `~/.docker/config.json` (same pattern as import-to-quay Quay push); details in [CLAUDE.md](CLAUDE.md) |
 | **OAuth / Basic** | Auth modes supported via client config (see [README](../README.md) / Pulp docs) |
 
 ---
@@ -122,7 +140,7 @@ Formal records: [ADR 0000 — how we record decisions](adr/0000-record-architect
 
 ## 8. Known concerns / technical debt
 
-- **Upstream pipeline drift:** Tekton tasks and workspace layout (ORAS, `oras-staging/`) can change; [CLAUDE.md](../CLAUDE.md) must be refreshed when call sites move.
+- **Upstream pipeline drift:** Tekton tasks and workspace layout (ORAS, `oras-staging/`) can change; [CLAUDE.md](CLAUDE.md) must be refreshed when call sites move.
 - **Pagination / broad queries:** Fallback paths that list RPM content and filter client-side can be heavier on large Pulp instances—monitor performance if extended.
 - **Complex `q` filters:** Pulp enforces expression complexity limits; client code chunks queries accordingly.
 

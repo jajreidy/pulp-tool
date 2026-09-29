@@ -122,7 +122,7 @@ This is an **input file** (not output) containing references to pre-existing tes
   --oci-storage 'quay.io/org/repo:tag'
 ```
 
-**ORAS / `--oci-storage`:** Pass the same OCI reference Konflux uses for pipeline param **`ociStorage`** (pulp-tool **`--oci-storage`**). E2e scripts take **`--oci-storage`** on the command line rather than reading an environment variable or requiring `cli.oci_storage` in `cli.toml`. Each ORAS publish uses a **per-build tag** (`scoped_oci_storage` in [`names.py`](names.py)) so multiple `upload-build` cases in one run do not overwrite the same `:latest` manifest. The e2e runner image ([`Dockerfile.e2e`](../Dockerfile.e2e)) and **`pulp-tool-container`** ship **`oras`**, **`select-oci-auth`**, and **`get-reference-base`** (Konflux `oras` image) (registry credentials from `~/.docker/config.json`, same as import-to-quay); local runs need both on `PATH` (or `docker login` so `select-oci-auth` can emit a config) or ORAS cases are skipped. When **`--oci-storage`** is omitted, `post-test-validation.py` and `post-test-cleanup.py` skip ORAS/side-tag build repos (see [`names.py`](names.py)).
+**ORAS / `--oci-storage`:** Pass the same OCI reference Konflux uses for pipeline param **`ociStorage`** (pulp-tool **`--oci-storage`**). E2e scripts take **`--oci-storage`** on the command line rather than reading an environment variable or requiring `cli.oci_storage` in `cli.toml`. Each ORAS publish uses a **per-build tag** (`scoped_oci_storage` in [`names.py`](names.py)) so multiple `upload-build` cases in one run do not overwrite the same `:latest` manifest. The e2e runner image ([`Dockerfile.e2e`](Dockerfile.e2e)) and **`pulp-tool-container`** ship **`oras`**, **`select-oci-auth`**, and **`get-reference-base`** (Konflux `oras` image) (registry credentials from `~/.docker/config.json`, same as import-to-quay); local runs need both on `PATH` (or `docker login` so `select-oci-auth` can emit a config) or ORAS cases are skipped. When **`--oci-storage`** is omitted, `post-test-validation.py` and `post-test-cleanup.py` skip ORAS/side-tag build repos (see [`names.py`](names.py)).
 
 | Test | What it exercises |
 |------|-------------------|
@@ -147,7 +147,7 @@ When adding or extending **`--real-server`** cases in [`test-pulp-tool.py`](test
 3. **Pull phase** — Tests that `pull` (or depend on pulp-content URLs being warm) go **after** `run_distribution_verification_phase()` in `run_all_tests()`. Post-pull assertions (e.g. side-tag `version` / `oci_manifest` after transfer) stay in the pull test or shared pull helper.
 4. **`run_all_tests()` order** — When adding a case, place upload mutations with the other upload `invoke_test_case` calls; do not interleave new uploads after the verification phase unless you intentionally add another verification batch (avoid that—extend the queue instead).
 
-Unit tests for e2e helpers live under [`tests/e2e/`](../tests/e2e/). Agent entry point: [AGENTS.md](../AGENTS.md) (convention 6).
+Unit tests for e2e helpers live under [`tests/e2e/`](../tests/e2e/). Agent entry point: [docs/AGENTS.md](../docs/AGENTS.md) (convention 6).
 
 ---
 
@@ -265,9 +265,10 @@ The e2e test suite runs automatically on pull requests via Konflux Tekton pipeli
 
 1. **init** — Initialize build context
 2. **clone-repository** — Clone the PR branch into `source/`
-3. **build-e2e-image** — Build [`Dockerfile.e2e`](../Dockerfile.e2e) once and push to `output-image` (Quay). Uses Konflux `git-clone` (default checkout under `source/`) and `task-buildah` with `DOCKERFILE=Dockerfile.e2e`, `CONTEXT=.`, plus `HTTP_PROXY`/`NO_PROXY` from `init` (required for image pulls in the cluster).
-4. **run-e2e-test-suite** — Execute the test suite using the digest-pinned image from `build-e2e-image` (`IMAGE_REF`; see task below)
-5. **post-test-cleanup** (finally) — Clean up test resources even if tests or image build fail (stable UBI image, not `build-e2e-image` output)
+3. **build-e2e-image** — Build [`Dockerfile.e2e`](Dockerfile.e2e) once and push to `output-image` (Quay). Uses Konflux `git-clone` (default checkout under `source/`) and `task-buildah` with `DOCKERFILE=e2e/Dockerfile.e2e`, `CONTEXT=.`, plus `HTTP_PROXY`/`NO_PROXY` from `init` (required for image pulls in the cluster).
+4. **build-e2e-cleanup-image** (parallel with step 3) — Build [`Dockerfile.e2e-cleanup`](Dockerfile.e2e-cleanup) and push to `cleanup-output-image` (`python3` + `pulp-cli` only).
+5. **run-e2e-test-suite** — Execute the test suite using the digest-pinned image from `build-e2e-image` (`IMAGE_REF`; see task below)
+6. **post-test-cleanup** (finally) — Clean up test resources even if tests or the runner image build fail (uses `build-e2e-cleanup-image` output, not `build-e2e-image`)
 
 ### Task: [`run-e2e-test-suite`](../.tekton/tasks/run-e2e-test-suite.yaml)
 
@@ -276,7 +277,7 @@ The e2e test suite runs automatically on pull requests via Konflux Tekton pipeli
 1. **pre-test-setup**
    - Run `pre-test.py` to build test RPMs (uses pre-installed `rpm-rs` from the e2e image)
 2. **pulp-tool-test**
-   - `pip install -e` from the cloned PR branch, then run `test-pulp-tool.py --real-server` against the real Pulp server
+   - Run `test-pulp-tool.py --real-server` against the real Pulp server (`pulp-tool` CLI is installed in the e2e image at build time for the same revision as `build-e2e-image`)
    - Uses secrets:
      - `pulp-access` → `/etc/pulp-access/cli.toml` (from [pulp-access-controller](https://github.com/pulp/pulp-access-controller); controller-managed credentials including `username`/`password` for distribution fetches)
      - `pulp-results` → `/etc/pulp-results/pulp-results.json` (fixture file with test repo/dist references)
@@ -289,7 +290,7 @@ The e2e test suite runs automatically on pull requests via Konflux Tekton pipeli
 
 **Runs in `finally` block** (always executes, even if tests or image build fail)
 
-- Uses a stable UBI 10 base image (not the built e2e runner image) and installs `python3` + `pulp-cli` at runtime
+- Uses the image from **build-e2e-cleanup-image** (`Dockerfile.e2e-cleanup`; `pulp-cli` installed at image build). Independent of the runner image so cleanup still runs when **build-e2e-image** fails.
 - Runs `post-test-cleanup.py` to destroy test resources
 
 ### Concurrent pipeline runs
@@ -305,6 +306,25 @@ Shared naming helpers live in [`names.py`](names.py).
 **Note:** `--target-arch-repo` creates globally named RPM repositories (`x86_64`, `aarch64`, `noarch`). Those names are not run-suffixed; concurrent PipelineRuns may contend on them. Build-scoped repos still use the run id suffix.
 
 PR and push PipelineRuns set `concurrency_limit: 1` per pipeline, but run ids still protect against overlap between PR and push pipelines or manual re-runs.
+
+### ORAS registry auth (Konflux)
+
+`test_upload_build_oras_publish` (and other ORAS cases) **push** per-run tags under pipeline param **`ociStorage`** (default `quay.io/redhat-user-workloads/artifact-storage-tenant/tooling/pulp-e2e-testing`). That is separate from **`pulp-access`** (Pulp API only).
+
+The e2e task service account (`build-pipeline-pulp-e2e-testing` on PR/push PipelineRuns) must have **Quay/registry credentials with push permission** to that repository, merged into `~/.docker/config.json` for the test pod—the same model as [import-to-quay `push-to-quay-select-auth`](https://github.com/konflux-ci/rpmbuild-pipeline/blob/main/task/import-to-quay.yaml) and [Konflux registry troubleshooting](https://konflux-ci.dev/docs/troubleshooting/registries/).
+
+Symptoms when auth is missing or read-only:
+
+- Pulp upload steps succeed; the failure is **`oras push failed … unauthorized`** from `upload-build --oci-storage`.
+- `select-oci-auth` is on PATH in the e2e image; a failed `select-oci-auth` would fail earlier with a different message.
+
+**Tenant checklist:** link the correct `dockerconfigjson` / `dockercfg` secret to **`build-pipeline-pulp-e2e-testing`** (or the SA your e2e PipelineRun uses); confirm the robot/account can **push** tags under `…/tooling/pulp-e2e-testing` (e2e uses tags like `e2e-<build-id>-<run>` via [`scoped_oci_storage`](names.py), not only `:latest`).
+
+### `pulp` CLI: `Permission denied` under `/.cache` or `/tmp/.cache`
+
+Konflux pods often run with **`HOME=/`**. `pulp-cli` (pulp-glue) caches the OpenAPI spec under **`$XDG_CACHE_HOME`** (squeezer). A shared **`/tmp/.cache`** is unsafe: image build runs `pulp --version` as root and leaves directories the arbitrary pipeline UID cannot write.
+
+**Runtime:** Tekton sets **`XDG_CACHE_HOME`** under the mounted workspace (`…/test/.pulp-cli-cache` or `…/repository/.pulp-cli-cache`). [`env_for_pulp_cli()`](pulp_cli_env.py) prefers **`TEST_WORKSPACE`** / **`PULP_TOOL_PATH`** and avoids legacy shared `/tmp` cache paths. Images set **`HOME=/tmp`** only and remove root cache dirs after `pulp --version`. Rebuild **both** e2e images after Dockerfile changes.
 
 ---
 
@@ -377,13 +397,14 @@ See [`skills/changing-pulp-container/SKILL.md`](../skills/changing-pulp-containe
 **Runtime dependencies:**
 
 - **Python 3.12+** (as specified in `pyproject.toml`)
-- **[`e2e/requirements.txt`](requirements.txt)** — `pulp-cli` and pinned `rpm-rs` (installed in [`Dockerfile.e2e`](../Dockerfile.e2e); local: `pip install -r e2e/requirements.txt`)
+- **[`e2e/requirements.txt`](requirements.txt)** — `pulp-cli` and pinned `rpm-rs` (installed in [`Dockerfile.e2e`](Dockerfile.e2e); local: `pip install -r e2e/requirements.txt`)
 - **pulp-tool** (installed from source)
 
 **CI environment:**
 
-- [`Dockerfile.e2e`](../Dockerfile.e2e) — UBI 10 image built once per PipelineRun; shared by all e2e steps
-- Runtime: `pip install -e` from the cloned PR branch in the `pulp-tool-test` step only
+- [`Dockerfile.e2e`](Dockerfile.e2e) — UBI 10 runner image built once per PipelineRun; shared by all `run-e2e-test-suite` steps
+- [`Dockerfile.e2e-cleanup`](Dockerfile.e2e-cleanup) — `python3` + `pulp-cli` for the `post-test-cleanup` finally task (built in parallel with the runner image)
+- **`pulp-tool`:** Installed in the image from [`Dockerfile.e2e`](Dockerfile.e2e) during `build-e2e-image` (same commit as the PipelineRun); e2e scripts still run from `PULP_TOOL_PATH` / `source/` for `e2e/*.py`
 - Konflux secrets:
   - `pulp-access` → Pulp CLI config (`cli.toml` with `username`/`password` for distribution auth)
   - `pulp-results` → Fixture file with test repo/distribution references

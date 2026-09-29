@@ -8,6 +8,7 @@ import sys
 from pathlib import Path
 
 from names import file_repos_for_run, normalize_oci_storage, resolve_run_id, rpm_repos_for_run
+from pulp_cli_env import env_for_pulp_cli
 
 
 def verify_content(config_path: Path, repo_type: str, name: str, expected_content: list[str]) -> bool:
@@ -33,7 +34,7 @@ def verify_content(config_path: Path, repo_type: str, name: str, expected_conten
         "--repository",
         name,
     ]
-    result = subprocess.run(cmd, capture_output=True, text=True)
+    result = subprocess.run(cmd, capture_output=True, text=True, env=env_for_pulp_cli())
 
     if result.returncode != 0:
         print(

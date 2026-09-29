@@ -130,6 +130,20 @@ def extract_architecture_from_metadata(metadata: dict[str, Any] | ArtifactMetada
     return metadata.get("labels", {}).get("arch", "noarch")
 
 
+def _embedded_artifact_sha256(metadata: Any) -> str | None:
+    """Return normalized sha256 from artifact metadata when set."""
+    if isinstance(metadata, ArtifactMetadata):
+        raw = metadata.sha256
+    elif isinstance(metadata, dict):
+        raw = metadata.get("sha256")
+    else:
+        raw = getattr(metadata, "sha256", None)
+    if raw is None:
+        return None
+    stripped = str(raw).strip()
+    return stripped if stripped else None
+
+
 def _embedded_artifact_url(metadata: Any) -> str | None:
     """
     Return the download URL from pulp_results.json-style artifact metadata if set.
@@ -156,7 +170,7 @@ def categorize_artifacts_by_type(
     archs: list[str] | None = None,
     *,
     embedded_urls_only: bool = False,
-) -> list[tuple[str, str, str, str]]:
+) -> list[tuple[str, str, str, str, str | None]]:
     """
     Categorize artifacts and prepare download information.
 
@@ -170,7 +184,7 @@ def categorize_artifacts_by_type(
             (``pulp pull`` / artifact results JSON); distribution base URLs are not used.
 
     Returns:
-        List of tuples: (artifact_name, file_url, arch, artifact_type)
+        List of tuples: (artifact_name, file_url, arch, artifact_type, expected_sha256)
     """
     download_tasks = []
 
@@ -210,7 +224,7 @@ def categorize_artifacts_by_type(
             logging.debug("Skipping %s: architecture %s not in filter %s", artifact_name, arch, archs)
             continue
 
-        download_tasks.append((artifact_name, file_url, arch, artifact_type))
+        download_tasks.append((artifact_name, file_url, arch, artifact_type, _embedded_artifact_sha256(metadata)))
 
     return download_tasks
 
