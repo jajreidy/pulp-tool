@@ -82,7 +82,7 @@ Global `--build-id` and `--namespace` are required when using `--build-id` + `--
 | `--oci-storage` | Conditional | OCI registry for ORAS publish (Konflux `ociStorage`); overrides `cli.oci_storage` in `--transfer-dest` |
 | `--snapshot-path` | No | Konflux release snapshot JSON in the trusted-artifact workspace; sets `pulpResultsOciManifest` after ORAS publish |
 
-\* Use `--artifact-location` OR global `--build-id` + `--namespace`. For remote URLs, provide cert/key **or** username/password via `--distribution-config`, `--transfer-dest`, `--config`, or explicit cert/key flags.
+\* Use `--artifact-location` OR global `--build-id` + `--namespace`. For remote URLs, provide cert/key **or** username/password via `--distribution-config`, `--transfer-dest`, `--config`, or explicit cert/key flags, and **`cli.base_url`** in that config (HTTP fetches are limited to that host under `/api/pulp-content/`). OCI manifest refs use ORAS without path-traversal extraction. Every artifact in the results JSON must include **`sha256`**; after each download, pulp-tool verifies the file against that digest and fails the pull on mismatch.
 
 **ORAS-published `pulp_results.json`:** After **`upload-build`** (or side-tag transfer) with **`--oci-storage`**, the authoritative metadata lives in the registry as an OCI artifact (`oci_manifest` on the Pulp copy, or Konflux **`PULP-IMAGE_URL`** + **`PULP-IMAGE_DIGEST`** Tekton results from **`--artifact-results`**). **`pull --artifact-location`** accepts:
 

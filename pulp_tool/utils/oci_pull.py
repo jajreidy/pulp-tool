@@ -31,6 +31,17 @@ def is_oci_artifact_reference(location: str) -> bool:
     return digest.startswith("sha256:")
 
 
+def _ensure_extracted_files_under_dest(dest_dir: Path) -> None:
+    """Reject ORAS layers that write outside ``dest_dir`` (zip-slip style)."""
+    root = dest_dir.resolve()
+    for path in dest_dir.rglob("*"):
+        if not path.is_file():
+            continue
+        resolved = path.resolve()
+        if not resolved.is_relative_to(root):
+            raise OrasPublishError(f"ORAS pull wrote file outside destination directory: {resolved}")
+
+
 def pull_pulp_results_json(oci_manifest_ref: str, dest_dir: Path) -> Path:
     """
     ORAS-pull ``pulp_results.json`` from ``oci_manifest_ref`` into ``dest_dir``.
@@ -46,14 +57,13 @@ def pull_pulp_results_json(oci_manifest_ref: str, dest_dir: Path) -> Path:
         if existing.is_file():
             existing.unlink()
 
-    pull_result = _run_oras(
-        ["pull", "--allow-path-traversal", ref, "-o", str(dest_dir)],
-        ref,
-    )
+    pull_result = _run_oras(["pull", ref, "-o", str(dest_dir)], ref)
     if pull_result.returncode != 0:
         raise OrasPublishError(
             f"oras pull failed (exit {pull_result.returncode}): {pull_result.stderr or pull_result.stdout}"
         )
+
+    _ensure_extracted_files_under_dest(dest_dir)
 
     preferred = dest_dir / RESULTS_JSON_FILENAME
     if preferred.is_file():
@@ -65,4 +75,9 @@ def pull_pulp_results_json(oci_manifest_ref: str, dest_dir: Path) -> Path:
     return json_files[0]
 
 
-__all__ = ["is_oci_artifact_reference", "normalize_oci_artifact_reference", "pull_pulp_results_json"]
+__all__ = [
+    "_ensure_extracted_files_under_dest",
+    "is_oci_artifact_reference",
+    "normalize_oci_artifact_reference",
+    "pull_pulp_results_json",
+]

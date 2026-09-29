@@ -122,9 +122,11 @@ class TestPullCommandFiltersAndTransfer:
             result = runner.invoke(
                 cli,
                 [
+                    "--config",
+                    str(config_path),
                     "pull",
                     "--artifact-location",
-                    "https://example.com/artifact.json",
+                    "https://pulp.example.com/api/pulp-content/ns/build/artifacts/pulp_results.json",
                     "--cert-path",
                     str(cert_path),
                     "--key-path",
@@ -173,7 +175,7 @@ class TestPullCommandFiltersAndTransfer:
                 [
                     "pull",
                     "--artifact-location",
-                    "https://example.com/artifact.json",
+                    "https://pulp.example.com/api/pulp-content/ns/build/artifacts/pulp_results.json",
                     "--transfer-dest",
                     str(config_path),
                 ],
@@ -217,13 +219,17 @@ class TestPullCommandFiltersAndTransfer:
                 [
                     "pull",
                     "--artifact-location",
-                    "https://example.com/artifact.json",
+                    "https://pulp.example.com/api/pulp-content/ns/build/artifacts/pulp_results.json",
                     "--transfer-dest",
                     str(config_path),
                 ],
             )
             assert result.exit_code == 0
-            mock_dist_client.assert_called_once_with(username="myuser", password="mypass")
+            mock_dist_client.assert_called_once_with(
+                username="myuser",
+                password="mypass",
+                pulp_api_base_url="https://pulp.example.com",
+            )
 
     @patch("pulp_tool.cli.pull.DistributionClient")
     @patch("pulp_tool.cli.pull.load_and_validate_artifacts")
@@ -264,7 +270,7 @@ class TestPullCommandFiltersAndTransfer:
                 [
                     "pull",
                     "--artifact-location",
-                    "https://example.com/artifact.json",
+                    "https://pulp.example.com/api/pulp-content/ns/build/artifacts/pulp_results.json",
                     "--transfer-dest",
                     str(transfer_config),
                     "--distribution-config",
@@ -272,7 +278,11 @@ class TestPullCommandFiltersAndTransfer:
                 ],
             )
             assert result.exit_code == 0
-            mock_dist_client.assert_called_once_with(username="distuser", password="distpass")
+            mock_dist_client.assert_called_once_with(
+                username="distuser",
+                password="distpass",
+                pulp_api_base_url="https://pulp.example.com",
+            )
 
     @patch("pulp_tool.cli.pull.load_and_validate_artifacts")
     def test_transfer_config_load_exception(self, mock_load) -> None:
@@ -286,7 +296,7 @@ class TestPullCommandFiltersAndTransfer:
                 [
                     "pull",
                     "--artifact-location",
-                    "https://example.com/artifact.json",
+                    "https://pulp.example.com/api/pulp-content/ns/build/artifacts/pulp_results.json",
                     "--transfer-dest",
                     str(config_path),
                 ],

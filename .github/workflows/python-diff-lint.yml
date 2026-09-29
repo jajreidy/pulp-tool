@@ -20,15 +20,15 @@ jobs:
 
     steps:
       - name: Repository checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Set up Python
-        uses: actions/setup-python@v7
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
           python-version: '3.14'
 
       - name: Cache pip packages
-        uses: actions/cache@v6
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: ~/.cache/pip
           key: ${{ runner.os }}-pip-${{ hashFiles('**/pyproject.toml') }}
@@ -64,17 +64,17 @@ jobs:
 
     steps:
       - name: Repository checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 0
 
       - name: Set up Python
-        uses: actions/setup-python@v7
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
           python-version: '3.14'
 
       - name: Cache pip packages
-        uses: actions/cache@v6
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: ~/.cache/pip
           key: ${{ runner.os }}-pip-${{ hashFiles('**/pyproject.toml') }}
@@ -95,18 +95,31 @@ jobs:
 
     steps:
       - name: Repository checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Install lint tools
+        env:
+          HADOLINT_VERSION: v2.14.0
         run: |
           python -m pip install --upgrade pip
           pip install yamllint codespell
           sudo apt-get update
           sudo apt-get install -y shellcheck
           mkdir -p "$HOME/.local/bin"
-          curl -sSfL https://github.com/hadolint/hadolint/releases/download/v2.14.0/hadolint-Linux-x86_64 \
-            -o "$HOME/.local/bin/hadolint"
-          chmod +x "$HOME/.local/bin/hadolint"
+          HADOLINT_ASSET=hadolint-Linux-x86_64
+          HADOLINT_BIN="$HOME/.local/bin/hadolint"
+          curl -sSfL \
+            "https://github.com/hadolint/hadolint/releases/download/${HADOLINT_VERSION}/${HADOLINT_ASSET}" \
+            -o "${HADOLINT_BIN}"
+          expected=$(curl -sSfL \
+            "https://github.com/hadolint/hadolint/releases/download/${HADOLINT_VERSION}/${HADOLINT_ASSET}.sha256" \
+            | awk '{print $1}')
+          actual=$(sha256sum "${HADOLINT_BIN}" | awk '{print $1}')
+          if [[ "${actual}" != "${expected}" ]]; then
+            echo "::error::hadolint checksum mismatch (expected ${expected}, got ${actual})"
+            exit 1
+          fi
+          chmod +x "${HADOLINT_BIN}"
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
       - name: Yamllint
@@ -128,11 +141,11 @@ jobs:
 
     steps:
       - name: Repository checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 0
 
       - name: Checkton
-        uses: chmeliik/checkton@v0.4.0
+        uses: chmeliik/checkton@c24110a11ba3d4acb90964be57fc1177fed2918f # v0.4.0
         with:
           fail-on-findings: true

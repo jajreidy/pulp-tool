@@ -41,9 +41,9 @@ class TestDownloadTask:
             artifact_type="sbom",
         )
         task_tuple = task.to_tuple()
-        assert task_tuple == ("test.sbom", "https://example.com/sbom/test.sbom", "noarch", "sbom")
+        assert task_tuple == ("test.sbom", "https://example.com/sbom/test.sbom", "noarch", "sbom", None)
         assert isinstance(task_tuple, tuple)
-        assert len(task_tuple) == 4
+        assert len(task_tuple) == 5
 
     def test_download_task_types(self) -> None:
         """Test DownloadTask for different artifact types."""

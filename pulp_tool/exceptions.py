@@ -13,6 +13,10 @@ class PulpToolConfigError(PulpToolError):
     """Invalid or missing configuration."""
 
 
+class PulpToolChecksumError(PulpToolError):
+    """Downloaded bytes do not match pulp_results.json sha256 metadata."""
+
+
 class PulpToolHTTPError(httpx.HTTPError):
     """HTTP response from Pulp was not successful (after receiving a response)."""
 
@@ -21,4 +25,4 @@ class PulpToolHTTPError(httpx.HTTPError):
         self.response = response
 
 
-__all__ = ["PulpToolError", "PulpToolConfigError", "PulpToolHTTPError"]
+__all__ = ["PulpToolChecksumError", "PulpToolError", "PulpToolConfigError", "PulpToolHTTPError"]

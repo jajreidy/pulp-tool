@@ -177,6 +177,7 @@ class TestLoadAndValidateArtifacts:
                 "test.sbom": {
                     "labels": {"build_id": "test-build", "arch": "noarch"},
                     "url": "https://example.com/api/pulp-content/ns/build/sbom/test.sbom",
+                    "sha256": "b" * 64,
                 },
             },
             "distributions": {"rpms": "https://example.com/rpms/", "sbom": "https://example.com/sbom/"},

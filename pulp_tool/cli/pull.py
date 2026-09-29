@@ -206,6 +206,7 @@ def pull(  # pylint: disable=too-many-positional-arguments
     # Auth for fetching source pulp_results (distribution); destination creds live in --transfer-dest.
     username: str | None = None
     password: str | None = None
+    pulp_api_base_url: str | None = None
     auth_config_path = distribution_config or source_config_path or dest_config_path
     if auth_config_path:
         try:
@@ -231,11 +232,27 @@ def pull(  # pylint: disable=too-many-positional-arguments
             if password is None:
                 password = config_manager.get("cli.password")
                 password = str(password) if password is not None else None
+            if pulp_api_base_url is None:
+                loaded_base = config_manager.get("cli.base_url")
+                if loaded_base and isinstance(loaded_base, str) and loaded_base.strip():
+                    pulp_api_base_url = loaded_base.strip()
         except Exception as e:
             logging.debug("Could not load auth from config: %s", e)
 
-    # Check if artifact_location is a remote URL BEFORE creating context
     is_remote = artifact_location.startswith(("http://", "https://")) if artifact_location else False
+    if is_remote and not pulp_api_base_url:
+        for base_config_path in (dest_config_path, source_config_path, distribution_config):
+            if not base_config_path:
+                continue
+            try:
+                base_manager = ConfigManager(base_config_path)
+                base_manager.load()
+                loaded_base = base_manager.get("cli.base_url")
+                if loaded_base and isinstance(loaded_base, str) and loaded_base.strip():
+                    pulp_api_base_url = loaded_base.strip()
+                    break
+            except Exception as e:
+                logging.debug("Could not load cli.base_url from %s: %s", base_config_path, e)
 
     # Validate: for remote URLs, need (cert+key) OR (username+password)
     has_cert = cert_path and key_path
@@ -244,6 +261,11 @@ def pull(  # pylint: disable=too-many-positional-arguments
         logging.error(
             "Authentication required for remote URLs. Provide either (cert, key) or (username, password) "
             "via --distribution-config, --transfer-dest, --config, --cert-path, or --key-path."
+        )
+        sys.exit(1)
+    if is_remote and not pulp_api_base_url:
+        logging.error(
+            "cli.base_url in config is required for remote --artifact-location (fetch allowlist uses Pulp API host)."
         )
         sys.exit(1)
 
@@ -272,9 +294,17 @@ def pull(  # pylint: disable=too-many-positional-arguments
         if has_cert or has_basic:
             logging.info("Initializing distribution client...")
             if has_cert:
-                distribution_client = DistributionClient(cert=cert_path, key=key_path)
+                distribution_client = DistributionClient(
+                    cert=cert_path,
+                    key=key_path,
+                    pulp_api_base_url=pulp_api_base_url,
+                )
             else:
-                distribution_client = DistributionClient(username=username, password=password)
+                distribution_client = DistributionClient(
+                    username=username,
+                    password=password,
+                    pulp_api_base_url=pulp_api_base_url,
+                )
 
         # Load artifact metadata and validate
         artifact_data = load_and_validate_artifacts(args, distribution_client)

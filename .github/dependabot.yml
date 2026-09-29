@@ -21,7 +21,7 @@ updates:
       prefix: "deps"
       include: "scope"
 
-  # GitHub Actions - grouped into a single PR
+  # GitHub Actions - grouped into a single PR (workflows pin uses: to full commit SHAs; FIND-001)
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
@@ -34,3 +34,6 @@ updates:
     labels:
       - "dependencies"
       - "github-actions"
+    commit-message:
+      prefix: "deps"
+      include: "scope"

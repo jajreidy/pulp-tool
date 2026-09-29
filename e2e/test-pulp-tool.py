@@ -819,7 +819,6 @@ class E2ETestSuite:
                 "--registry-config",
                 str(registry_config),
                 "pull",
-                "--allow-path-traversal",
                 oci_ref,
                 "-o",
                 str(dest_dir),

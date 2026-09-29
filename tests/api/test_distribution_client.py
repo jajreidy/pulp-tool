@@ -12,6 +12,7 @@ import pytest
 from httpx import HTTPError
 
 from pulp_tool.api import DistributionClient
+from pulp_tool.exceptions import PulpToolChecksumError
 
 
 class TestDistributionClient:
@@ -82,6 +83,32 @@ class TestDistributionClient:
             mock_logging.info.assert_called()
             mock_open_func.assert_called_once_with("file.rpm", "wb")
 
+    def test_pull_data_verifies_sha256(self, httpx_mock) -> None:
+        import hashlib
+
+        content = b"rpm payload"
+        digest = hashlib.sha256(content).hexdigest()
+        httpx_mock.get("https://example.com/file.rpm").mock(
+            return_value=httpx.Response(200, content=content, headers={"content-length": str(len(content))})
+        )
+        with (
+            patch("os.makedirs"),
+            patch("builtins.open", mock_open()) as mock_open_func,
+        ):
+            client = DistributionClient(cert="cert.pem", key="key.pem")
+            result = client.pull_data("file.rpm", "https://example.com/file.rpm", "x86_64", "rpm", digest)
+            assert result == "file.rpm"
+            mock_open_func.assert_called_once_with("file.rpm", "wb")
+
+    def test_pull_data_sha256_mismatch(self, httpx_mock) -> None:
+        httpx_mock.get("https://example.com/file.rpm").mock(
+            return_value=httpx.Response(200, content=b"wrong", headers={"content-length": "5"})
+        )
+        with patch("os.makedirs"), patch("builtins.open", mock_open()), patch("pathlib.Path.unlink"):
+            client = DistributionClient(cert="cert.pem", key="key.pem")
+            with pytest.raises(PulpToolChecksumError, match="mismatch"):
+                client.pull_data("file.rpm", "https://example.com/file.rpm", "x86_64", "rpm", "a" * 64)
+
     def test_pull_data_async_success(self) -> None:
         """Test successful async data pull."""
         client = DistributionClient(cert="/tmp/cert.pem", key="/tmp/key.pem")
@@ -114,6 +141,20 @@ class TestDistributionClient:
             mock_logging.info.assert_called()
             mock_makedirs.assert_called_once_with("logs/x86_64", exist_ok=True)
             mock_open_func.assert_called_once_with("logs/x86_64/test.log", "wb")
+
+    def test_pull_artifact_enforces_fetch_policy_when_base_url_set(self, httpx_mock) -> None:
+        """SSRF mitigation: remote URLs must match cli.base_url and /api/pulp-content/."""
+        client = DistributionClient(
+            cert="cert.pem",
+            key="key.pem",
+            pulp_api_base_url="https://pulp.example.com",
+        )
+        good = "https://pulp.example.com/api/pulp-content/ns/build/artifacts/pulp_results.json"
+        httpx_mock.get(good).mock(return_value=httpx.Response(200, json={"artifacts": {}}))
+        assert client.pull_artifact(good).status_code == 200
+
+        with pytest.raises(ValueError, match="host other than"):
+            client.pull_artifact("https://other.example/api/pulp-content/ns/x")
 
     def test_pull_artifact_with_username_password(self, httpx_mock) -> None:
         """Test pull_artifact with Basic Auth (username/password)."""

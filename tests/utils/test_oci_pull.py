@@ -33,7 +33,9 @@ class TestPullPulpResultsJson:
     def test_pull_success_prefers_pulp_results_filename(self, tmp_path: Path) -> None:
         dest = tmp_path / "out"
 
-        def _fake_oras(_args: list[str], _target: str, *, cwd: str | Path | None = None) -> MagicMock:
+        def _fake_oras(args: list[str], _target: str, *, cwd: str | Path | None = None) -> MagicMock:
+            assert "pull" in args
+            assert "--allow-path-traversal" not in args
             dest.mkdir(parents=True, exist_ok=True)
             (dest / "pulp_results.json").write_text("{}", encoding="utf-8")
             return MagicMock(returncode=0, stdout="", stderr="")

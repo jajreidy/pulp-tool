@@ -40,7 +40,11 @@ class TestArtifactJsonResponsePullLoad:
 
     def test_omitted_distributions_optional(self) -> None:
         aj = ArtifactJsonResponse.model_validate(
-            {"artifacts": {"x.rpm": {"labels": {}, "url": "https://pulp.example/x.rpm"}}}
+            {
+                "artifacts": {
+                    "x.rpm": {"labels": {}, "url": "https://pulp.example/x.rpm", "sha256": "cd" * 32},
+                },
+            }
         )
         assert aj.distributions is None
         aj.validate_for_pull()
@@ -60,7 +64,7 @@ class TestArtifactJsonResponsePullLoad:
         with pytest.raises(ValueError, match="non-empty http"):
             aj.validate_for_pull()
 
-    def test_sha256_none_and_whitespace_normalized(self) -> None:
+    def test_sha256_none_and_whitespace_normalized_at_parse(self) -> None:
         aj = ArtifactJsonResponse.model_validate(
             {
                 "artifacts": {
@@ -69,9 +73,15 @@ class TestArtifactJsonResponsePullLoad:
                 }
             }
         )
-        aj.validate_for_pull()
         assert aj.artifacts["a.rpm"].sha256 is None
         assert aj.artifacts["b.rpm"].sha256 is None
+
+    def test_missing_sha256_rejected_on_validate_for_pull(self) -> None:
+        aj = ArtifactJsonResponse.model_validate(
+            {"artifacts": {"a.rpm": {"labels": {}, "url": "https://x/a.rpm"}}},
+        )
+        with pytest.raises(ValueError, match="must include sha256"):
+            aj.validate_for_pull()
 
     def test_extra_top_level_field_rejected(self) -> None:
         with pytest.raises(ValidationError):

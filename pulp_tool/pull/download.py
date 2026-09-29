@@ -15,7 +15,7 @@ import httpx
 from pydantic import AnyHttpUrl, TypeAdapter, ValidationError
 
 from ..api import DistributionClient, PulpClient
-from ..exceptions import PulpToolError
+from ..exceptions import PulpToolChecksumError, PulpToolError
 from ..models.artifacts import ArtifactData, ArtifactJsonResponse, DownloadTask
 from ..models.context import PullContext
 from ..models.repository import RepositoryRefs
@@ -70,8 +70,9 @@ def _categorize_artifacts(
             file_url=TypeAdapter(AnyHttpUrl).validate_python(url),
             arch=arch,
             artifact_type=artifact_type,
+            expected_sha256=expected_sha256,
         )
-        for name, url, arch, artifact_type in categorized
+        for name, url, arch, artifact_type, expected_sha256 in categorized
     ]
 
     return download_tasks
@@ -314,7 +315,7 @@ def download_artifacts_concurrently(
 
                 completed += 1
 
-            except httpx.HTTPError as e:
+            except (httpx.HTTPError, PulpToolChecksumError) as e:
                 failed += 1
                 logging.error("Failed to download %s: %s", artifact_name, e)
                 logging.debug("Traceback: %s", traceback.format_exc())

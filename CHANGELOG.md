@@ -44,6 +44,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Security (Glasswing / supply chain):** Pin GitHub Actions to full commit SHAs (FIND-001); workflow-level least-privilege `permissions` on security scanning (FIND-003); verify hadolint release binaries with published SHA256 in CI and `scripts/run-hadolint.sh` (FIND-002 analogue—no `tkn` in this repo); Tekton e2e tasks add defense-in-depth `securityContext` on step templates (FIND-004); `pull` SSRF allowlist, ORAS extraction hardening, and mandatory per-artifact SHA256 verification ([d69b7ba](https://github.com/konflux-ci/pulp-tool/commit/d69b7ba))
 - **Breaking:** Side-tag RPM repository and distribution use global path `side-tag-{tag}` (not `{build_id}/side-tag-{tag}`), so multiple source builds can promote into the same side-tag; `origin_build_id` labels record provenance; Konflux e2e validation/cleanup keys updated accordingly; existing build-scoped side-tag repos are not used by new runs ([cea604e](https://github.com/konflux-ci/pulp-tool/commit/cea604e))
 - Maintainer release documentation: canonical flow `make release-please` → `make release-publish` → Konflux release; version-file table; updates in `docs/releasing.md`, `CONTRIBUTING.md`, `README.md`, and agent skills
 - `scripts/sync-container-build-args.sh` (run by `make release-please` on the release PR branch or `make test-container` locally) syncs `.tekton/pulp-tool-container.build-args`, `VERSION`, and `pulp_tool/_version.py` from `.release-please-manifest.json`
