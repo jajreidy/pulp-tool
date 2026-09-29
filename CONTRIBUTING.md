@@ -50,15 +50,16 @@ make test      # Run tests
 make lint      # Run linters
 make format    # Format code
 make check     # Run all checks
+make clean     # Remove coverage, caches, and local build artifacts
 ```
 
 ### Documentation for coding agents
 
-- **[AGENTS.md](AGENTS.md)** — canonical agent scaffold; **§ Bootstrap** lists the read-first order (minimizes context thrash).
+- **[AGENTS.md](docs/AGENTS.md)** — canonical agent scaffold; **§ Bootstrap** lists the read-first order (minimizes context thrash).
 - **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** — system design, code map, diagrams, invariants, glossary (living doc).
 - **Cursor rules:** [`.cursor/rules/llm-development-guidelines.mdc`](.cursor/rules/llm-development-guidelines.mdc) (always-on essentials), [`.cursor/rules/llm-development-guidelines-deep.mdc`](.cursor/rules/llm-development-guidelines-deep.mdc) (skill index).
 - **Agent skills:** [`skills/`](skills/) — portable on-demand workflows ([`skills/README.md`](skills/README.md)); auto-discovered via [`.cursor/skills/`](.cursor/skills/) and [`.agents/skills/`](.agents/skills/) symlinks for Cursor and other agentskills.io clients.
-- **[CLAUDE.md](CLAUDE.md)** — Konflux/Tekton downstream contracts (paths, flags, task YAMLs), regression checklist; complements **AGENTS.md** / **ARCHITECTURE.md**.
+- **[CLAUDE.md](docs/CLAUDE.md)** — Konflux/Tekton downstream contracts (paths, flags, task YAMLs), regression checklist; complements **AGENTS.md** / **ARCHITECTURE.md**.
 - Optional: [AgentReady](https://github.com/ambient-code/agentready) (`agentready assess .`) with [.agentready-config.yaml](.agentready-config.yaml).
 
 ### Dependency lock file
@@ -74,9 +75,9 @@ pip install -e ".[dev]"
 make lock
 ```
 
-Commit the updated **`uv.lock`**. Normal installs remain **`pip install -e ".[dev]"`** from pyproject; the lockfile supports reproducible CI, audits, and the Konflux container image. **`setup.py`** is a thin shim only — all dependency ranges and package metadata are in **`pyproject.toml`**. The **`Dockerfile`** exports runtime pins from **`uv.lock`** (`uv export --frozen --no-dev`) and installs with **`pip`**.
+Commit the updated **`uv.lock`**. Normal installs remain **`pip install -e ".[dev]"`** from pyproject; the lockfile supports reproducible CI, audits, and the Konflux container image. **`setup.py`** is a thin shim only — all dependency ranges and package metadata are in **`pyproject.toml`**. The Konflux image [`container/Dockerfile`](container/Dockerfile) exports runtime pins from **`uv.lock`** (`uv export --frozen --no-dev`) and installs with **`pip`**.
 
-**Mintmaker / Renovate** (`renovate.json`) bumps **`pyproject.toml`** and regenerates **`uv.lock`** in the same PR (`pep621` manager + `lockFileMaintenance`). CI runs **`make lock-check`** (`uv lock --check`) so the two files cannot drift on merge.
+**Mintmaker / Renovate** ([`.github/renovate.json`](.github/renovate.json)) bumps **`pyproject.toml`** and regenerates **`uv.lock`** in the same PR (`pep621` manager + `lockFileMaintenance`). CI runs **`make lock-check`** (`uv lock --check`) so the two files cannot drift on merge.
 
 ### Commit messages
 
@@ -119,7 +120,7 @@ make lint
 # Or individually:
 ruff check pulp_tool/ tests/
 ruff format --check pulp_tool/ tests/
-pylint pulp_tool/ tests/ --errors-only
+pylint --rcfile=config/pylintrc pulp_tool/ tests/ --errors-only
 mypy pulp_tool/ tests/ --show-error-codes
 ```
 

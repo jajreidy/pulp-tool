@@ -27,6 +27,8 @@ spec:
       value: "{{revision}}"
     - name: output-image
       value: quay.io/redhat-user-workloads/artifact-storage-tenant/tooling/pulp-e2e-testing:latest
+    - name: cleanup-output-image
+      value: quay.io/redhat-user-workloads/artifact-storage-tenant/tooling/pulp-e2e-testing:cleanup-latest
     - name: image-expires-after
       value: 5d
   workspaces:

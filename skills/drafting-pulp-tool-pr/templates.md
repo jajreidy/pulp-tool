@@ -17,7 +17,7 @@ Reproduce `.github/PULL_REQUEST_TEMPLATE.md` exactly:
 
 - [ ] `make test` and `make test-diff-coverage` (after `git fetch origin`) pass locally, or `make pre-commit-ci` after green tests
 - [ ] `pre-commit run --all-files` passes (commit stage); `pre-commit run --hook-stage pre-push --all-files` passes when opening a PR
-- [ ] If this changes `upload`, global CLI flags, SBOM/artifact handling, or the container image: [CLAUDE.md](CLAUDE.md) Konflux sections and linked Tekton YAMLs were considered
+- [ ] If this changes `upload`, global CLI flags, SBOM/artifact handling, or the container image: [CLAUDE.md](docs/CLAUDE.md) Konflux sections and linked Tekton YAMLs were considered
 
 ## Notes for reviewers
 

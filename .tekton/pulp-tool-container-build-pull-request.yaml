@@ -30,7 +30,9 @@ spec:
   - name: build-source-image
     value: "true"
   - name: build-args-file
-    value: .tekton/pulp-tool-container.build-args
+    value: container/pulp-tool-container.build-args
+  - name: dockerfile
+    value: container/Dockerfile
   pipelineRef:
     resolver: git
     params:

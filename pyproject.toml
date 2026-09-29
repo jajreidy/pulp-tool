@@ -112,6 +112,7 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
+"e2e/pulp_cli_env.py" = ["S108"]  # intentional /tmp fallbacks for Tekton arbitrary UID
 "tests/**" = [
     "S101",  # assert in tests
     "S105",  # hardcoded passwords in test fixtures
@@ -124,7 +125,16 @@ ignore = [
 quote-style = "double"
 
 [tool.pylint.messages_control]
-disable = ["import-error", "cyclic-import"]
+# Keep in sync with config/pylintrc — Pydantic models and unittest.mock cause no-member noise.
+disable = [
+    "import-error",
+    "cyclic-import",
+    "no-member",
+    "unsupported-assignment-operation",
+    "unsubscriptable-object",
+    "unsupported-membership-test",
+    "assigning-non-slot",
+]
 
 [tool.pylint.format]
 max-line-length = 120

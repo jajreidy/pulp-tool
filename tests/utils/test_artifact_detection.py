@@ -5,6 +5,7 @@ from unittest.mock import patch
 
 from pulp_tool.models.artifacts import ArtifactMetadata
 from pulp_tool.utils.artifact_detection import (
+    _embedded_artifact_sha256,
     _embedded_artifact_url,
     build_artifact_url,
     categorize_artifacts_by_type,
@@ -137,6 +138,15 @@ class TestExtractArchitectureFromMetadata:
         """Test extracting architecture from dict without arch."""
         metadata: dict[str, dict[str, str]] = {"labels": {}}
         assert extract_architecture_from_metadata(metadata) == "noarch"
+
+
+class TestEmbeddedArtifactSha256:
+    def test_generic_object_with_sha256_attribute(self) -> None:
+        digest = "a" * 64
+        assert _embedded_artifact_sha256(SimpleNamespace(sha256=f"  {digest}  ")) == digest
+
+    def test_generic_object_without_sha256_returns_none(self) -> None:
+        assert _embedded_artifact_sha256(SimpleNamespace()) is None
 
 
 class TestEmbeddedArtifactUrl:

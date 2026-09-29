@@ -40,3 +40,10 @@ def test_verify_file_sha256(tmp_path) -> None:
     path.write_bytes(b"rpm-bytes")
     digest = hashlib.sha256(b"rpm-bytes").hexdigest()
     verify_file_sha256(path, digest, label="rpm")
+
+
+def test_verify_file_sha256_mismatch(tmp_path) -> None:
+    path = tmp_path / "blob.bin"
+    path.write_bytes(b"rpm-bytes")
+    with pytest.raises(PulpToolChecksumError, match="mismatch"):
+        verify_file_sha256(path, "a" * 64, label="rpm")

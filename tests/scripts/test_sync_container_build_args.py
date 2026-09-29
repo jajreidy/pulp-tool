@@ -40,7 +40,7 @@ def test_sync_container_build_args_writes_version_files(tmp_path: Path) -> None:
     assert result.returncode == 0, result.stderr or result.stdout
 
     assert build_args.read_text(encoding="utf-8") == "VERSION=2.3.4\nRELEASE=1\n"
-    assert '__version__ = "2.3.4"' in version_file.read_text(encoding="utf-8")
+    assert version_file.read_text(encoding="utf-8").strip() == "2.3.4"
 
     module_text = version_module.read_text(encoding="utf-8")
     assert "__version__ = version = '2.3.4'" in module_text

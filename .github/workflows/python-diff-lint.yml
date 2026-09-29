@@ -52,7 +52,7 @@ jobs:
         run: ruff format --check pulp_tool tests
 
       - name: Pylint (errors only)
-        run: pylint pulp_tool tests --errors-only
+        run: pylint --rcfile=config/pylintrc pulp_tool tests --errors-only
 
       - name: Mypy
         run: mypy pulp_tool tests --show-error-codes
@@ -123,16 +123,19 @@ jobs:
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
       - name: Yamllint
-        run: yamllint --strict .
+        run: yamllint -c config/yamllint.yml --strict .
 
       - name: ShellCheck
         run: shellcheck scripts/*.sh
 
       - name: Codespell
-        run: codespell --skip=uv.lock,htmlcov,.git --ignore-words=.codespell-ignore-words.txt
+        run: codespell --skip=uv.lock,htmlcov,.git --ignore-words=config/codespell-ignore-words.txt
 
       - name: Hadolint
-        run: hadolint --ignore DL3041 --ignore DL3013 Dockerfile
+        run: |
+          hadolint --ignore DL3041 --ignore DL3013 container/Dockerfile
+          hadolint --ignore DL3041 --ignore DL3013 e2e/Dockerfile.e2e
+          hadolint --ignore DL3041 --ignore DL3013 e2e/Dockerfile.e2e-cleanup
 
   tekton-lint:
     name: Tekton embedded scripts (Checkton)

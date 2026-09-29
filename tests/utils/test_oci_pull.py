@@ -6,6 +6,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from pulp_tool.utils.oci_pull import (
+    _ensure_extracted_files_under_dest,
     is_oci_artifact_reference,
     normalize_oci_artifact_reference,
     pull_pulp_results_json,
@@ -27,6 +28,25 @@ def test_is_oci_artifact_reference_rejects_http_and_bare_repo() -> None:
     assert not is_oci_artifact_reference("https://pulp.example/artifacts/pulp_results.json")
     assert not is_oci_artifact_reference("quay.io/ns/repo")
     assert not is_oci_artifact_reference("/tmp/pulp_results.json")
+
+
+class TestEnsureExtractedFilesUnderDest:
+    def test_skips_non_file_paths(self, tmp_path: Path) -> None:
+        dest = tmp_path / "out"
+        sub = dest / "nested"
+        sub.mkdir(parents=True)
+        (sub / "pulp_results.json").write_text("{}", encoding="utf-8")
+        _ensure_extracted_files_under_dest(dest)
+
+    def test_rejects_file_outside_destination(self, tmp_path: Path) -> None:
+        dest = tmp_path / "out"
+        dest.mkdir()
+        outside = tmp_path / "outside.json"
+        outside.write_text("{}", encoding="utf-8")
+        link = dest / "escape"
+        link.symlink_to(outside)
+        with pytest.raises(OrasPublishError, match="outside destination"):
+            _ensure_extracted_files_under_dest(dest)
 
 
 class TestPullPulpResultsJson:

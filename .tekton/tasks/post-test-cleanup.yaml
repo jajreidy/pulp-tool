@@ -7,10 +7,11 @@ spec:
   params:
     - name: cleanup-image
       description: >-
-        Stable base image for post-test cleanup. Installs python3 and pulp-cli
-        at runtime so cleanup can run even when build-e2e-image fails.
+        Image with python3 and pulp-cli (Dockerfile.e2e-cleanup). Built in parallel
+        with the e2e runner image so cleanup can run when build-e2e-image fails.
       type: string
-      default: registry.access.redhat.com/ubi10/ubi-minimal:10.2
+      default: >-
+        quay.io/redhat-user-workloads/artifact-storage-tenant/tooling/pulp-e2e-testing:cleanup-latest
     - name: e2e-run-id
       description: Unique suffix for build-scoped Pulp resources (PipelineRun UID from the pipeline)
       type: string
@@ -30,6 +31,10 @@ spec:
       seccompProfile:
         type: RuntimeDefault
     env:
+      - name: HOME
+        value: /tmp
+      - name: XDG_CACHE_HOME
+        value: $(workspaces.repository.path)/.pulp-cli-cache
       - name: PULP_CLI_CONFIG
         value: /etc/pulp-access/cli.toml
       - name: PULP_TOOL_PATH
@@ -41,10 +46,6 @@ spec:
       script: |
         #!/usr/bin/env sh
         set -eu
-
-        microdnf install -y python3 python3-pip
-        microdnf clean all
-        pip3 install --no-cache-dir --root-user-action=ignore pulp-cli
 
         python3 "${PULP_TOOL_PATH}/e2e/post-test-cleanup.py" \
           --config "${PULP_CLI_CONFIG}" \

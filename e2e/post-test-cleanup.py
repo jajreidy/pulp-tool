@@ -7,6 +7,7 @@ import sys
 from pathlib import Path
 
 from names import file_repo_names_for_cleanup, normalize_oci_storage, resolve_run_id, rpm_repo_names_for_cleanup
+from pulp_cli_env import env_for_pulp_cli
 
 
 def destroy_resource(config_path: Path, repo_type: str, resource: str, name: str, dry_run: bool = False) -> bool:
@@ -37,7 +38,7 @@ def destroy_resource(config_path: Path, repo_type: str, resource: str, name: str
         print(f"[DRY RUN] Would destroy {repo_type} {resource}: {name}")
         return True
 
-    result = subprocess.run(cmd, capture_output=True, text=True)
+    result = subprocess.run(cmd, capture_output=True, text=True, env=env_for_pulp_cli())
     if result.returncode != 0:
         print(
             f"Warning: Failed to destroy {repo_type} {resource} '{name}': {result.stderr}",
@@ -98,7 +99,7 @@ def cleanup_repos(config_path: Path, run_id: str | None, oci_storage: str | None
         # Cleanup abandoned packages and files
         print("Cleaning up orphaned content.")
         cmd = ["pulp", "--config", str(config_path), "orphan", "cleanup"]
-        result = subprocess.run(cmd, capture_output=True, text=True)
+        result = subprocess.run(cmd, capture_output=True, text=True, env=env_for_pulp_cli())
         if result.returncode != 0:
             print(
                 f"Warning: Failed to cleanup orphaned content: {result.stderr}",

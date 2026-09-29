@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Sync release version from .release-please-manifest.json into versioned artifacts:
-#   - .tekton/pulp-tool-container.build-args (Konflux VERSION/RELEASE)
+#   - container/pulp-tool-container.build-args (Konflux VERSION/RELEASE)
 #   - VERSION (Dockerfile / setuptools-scm fallback in image build)
 #   - pulp_tool/_version.py (imported __version__ on main between release PR and tag)
 #
@@ -13,7 +13,7 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_ROOT"
 
 MANIFEST_FILE="${RELEASE_PLEASE_MANIFEST_FILE:-.release-please-manifest.json}"
-OUT_FILE="${CONTAINER_BUILD_ARGS_FILE:-.tekton/pulp-tool-container.build-args}"
+OUT_FILE="${CONTAINER_BUILD_ARGS_FILE:-container/pulp-tool-container.build-args}"
 VERSION_FILE="${PULP_TOOL_VERSION_FILE:-VERSION}"
 VERSION_MODULE_FILE="${PULP_TOOL_VERSION_MODULE_FILE:-pulp_tool/_version.py}"
 RELEASE="${CONTAINER_RELEASE:-1}"
@@ -39,11 +39,8 @@ if not version or not isinstance(version, str):
 version = version.strip()
 
 Path(out_file).write_text(f"VERSION={version}\nRELEASE={release}\n", encoding="utf-8")
-Path(version_file).write_text(
-    "# Version information for pulp-tool package\n"
-    f'__version__ = "{version}"\n',
-    encoding="utf-8",
-)
+# Plain semver for Docker builds (SETUPTOOLS_SCM_PRETEND_VERSION) and setuptools-scm without .git.
+Path(version_file).write_text(f"{version}\n", encoding="utf-8")
 
 match = re.match(r"^(\d+)\.(\d+)\.(\d+)(.*)$", version)
 if not match:

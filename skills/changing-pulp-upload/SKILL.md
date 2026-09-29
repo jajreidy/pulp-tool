@@ -11,16 +11,16 @@ description: >-
 
 ## Overview
 
-Downstream Tekton pipelines invoke `pulp-tool upload` with fixed paths and flags. Changes must stay compatible with **both** call sites. **Source of truth:** [CLAUDE.md](../../CLAUDE.md). **Code map:** [docs/ARCHITECTURE.md](../../docs/ARCHITECTURE.md) — keep logic in `PulpHelper` / `UploadService` only.
+Downstream Tekton pipelines invoke `pulp-tool upload` with fixed paths and flags. Changes must stay compatible with **both** call sites. **Source of truth:** [CLAUDE.md](../../docs/CLAUDE.md). **Code map:** [docs/ARCHITECTURE.md](../../docs/ARCHITECTURE.md) — keep logic in `PulpHelper` / `UploadService` only.
 
 ## Workflow
 
-1. Read [CLAUDE.md](../../CLAUDE.md) (two pipelines, regression checklist).
+1. Read [CLAUDE.md](../../docs/CLAUDE.md) (two pipelines, regression checklist).
 2. Re-open current upstream task YAML on GitHub (pipelines evolve):
    - [import-to-quay.yaml](https://github.com/konflux-ci/rpmbuild-pipeline/blob/main/task/import-to-quay.yaml) — step `push-to-pulp-select-auth`
    - [push-artifacts-to-storage.yaml](https://github.com/konflux-ci/release-service-catalog/blob/development/tasks/managed/push-artifacts-to-storage/push-artifacts-to-storage.yaml) — step `push-build-to-artifact-storage`
 3. Implement + extend tests for every checklist item touched.
-4. Update [CLAUDE.md](../../CLAUDE.md) if invocation, paths, or flags change.
+4. Update [CLAUDE.md](../../docs/CLAUDE.md) if invocation, paths, or flags change.
 5. Update [docs/cli-reference.md](../../docs/cli-reference.md) and [docs/ARCHITECTURE.md](../../docs/ARCHITECTURE.md) when behavior or layout changes.
 
 ## Regression checklist
@@ -57,4 +57,4 @@ Before merge, verify (extend tests where applicable):
 | Upload flags | `--parent-package`, `--sbom-path`, `--artifact-results` | `--rpm-path` only |
 | Missing config | Skip upload; empty Tekton results | Exit 0 without `pulp-tool` |
 
-Full command examples and secrets behavior: [CLAUDE.md](../../CLAUDE.md).
+Full command examples and secrets behavior: [CLAUDE.md](../../docs/CLAUDE.md).

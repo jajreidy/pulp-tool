@@ -6,6 +6,6 @@ alwaysApply: true
 # Konflux ecosystem (downstream)
 
 - **Platform:** [Konflux documentation](https://konflux-ci.dev/docs/) — Tekton pipelines, tenants, releases.
-- **When changing** `upload`, global CLI, SBOM/artifact paths, or config paths in Tekton tasks that *run* pulp-tool: load **changing-pulp-upload** ([`skills/changing-pulp-upload/`](../../skills/changing-pulp-upload/)) and **[CLAUDE.md](../../CLAUDE.md)**.
-- **When changing** `Dockerfile` or `.tekton/` container build PipelineRuns: load **changing-pulp-container** ([`skills/changing-pulp-container/`](../../skills/changing-pulp-container/)); Konflux builds the image — do not add GitHub Actions container jobs.
-- **Workflow / code map:** [AGENTS.md](../../AGENTS.md) · [docs/ARCHITECTURE.md](../../docs/ARCHITECTURE.md)
+- **When changing** `upload`, global CLI, SBOM/artifact paths, or config paths in Tekton tasks that *run* pulp-tool: load **changing-pulp-upload** ([`skills/changing-pulp-upload/`](../../skills/changing-pulp-upload/)) and **[CLAUDE.md](../../docs/CLAUDE.md)**.
+- **When changing** `container/Dockerfile` or `.tekton/` container build PipelineRuns: load **changing-pulp-container** ([`skills/changing-pulp-container/`](../../skills/changing-pulp-container/)); Konflux builds the image — do not add GitHub Actions container jobs.
+- **Workflow / code map:** [AGENTS.md](../../docs/AGENTS.md) · [docs/ARCHITECTURE.md](../../docs/ARCHITECTURE.md)

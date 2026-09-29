@@ -313,6 +313,26 @@ class TestPullCommandFiltersAndTransfer:
         mock_load.assert_not_called()
 
     @patch("pulp_tool.cli.pull.load_and_validate_artifacts")
+    def test_pull_remote_missing_cli_base_url(self, mock_load) -> None:
+        """Remote pulp-content URL requires cli.base_url for fetch allowlist."""
+        runner = CliRunner()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config_path = Path(tmpdir) / "config.toml"
+            config_path.write_text('[cli]\nusername = "u"\npassword = "p"\n')
+            result = runner.invoke(
+                cli,
+                [
+                    "pull",
+                    "--artifact-location",
+                    "https://pulp.example.com/api/pulp-content/ns/build/artifacts/pulp_results.json",
+                    "--transfer-dest",
+                    str(config_path),
+                ],
+            )
+        assert result.exit_code == 1
+        mock_load.assert_not_called()
+
+    @patch("pulp_tool.cli.pull.load_and_validate_artifacts")
     def test_transfer_http_error(self, mock_load) -> None:
         """Test transfer with HTTP error."""
         runner = CliRunner()

@@ -1,0 +1,22 @@
+# E2e post-test-cleanup image for Konflux pulp-e2e-testing pipeline (finally block).
+# python3 + pulp-cli only — independent of Dockerfile.e2e so cleanup can run when the runner image build fails.
+# Build: docker build -f e2e/Dockerfile.e2e-cleanup -t pulp-e2e-cleanup:test .
+
+FROM registry.access.redhat.com/ubi10/ubi-minimal:10.2-1789645153
+
+RUN microdnf install -y \
+        python3 \
+        python3-pip && \
+    microdnf clean all
+
+COPY e2e/requirements-cleanup.txt /opt/e2e/requirements-cleanup.txt
+RUN python3 -m pip install --no-cache-dir --upgrade pip && \
+    python3 -m pip install --no-cache-dir --root-user-action=ignore \
+        -r /opt/e2e/requirements-cleanup.txt && \
+    pulp --version && \
+    rm -rf /root/.cache /tmp/.cache
+
+# Konflux runs as arbitrary UID with HOME=/; runtime cache is workspace-scoped (see pulp_cli_env.py).
+ENV HOME=/tmp
+
+WORKDIR /workspace
