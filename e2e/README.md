@@ -134,6 +134,8 @@ This is an **input file** (not output) containing references to pre-existing tes
 | `test_pull_side_tag_transfer` | `pull --transfer-dest --side-tag` from HTTPS `pulp_results`; writes Tekton-style OCI URL/digest via `--artifact-results` |
 | `test_pull_side_tag_transfer_from_oci_artifact_location` | Same flow with `--artifact-location` set to ORAS `oci_manifest@digest` (run-scoped `--side-tag` name) |
 
+Side-tag RPM repositories in Pulp use the global name `side-tag-<tag>` (see `pull_side_tag_rpm_repo_key` in [`names.py`](names.py)), not `{source_build_id}/side-tag-<tag>`, so multiple builds can target the same run-scoped tag.
+
 For release workspaces, pair `pulp-tool pull --snapshot-path …` with **`create-trusted-artifact`** (see release-service-catalog `upload-src-rpm-sbom-attestation`).
 
 ### Conventions for new live e2e tests

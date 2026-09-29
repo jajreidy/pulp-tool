@@ -60,8 +60,28 @@ class TestPulpHelperSideTagRepository:
         assert href == "/pulp/rpm/href/"
         assert "side-tag-t" in url
         assert captured_distro is not None
-        assert captured_distro.base_path == "build-1/side-tag-t"
-        assert captured_distro.name == "build-1/side-tag-t"
+        assert captured_distro.base_path == "side-tag-t"
+        assert captured_distro.name == "side-tag-t"
+
+    def test_ensure_side_tag_rpm_repository_same_path_for_different_builds(self, mock_pulp_client) -> None:
+        """Side-tag repo path is keyed by tag name only so multiple builds can share one repo."""
+        helper = PulpHelper(mock_pulp_client)
+        captured: list = []
+
+        def _capture_create(cache_key, _repo_type, new_repository=None, new_distribution=None):
+            captured.append((cache_key, new_distribution))
+            return ("prn:rpm", "/pulp/rpm/href/")
+
+        with (
+            patch.object(helper, "create_or_get_repository", side_effect=_capture_create),
+            patch.object(helper, "distribution_url_for_base_path", return_value="https://pulp.example/ns/side-tag-t/"),
+        ):
+            helper.ensure_side_tag_rpm_repository("build-a", "T")
+            helper.ensure_side_tag_rpm_repository("build-b", "T")
+        assert len(captured) == 2
+        assert captured[0][0] == "side-tag-t"
+        assert captured[1][0] == "side-tag-t"
+        assert captured[0][1].base_path == captured[1][1].base_path == "side-tag-t"
 
     def test_ensure_side_tag_rpm_repository_missing_href(self, mock_pulp_client) -> None:
         helper = PulpHelper(mock_pulp_client)

@@ -48,9 +48,8 @@ def e2e_error_upload_repo_names(build_id: str) -> list[str]:
 
 
 def pull_side_tag_rpm_repo_key(run_id: str | None) -> str:
-    """RPM repo key under ``BUILD_ID_PULL_SIDE_TAG`` including run-scoped side-tag suffix."""
-    build = scoped_build_id(BUILD_ID_PULL_SIDE_TAG, run_id)
-    return f"{build}/{side_tag_e2e_repo_suffix(run_id)}"
+    """Global side-tag RPM repo name (``side-tag-<run-scoped tag>``), not under source build_id."""
+    return side_tag_e2e_repo_suffix(run_id)
 
 # Standalone repositories from create-repository tests.
 REPO_CREATE_REPOSITORY: Final = "test-repo"

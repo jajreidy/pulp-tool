@@ -101,7 +101,7 @@ def test_normalize_oci_storage_strips_whitespace() -> None:
 def test_side_tag_e2e_name_scoped_with_run_id() -> None:
     assert side_tag_e2e_name(None) == "e2e-test"
     assert side_tag_e2e_name("run1") == "e2e-test-run1"
-    assert pull_side_tag_rpm_repo_key("run1") == f"{BUILD_ID_PULL_SIDE_TAG}-run1/side-tag-e2e-test-run1"
+    assert pull_side_tag_rpm_repo_key("run1") == "side-tag-e2e-test-run1"
 
 
 def test_oci_repos_included_when_oci_storage_set() -> None:

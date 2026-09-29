@@ -106,6 +106,7 @@ No application database: state is on Pulp and in generated JSON artifacts.
 2. **Konflux contracts** (flags, paths, skip-vs-fail) must stay aligned with linked upstream task YAMLs when changing `upload` or the image.
 3. **Labels and APIs:** Pulpcore forbids `,`, `(`, and `)` in label **values**; `signed_by` replaces `,` with `:` and maps parentheses to `[` / `]` before upload and before RPM queries, so `pulp_label_select` is usually applied server-side together with checksum or NVR filters. Client-side label matching remains a fallback when a query cannot be expressed safely.
 4. **Merge gate:** PR diffs require **100% diff coverage** (`make test-diff-coverage`), not only line coverage in unchanged code.
+5. **Side-tag RPM repos:** `pull --transfer-dest --side-tag` uses Pulp repository/distribution path `side-tag-<sanitized-tag>` only (shared across source builds with the same tag). Mainline destination repos (`{build_id}/rpms`, artifacts, etc.) remain per source `build_id`. Multi-build test flows reuse one `--side-tag` and may chain `--artifact-location` from the latest `oci_manifest` after each transfer.
 
 ---
 
@@ -164,6 +165,7 @@ Formal records: [ADR 0000 — how we record decisions](adr/0000-record-architect
 | **pulp_label_select** | Pulp query parameter for JSON labels; commas in values have parser limitations |
 | **SBOM** | Software bill of materials file path in upload flows |
 | **`pulp_results.json`** | Aggregated artifact metadata JSON produced/consumed by uploads |
+| **Side-tag** | Named test promotion repo (`side-tag-<name>`) populated during `pull --transfer-dest --side-tag` |
 
 ---
 

@@ -44,6 +44,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Breaking:** Side-tag RPM repository and distribution use global path `side-tag-{tag}` (not `{build_id}/side-tag-{tag}`), so multiple source builds can promote into the same side-tag; `origin_build_id` labels record provenance; Konflux e2e validation/cleanup keys updated accordingly; existing build-scoped side-tag repos are not used by new runs ([cea604e](https://github.com/konflux-ci/pulp-tool/commit/cea604e))
 - Maintainer release documentation: canonical flow `make release-please` → `make release-publish` → Konflux release; version-file table; updates in `docs/releasing.md`, `CONTRIBUTING.md`, `README.md`, and agent skills
 - `scripts/sync-container-build-args.sh` (run by `make release-please` on the release PR branch or `make test-container` locally) syncs `.tekton/pulp-tool-container.build-args`, `VERSION`, and `pulp_tool/_version.py` from `.release-please-manifest.json`
 - `CHANGELOG.md` compare links for `v1.2.0` / `[Unreleased]`
@@ -52,7 +53,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Pytest configuration consolidated in `pyproject.toml` only (removed duplicate `.pytest.ini`; 85% coverage threshold unified)
 - CHANGELOG entries link to implementing commits; `docs/releasing.md` and PR-drafting templates document link preservation when curating releases
 - **fixing-diff-cover-failures** skill removed; diff-cover loop merged into **troubleshooting-pulp-tool-ci**
-- Side-tag RPM repository and distribution use build-scoped names `{build_id}/side-tag-{tag}` (not a global `side-tag-{tag}` base path) ([6e0cb3f](https://github.com/konflux-ci/pulp-tool/commit/6e0cb3f))
 - Bare Konflux `ociStorage` repository strings (no `:tag` or `@digest`) resolve with `:latest` for ORAS push and resolve ([6e0cb3f](https://github.com/konflux-ci/pulp-tool/commit/6e0cb3f))
 - Konflux e2e: run pulp-content HTTP checks in a **deferred verification phase** after all `upload` / `upload-build` / `upload-files` mutations; `pull` tests run afterward. Side-tag source uploads split into `test_upload_side_tag_transfer_source` and `test_upload_side_tag_oci_source`. New `--skip-distribution-verify` flag ([cc19a96](https://github.com/konflux-ci/pulp-tool/commit/cc19a96))
 
