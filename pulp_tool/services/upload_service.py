@@ -263,7 +263,8 @@ def process_uploads_from_results_json(
     repositories: RepositoryRefs,
     *,
     pulp_helper: PulpHelper | None = None,
-) -> str | None:
+    defer_collect: bool = False,
+) -> str | None | PulpResultsModel:
     """
     Upload artifacts from pulp_results.json.
 
@@ -278,7 +279,8 @@ def process_uploads_from_results_json(
         pulp_helper: Optional PulpHelper for per-arch RPM repos when ``target_arch_repo`` is set
 
     Returns:
-        URL of the uploaded results JSON, or None if upload failed
+        URL of the uploaded results JSON, or None if upload failed.
+        When ``defer_collect`` is True, returns the populated ``PulpResultsModel`` instead.
     """
     from ..utils.uploads import upload_log, upload_rpms
 
@@ -299,6 +301,8 @@ def process_uploads_from_results_json(
     if not artifacts:
         logging.info("No artifacts in results JSON, creating minimal results")
         results_model = PulpResultsModel(build_id=context.build_id, repositories=repositories)
+        if defer_collect:
+            return results_model
         return collect_results(client, context, context.date_str, results_model, extra_artifacts=None)
 
     base_path = Path(context.files_base_path or os.path.dirname(context.results_json)).resolve()
@@ -341,7 +345,7 @@ def process_uploads_from_results_json(
             logging.warning("Skipping missing file: %s", resolved_path)
             continue
 
-        labels = dict(info.get("labels") or {})
+        labels = dict(info.get("pulp_labels") or info.get("labels") or {})
         labels.update(
             create_labels(
                 context.build_id,
@@ -472,6 +476,8 @@ def process_uploads_from_results_json(
             )
 
     extra_artifacts = [ExtraArtifactRef(pulp_href=href) for href in created_resources]
+    if defer_collect:
+        return results_model
     return collect_results(client, context, date_str, results_model, extra_artifacts)
 
 

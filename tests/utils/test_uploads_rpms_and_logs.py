@@ -159,6 +159,66 @@ class TestUploadRpms:
         assert all(c["is_rpm"] is True for c in rpm_calls)
         assert all(c["target_arch_repo"] is True for c in rpm_calls)
 
+    def test_upload_rpms_sets_content_href_on_results_artifact(self, mock_pulp_client) -> None:
+        """Incremental results JSON stores Pulp content href on each uploaded RPM row."""
+        from pulp_tool.models.context import UploadRpmContext
+        from pulp_tool.models.pulp_api import TaskResponse
+        from pulp_tool.models.results import PulpResultsModel, RepositoryRefs
+
+        context = UploadRpmContext(
+            build_id="test-build",
+            date_str="2024-01-01 00:00:00",
+            namespace="test-ns",
+            parent_package="test-pkg",
+            rpm_path="/test/rpms",
+            sbom_path="/test/sbom.json",
+        )
+        repositories = RepositoryRefs(
+            rpms_href="/test/rpm-href",
+            rpms_prn="",
+            logs_href="",
+            logs_prn="",
+            sbom_href="",
+            sbom_prn="",
+            artifacts_href="",
+            artifacts_prn="",
+        )
+        results_model = PulpResultsModel(build_id="test-build", repositories=repositories)
+        rpm_path = "/path/to/pkg.rpm"
+        content_href = "/pulp/api/v3/content/rpm/packages/abc/"
+        mock_artifacts = [(rpm_path, content_href)]
+        mock_task_response = TaskResponse(pulp_href="/tasks/123/", state="completed", created_resources=["/resource/1"])
+        mock_repo_task = TaskResponse(pulp_href="/tasks/124/", state="pending", created_resources=[])
+
+        def add_side_effect(*args: object, **kwargs: object) -> None:
+            results_model_arg = args[0]
+            assert isinstance(results_model_arg, PulpResultsModel)
+            local_path = str(kwargs["local_path"])
+            results_model_arg.add_artifact(
+                os.path.basename(local_path),
+                "https://example/rpms/pkg.rpm",
+                "a" * 64,
+                {},
+            )
+
+        with (
+            patch("pulp_tool.utils.uploads.upload_rpms_parallel", return_value=(mock_artifacts, [])),
+            patch.object(mock_pulp_client, "add_content", return_value=mock_repo_task),
+            patch.object(mock_pulp_client, "wait_for_finished_task", return_value=mock_task_response),
+            patch.object(mock_pulp_client, "add_uploaded_artifact_to_results_model", side_effect=add_side_effect),
+        ):
+            upload_rpms(
+                [rpm_path],
+                context,
+                mock_pulp_client,
+                "noarch",
+                rpm_repository_href="/test/rpm-href",
+                date="2024-01-01 00:00:00",
+                results_model=results_model,
+                distribution_urls={"rpms": "https://example.com/rpms/"},
+            )
+        assert results_model.artifacts["pkg.rpm"].href == content_href
+
     def test_upload_rpms_with_signed_by_adds_label(self, mock_pulp_client) -> None:
         """Test upload_rpms adds signed_by to labels when context has signed_by (lines 212-214)."""
         from pulp_tool.models.context import UploadRpmContext

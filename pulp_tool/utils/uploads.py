@@ -274,7 +274,7 @@ def upload_rpms(
     rpm_results_artifacts = [href for _path, href in rpm_path_href_pairs]
 
     if distribution_urls is not None:
-        for rpm_path, _href in rpm_path_href_pairs:
+        for rpm_path, content_href in rpm_path_href_pairs:
             client.add_uploaded_artifact_to_results_model(
                 results_model,
                 local_path=rpm_path,
@@ -283,6 +283,10 @@ def upload_rpms(
                 distribution_urls=distribution_urls,
                 target_arch_repo=target_arch_repo,
             )
+            art_key = os.path.basename(rpm_path)
+            meta = results_model.artifacts.get(art_key)
+            if meta is not None and content_href:
+                meta.href = content_href
 
     for err in upload_errors:
         results_model.add_error(err)

@@ -41,6 +41,7 @@ class UploadContext(KonfluxBaseModel):
     sbom_results: str | None = None
     skip_logs_repo: bool = False
     skip_sbom_repo: bool = False
+    cluster: str | None = None
 
 
 class UploadRpmContext(UploadContext):

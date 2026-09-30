@@ -5,9 +5,12 @@ import re
 from unittest.mock import Mock, patch
 
 import httpx
+import pytest
 
 from pulp_tool.models import PulpResultsModel, RepositoryRefs
+from pulp_tool.models.artifacts import ArtifactMetadata
 from pulp_tool.models.context import UploadRpmContext
+from pulp_tool.models.pulp_results import PulpResultsDocument
 from pulp_tool.services.upload_service import _build_artifact_map, _save_results_to_folder, collect_results
 
 
@@ -89,6 +92,48 @@ class TestCollectResults:
                                         "test-build", context
                                     )
                                     assert result == "https://example.com/results.json"
+
+    def test_collect_results_requires_repositories_for_incremental_upload(self, mock_pulp_client) -> None:
+        context = UploadRpmContext(
+            build_id="test-build",
+            date_str="2024-01-01",
+            namespace="test-ns",
+            parent_package="test-pkg",
+            rpm_path="/tmp/rpms",
+            artifact_results="https://example/u,sha256:abc",
+        )
+        results_model = PulpResultsDocument.model_construct(
+            build_id="test-build",
+            repositories=None,
+            artifacts={
+                "pkg.rpm": ArtifactMetadata(labels={}, url="https://example.com/pkg.rpm", sha256="deadbeef"),
+            },
+        )
+        with patch("pulp_tool.services.upload_collect._gather_and_validate_content", return_value=None):
+            with patch("pulp_tool.services.upload_collect._add_distributions_to_results"):
+                with pytest.raises(ValueError, match="repositories required"):
+                    collect_results(mock_pulp_client, context, "2024-01-01", results_model)
+
+    def test_collect_results_requires_repositories_when_gather_has_content(self, mock_pulp_client) -> None:
+        context = UploadRpmContext(
+            build_id="test-build",
+            date_str="2024-01-01",
+            namespace="test-ns",
+            parent_package="test-pkg",
+            rpm_path="/tmp/rpms",
+        )
+        results_model = PulpResultsDocument.model_construct(build_id="test-build", repositories=None)
+        content = Mock(content_results=[], file_results=[], log_results=[], sbom_results=[])
+        with patch("pulp_tool.services.upload_collect._gather_and_validate_content", return_value=content):
+            with patch("pulp_tool.services.upload_collect._build_artifact_map", return_value={}):
+                with patch("pulp_tool.services.upload_collect._populate_results_model"):
+                    with patch("pulp_tool.services.upload_collect._add_distributions_to_results"):
+                        with patch(
+                            "pulp_tool.services.upload_collect._serialize_results_to_json",
+                            return_value="{}",
+                        ):
+                            with pytest.raises(ValueError, match="repositories required"):
+                                collect_results(mock_pulp_client, context, "2024-01-01", results_model)
 
     def test_collect_results_incremental_only_when_gather_empty(self, mock_pulp_client) -> None:
         """When gather returns no content but the model already has artifacts, still upload results JSON."""

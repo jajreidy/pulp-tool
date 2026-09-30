@@ -12,10 +12,10 @@ from typing import Any
 
 from ..models.artifacts import ArtifactFile, ArtifactMetadata, PulledArtifacts
 from ..models.context import PullContext
-from ..models.results import PulpResultsModel
+from ..models.pulp_results import PulpResultsDocument
 
 
-def _log_upload_summary(upload_info: PulpResultsModel) -> None:
+def _log_upload_summary(upload_info: PulpResultsDocument) -> None:
     """Log upload summary at WARNING level so it's always visible.
 
     Args:
@@ -258,7 +258,7 @@ def _log_storage_summary(total_files: int, pulled_artifacts: PulledArtifacts) ->
         logging.debug("  - %s", location)
 
 
-def _log_pulp_upload_info(upload_info: PulpResultsModel | None) -> None:
+def _log_pulp_upload_info(upload_info: PulpResultsDocument | None) -> None:
     """Log Pulp upload information."""
     if upload_info:
         # Repository information (DEBUG)
@@ -313,7 +313,7 @@ def generate_pull_report(
     completed: int,
     failed: int,
     args: PullContext,
-    upload_info: PulpResultsModel | None = None,
+    upload_info: PulpResultsDocument | None = None,
 ) -> None:
     """
     Generate and display a comprehensive report of what was pulled and where it was stored.

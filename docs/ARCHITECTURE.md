@@ -75,13 +75,15 @@ flowchart TB
 
 | Layer | Path | Role |
 |-------|------|------|
-| CLI | `pulp_tool/cli/` | `upload`, `upload_files`, `pull`, `search_by`, `create_repository`; shared globals (`--config`, `--build-id`, `--namespace`, `--debug`, `--max-workers`) |
+| CLI | `pulp_tool/cli/` | `upload-build`, **`update-build`**, `upload`, `upload_files`, `pull`, `search_by`, `create_repository`; shared globals (`--config`, `--build-id`, `--namespace`, `--debug`, `--max-workers`) |
 | HTTP client | `pulp_tool/api/pulp_client/` | Session, chunked GET, RPM/content queries, repository ops |
 | Other API surface | `pulp_tool/api/` (`artifacts/`, `content/`, `distributions/`, `repositories/`, `tasks/`) | Typed calls aligned with Pulp endpoints |
 | Orchestration | `pulp_tool/utils/pulp_helper.py`, `upload_orchestrator.py` | Repo setup, upload pipelines |
 | Services | `pulp_tool/services/upload_service.py`, `upload_collect.py` | Same flows as CLI; Konflux results JSON, SBOM, artifact results |
 | Pull | `pulp_tool/pull/` | Download / transfer helpers; optional `--side-tag` ROK promotion (`side_tag.py`, `publish.py`) |
-| Results document | `pulp_tool/utils/pulp_results_document.py` | Versioned `pulp_results.json` merge (`version`, `href_history`, `oci_manifest_history`, per-artifact `distributions`) |
+| Results document | `pulp_tool/models/pulp_results.py` | Canonical `PulpResultsDocument`: normalize/serialize, mutation, histories, `pulp_labels` / distributions |
+| Results JSON I/O | `pulp_tool/utils/results_json_io.py` | Local path or digest-pinned OCI ref → load/normalize document |
+| Update build | `pulp_tool/services/update_build.py`, `pulp_tool/cli/update_build.py` | Signing/BTS mutations + ORAS publish (requires `--artifact-results`) |
 | Snapshot update | `pulp_tool/utils/snapshot_update.py` | Release snapshot `pulpResultsOciManifest` after side-tag ORAS publish (trusted-artifact workspace) |
 | ORAS results sync | `pulp_tool/utils/pulp_results_oci_publish.py` | Shared Pulp + ORAS publish for `upload-build` and pull side-tag |
 | Models | `pulp_tool/models/` | Pydantic: context, Pulp DTOs, results |

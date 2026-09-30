@@ -23,8 +23,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Canonical **`pulp_results.json`** schema via **`PulpResultsDocument`** ([`pulp_tool/models/pulp_results.py`](pulp_tool/models/pulp_results.py)): document-level **`version`** (JSON schema semver `x.y.z`), **`last_updated`** (ISO date on mutations), `build_id`, `namespace`, `cluster`, per-artifact **`pulp_labels`** and authoritative **`distributions`**; legacy read support for artifact `labels`, integer **`version`**, and embedded **`oci_manifest`** (stripped on normalize)
+- Shared OCI/local loader **`resolve_results_json_path`** / **`load_results_document`** ([`pulp_tool/utils/results_json_io.py`](pulp_tool/utils/results_json_io.py)) for **`pull`**, **`upload-build`**, **`search-by`**, and **`update-build`**
+- **`update-build`** command and service: mutate versioned results after signing/BTS; required **`--results-json`**, **`--artifact-results`**, and **`--oci-storage`**; in-process ORAS pull/push; correlation ID logging (NF2)
+- Expanded Konflux contracts in [`docs/CLAUDE.md`](docs/CLAUDE.md), [`docs/cli-reference.md`](docs/cli-reference.md), [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
+
 ### Changed
 
+- **`update-build`** with digest-pinned **`--results-json`**: ORAS **`attach`** to the subject manifest (referrer artifact); **`upload-build`** / side-tag without attach subject still **`oras push`** to **`--oci-storage`**
+- Digest-pinned OCI **`pull`** / **`load_results_document`**: **`oras discover`** for attached **`pulp_results`** referrers; select newest attached JSON by document **`last_updated`** (schema **`version`** unchanged across mutations)
+- **`PulpResultsDocument`** (replaces separate upload model + dict helpers): canonical JSON export, upload session state, and mutation methods in [`pulp_tool/models/pulp_results.py`](pulp_tool/models/pulp_results.py)
+- Side-tag publish serializes canonical JSON and uses unified mutation helpers
+- E2e ORAS checks use Tekton **`--artifact-results`** files (not embedded **`oci_manifest`** in JSON)
+- Live e2e **`test_update_build_oras_live`**: `upload-build` + **`update-build`** against real Pulp and ORAS when **`--oci-storage`** is set
 - Repository layout: `container/Dockerfile`, `config/` linter configs, agent docs under `docs/AGENTS.md` and `docs/CLAUDE.md` (root stubs retained); CI bot config under `.github/`; expanded `make clean`
 
 ### Added

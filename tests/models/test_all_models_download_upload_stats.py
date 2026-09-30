@@ -190,10 +190,16 @@ class TestPulpResultsModel:
         )
         model = PulpResultsModel(build_id="test-build", repositories=repositories)
         model.add_artifact("test.rpm", "https://pulp.example.com/test.rpm", "abc123", {"arch": "x86_64"})
+        model.artifacts["test.rpm"].href = "/pulp/href/"
+        model.artifacts["test.rpm"].distributions = {"rpms": "https://pulp.example.com/rpms/"}
         model.add_distribution("zebra", "https://pulp.example.com/zebra/")
         model.add_distribution("alpha", "https://pulp.example.com/alpha/")
         model.add_distribution("rpms", "https://pulp.example.com/rpms/")
-        result = model.to_json_dict()
+        result = model.to_json_dict(namespace="my-ns", cluster="my-cluster")
+        assert result["namespace"] == "my-ns"
+        assert result["cluster"] == "my-cluster"
+        assert result["artifacts"]["test.rpm"]["href"] == "/pulp/href/"
+        assert result["artifacts"]["test.rpm"]["distributions"]["rpms"].startswith("https://")
         assert "artifacts" in result
         assert "distributions" in result
         assert "test.rpm" in result["artifacts"]

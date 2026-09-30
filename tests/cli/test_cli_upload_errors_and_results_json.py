@@ -341,4 +341,4 @@ class TestUploadCommandErrorsAndResultsJson:
                 cli, ["--config", str(config_path), "upload", "--results-json", str(results_json_path)]
             )
             assert result.exit_code == 1
-            assert "build_id and namespace" in result.output or "no artifacts" in result.output.lower()
+            assert "build_id" in result.output and "namespace" in result.output

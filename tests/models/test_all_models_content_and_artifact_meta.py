@@ -185,3 +185,14 @@ class TestArtifactMetadata:
         """Explicit null url runs url normalizer early-return branch."""
         metadata = ArtifactMetadata.model_validate({"labels": {}, "url": None})
         assert metadata.url is None
+
+    def test_artifact_metadata_pulp_labels_only_when_labels_present(self) -> None:
+        """When both keys exist, labels win and pulp_labels is dropped before validate."""
+        metadata = ArtifactMetadata.model_validate(
+            {"labels": {"build_id": "b"}, "pulp_labels": {"build_id": "ignored"}},
+        )
+        assert metadata.labels["build_id"] == "b"
+
+    def test_artifact_metadata_before_validator_non_dict(self) -> None:
+        coerce = cast(Callable[[Any], Any], ArtifactMetadata._accept_legacy_pulp_labels_key)
+        assert coerce("plain") == "plain"

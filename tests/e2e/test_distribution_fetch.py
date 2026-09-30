@@ -236,10 +236,10 @@ def _mock_pulp_results_response(body: bytes) -> MagicMock:
     return response
 
 
-def test_fetch_pulp_results_json_polls_stale_version() -> None:
-    stale = b'{"version": 1, "distributions": {}}'
+def test_fetch_pulp_results_json_polls_stale_last_updated() -> None:
+    stale = b'{"version": "1.0.0", "last_updated": "2020-01-01", "distributions": {}}'
     ready = (
-        b'{"version": 2, "distributions": {"tag1": "https://example.com/tag1/"}, '
+        b'{"version": "1.0.0", "last_updated": "2026-06-15", "distributions": {"tag1": "https://example.com/tag1/"}, '
         b'"oci_manifest": "quay.io/repo@sha256:abc"}'
     )
     client = MagicMock()
@@ -252,9 +252,9 @@ def test_fetch_pulp_results_json_polls_stale_version() -> None:
         doc = fetch_pulp_results_json(
             client,
             "https://example.com/pulp_results.json",
-            min_version=2,
+            min_last_updated="2026-06-15",
             required_distribution_keys=frozenset({"tag1"}),
             require_oci_manifest=True,
         )
-    assert doc["version"] == 2
+    assert doc["last_updated"] == "2026-06-15"
     assert doc["distributions"]["tag1"].startswith("https://")

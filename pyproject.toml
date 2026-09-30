@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=82.0.1", "wheel>=0.47.0", "setuptools_scm[toml]>=10.0.5"]
+requires = ["setuptools>=82.0.1", "wheel>=0.47.0", "setuptools_scm[toml]>=10.3.4"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -54,7 +54,7 @@ dev = [
     # Build tools
     "setuptools>=82.0.1",
     "wheel>=0.47.0",
-    "setuptools-scm[toml]>=8.0",
+    "setuptools-scm[toml]>=10.3.4",
     # Dependency CVE audit (local: make audit). When Pygments >2.19.2 is on PyPI, add
     # "pygments>=2.19.3" here and remove CVE-2026-4539 ignores from .github/workflows/security-scan.yml.
     "pip-audit>=2.10.0",
@@ -68,6 +68,7 @@ pulp-tool = "pulp_tool.cli:main"
 
 [project.entry-points."pulp_tool.commands"]
 upload-build = "pulp_tool.cli.upload_build:upload_build"
+update-build = "pulp_tool.cli.update_build:update_build"
 upload = "pulp_tool.cli.upload:upload"
 upload_files = "pulp_tool.cli.upload_files:upload_files"
 pull = "pulp_tool.cli.pull:pull"

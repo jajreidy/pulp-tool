@@ -10,12 +10,12 @@ import json
 import logging
 import traceback
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any
 
 from ..models.artifacts import ContentData, ExtraArtifactRef, FileInfoMap, FileInfoModel, PulpContentRow
 from ..models.context import UploadContext
 from ..models.pulp_api import TaskResponse
-from ..models.results import PulpResultsModel
+from ..models.pulp_results import PulpResultsDocument
 
 if TYPE_CHECKING:
     from ..api.pulp_client import PulpClient  # pragma: no cover
@@ -94,16 +94,20 @@ def _konflux_artifact_results_paths(context: UploadContext) -> tuple[str, str] |
 
 
 def _upload_and_get_results_url(
-    client: PulpClient, context: UploadContext, artifact_repository_prn: str, json_content: str, date: str
+    client: PulpClient,
+    context: UploadContext,
+    artifact_repository_prn: str,
+    document: PulpResultsDocument,
+    date: str,
 ) -> str | None:
     """Upload results JSON and return the distribution URL."""
     labels = create_labels(context.build_id, "", context.namespace, context.parent_package, date)
     konflux_paths = _konflux_artifact_results_paths(context)
     oci_storage = (getattr(context, "oci_storage", None) or "").strip()
+    json_content = document.to_canonical_json(namespace=context.namespace, cluster=context.cluster)
 
     try:
         if oci_storage:
-            document = cast(dict[str, Any], json.loads(json_content))
             oci_ref, task_response = sync_pulp_results_with_oci_registry(
                 client,
                 artifact_repository_prn,
@@ -227,7 +231,7 @@ def _build_artifact_map(client: PulpClient, content_results: list[PulpContentRow
 
 def _populate_results_model(
     client: PulpClient,
-    results_model: PulpResultsModel,
+    results_model: PulpResultsDocument,
     content_results: list[PulpContentRow],
     file_info_map: FileInfoMap,
     context: UploadContext,
@@ -247,7 +251,9 @@ def _populate_results_model(
     )
 
 
-def _add_distributions_to_results(client: PulpClient, context: UploadContext, results_model: PulpResultsModel) -> None:
+def _add_distributions_to_results(
+    client: PulpClient, context: UploadContext, results_model: PulpResultsDocument
+) -> None:
     """Add distribution URLs to results model."""
     repository_helper = PulpHelper(client, parent_package=context.parent_package)
     distribution_urls = _distribution_urls_for_context(repository_helper, context.build_id, context)
@@ -278,7 +284,7 @@ def collect_results(
     client: PulpClient,
     context: UploadContext,
     date: str,
-    results_model: PulpResultsModel,
+    results_model: PulpResultsDocument,
     extra_artifacts: list[ExtraArtifactRef] | None = None,
 ) -> str | None:
     """
@@ -294,7 +300,9 @@ def collect_results(
             file_info_map = _build_artifact_map(client, content_data.content_results)
             _populate_results_model(client, results_model, content_data.content_results, file_info_map, context)
         _add_distributions_to_results(client, context, results_model)
-        json_content = _serialize_results_to_json(results_model.to_json_dict())
+        json_content = _serialize_results_to_json(
+            results_model.to_json_dict(namespace=context.namespace, cluster=context.cluster)
+        )
         output_path = _save_results_to_folder(context.artifact_results.strip(), json_content, context)
         return str(output_path) if output_path else None
 
@@ -302,18 +310,26 @@ def collect_results(
         if results_model.artifact_count or results_model.distributions:
             logging.info("No gathered content; using incrementally populated results model only")
             _add_distributions_to_results(client, context, results_model)
-            json_content = _serialize_results_to_json(results_model.to_json_dict())
-            return _upload_and_get_results_url(
-                client, context, results_model.repositories.artifacts_prn, json_content, date
+            json_content = _serialize_results_to_json(
+                results_model.to_json_dict(namespace=context.namespace, cluster=context.cluster)
             )
+            repos = results_model.repositories
+            if repos is None:
+                raise ValueError("repositories required to upload pulp_results.json")
+            return _upload_and_get_results_url(client, context, repos.artifacts_prn, results_model, date)
         return None
 
     file_info_map = _build_artifact_map(client, content_data.content_results)
     _populate_results_model(client, results_model, content_data.content_results, file_info_map, context)
     _add_distributions_to_results(client, context, results_model)
-    json_content = _serialize_results_to_json(results_model.to_json_dict())
+    json_content = _serialize_results_to_json(
+        results_model.to_json_dict(namespace=context.namespace, cluster=context.cluster)
+    )
 
-    return _upload_and_get_results_url(client, context, results_model.repositories.artifacts_prn, json_content, date)
+    repos = results_model.repositories
+    if repos is None:
+        raise ValueError("repositories required to upload pulp_results.json")
+    return _upload_and_get_results_url(client, context, repos.artifacts_prn, results_model, date)
 
 
 def _find_artifact_content(client: PulpClient, task_response: TaskResponse) -> tuple[str, str] | None:

@@ -452,7 +452,7 @@ class TestPullCommandFiltersAndTransfer:
             mock_result.failed = 0
             mock_download.return_value = mock_result
             oci_ref = "quay.io/ns/repo@sha256:abc123"
-            with patch("pulp_tool.cli.pull.pull_pulp_results_json", return_value=local_json) as mock_oras_pull:
+            with patch("pulp_tool.cli.pull.resolve_results_json_path", return_value=local_json) as mock_oras_pull:
                 result = runner.invoke(
                     cli,
                     [
@@ -478,7 +478,7 @@ class TestPullCommandFiltersAndTransfer:
             cfg.write_text('[cli]\nbase_url = "https://pulp.example"\n')
             oci_ref = "quay.io/ns/repo@sha256:abc123"
             with patch(
-                "pulp_tool.cli.pull.pull_pulp_results_json",
+                "pulp_tool.cli.pull.resolve_results_json_path",
                 side_effect=OrasPublishError("oras pull failed (exit 1): denied"),
             ):
                 result = runner.invoke(

@@ -8,6 +8,7 @@ import json
 import logging
 import os
 import sys
+import tempfile
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -19,7 +20,9 @@ from ..models.context import UploadRpmContext
 from ..services.upload_service import scan_results_json_for_log_and_sbom_keys
 from ..utils import PulpHelper, setup_logging
 from ..utils.error_handling import handle_generic_error, handle_http_error
+from ..utils.oci_pull import is_oci_artifact_reference
 from ..utils.oci_storage_resolve import resolve_oci_storage
+from ..utils.results_json_io import ResultsJsonIOError, resolve_results_json_path
 from ..utils.uploads import rpm_directory_has_log_files
 
 
@@ -39,17 +42,22 @@ def _extract_build_id_namespace_from_results_json(results_json_path: Path) -> tu
     except (OSError, json.JSONDecodeError) as e:
         raise click.ClickException(f"Failed to read results JSON {results_json_path}: {e}") from e
 
+    bid = str(data.get("build_id") or "").strip()
+    ns = str(data.get("namespace") or "").strip()
+    if bid and ns:
+        return (bid, ns)
+
     artifacts = data.get("artifacts", {})
     for _key, info in artifacts.items():
         if isinstance(info, dict):
-            labels = info.get("labels") or {}
+            labels = info.get("pulp_labels") or info.get("labels") or {}
             bid = labels.get("build_id", "").strip()
             ns = labels.get("namespace", "").strip()
             if bid and ns:
                 return (bid, ns)
 
     raise click.ClickException(
-        "Results JSON has no artifacts with build_id and namespace in labels. "
+        "Results JSON has no document-level or artifact build_id/namespace. "
         "Provide --build-id and --namespace explicitly."
     )
 
@@ -89,9 +97,9 @@ def _extract_build_id_namespace_from_results_json(results_json_path: Path) -> tu
 @click.option("--sbom-results", type=click.Path(), help="Path to write SBOM results")
 @click.option(
     "--results-json",
-    type=click.Path(exists=True, path_type=Path),
+    type=str,
     help=(
-        "Path to pulp_results.json; upload artifacts from this file "
+        "Path or OCI @sha256 ref to pulp_results.json; upload artifacts from this file "
         "(files resolved from its directory or --files-base-path)"
     ),
 )
@@ -135,7 +143,7 @@ def upload_build(  # pylint: disable=too-many-arguments,too-many-positional-argu
     artifact_results: str | None,
     oci_storage: str | None,
     sbom_results: str | None,
-    results_json: Path | None,
+    results_json: str | None,
     files_base_path: Path | None,
     signed_by: str | None,
     overwrite: bool,
@@ -148,10 +156,29 @@ def upload_build(  # pylint: disable=too-many-arguments,too-many-positional-argu
     config = ctx.obj["config"]
     debug = ctx.obj["debug"]
 
-    # When using --results-json, build_id and namespace can be extracted from the JSON
+    resolved_results_json: str | None = None
+    results_json_temp: tempfile.TemporaryDirectory[str] | None = None
     if results_json:
+        loc = results_json.strip()
+        try:
+            if is_oci_artifact_reference(loc):
+                results_json_temp = tempfile.TemporaryDirectory(prefix="pulp-tool-upload-json-")
+                local_path = resolve_results_json_path(loc, Path(results_json_temp.name))
+                resolved_results_json = str(local_path)
+            else:
+                path = Path(loc).expanduser().resolve()
+                if not path.is_file():
+                    click.echo(f"Error: results JSON not found: {path}", err=True)
+                    ctx.exit(1)
+                resolved_results_json = str(path)
+        except ResultsJsonIOError as e:
+            click.echo(f"Error: {e}", err=True)
+            ctx.exit(1)
+
+    # When using --results-json, build_id and namespace can be extracted from the JSON
+    if resolved_results_json:
         if not build_id or not namespace:
-            build_id, namespace = _extract_build_id_namespace_from_results_json(results_json)
+            build_id, namespace = _extract_build_id_namespace_from_results_json(Path(resolved_results_json))
     else:
         # Without --results-json, build_id and namespace are required
         if not build_id:
@@ -161,7 +188,7 @@ def upload_build(  # pylint: disable=too-many-arguments,too-many-positional-argu
             click.echo("Error: --namespace is required for upload-build command", err=True)
             ctx.exit(1)
 
-    if files_base_path is not None and results_json is None:
+    if files_base_path is not None and not resolved_results_json:
         click.echo("Error: --files-base-path can only be used with --results-json", err=True)
         ctx.exit(1)
 
@@ -169,8 +196,8 @@ def upload_build(  # pylint: disable=too-many-arguments,too-many-positional-argu
     if not rpm_path:
         rpm_path = os.getcwd()
 
-    if results_json:
-        json_logs, json_sbom = scan_results_json_for_log_and_sbom_keys(str(results_json))
+    if resolved_results_json:
+        json_logs, json_sbom = scan_results_json_for_log_and_sbom_keys(resolved_results_json)
         needs_logs = json_logs
         needs_sbom = json_sbom or bool(sbom_path and str(sbom_path).strip())
     else:
@@ -180,6 +207,18 @@ def upload_build(  # pylint: disable=too-many-arguments,too-many-positional-argu
     skip_sbom_repo = not needs_sbom
 
     setup_logging(debug, use_wrapping=True)
+
+    cluster: str | None = None
+    if config:
+        try:
+            from ..utils.config_manager import ConfigManager  # pylint: disable=import-outside-toplevel
+
+            cm = ConfigManager(config)
+            cm.load()
+            raw = cm.get("cli.cluster")
+            cluster = str(raw).strip() if raw else None
+        except Exception as e:
+            logging.debug("Could not read cli.cluster: %s", e)
 
     client = None
     try:
@@ -206,7 +245,7 @@ def upload_build(  # pylint: disable=too-many-arguments,too-many-positional-argu
             artifact_results=artifact_results,
             oci_storage=resolved_oci_storage,
             sbom_results=sbom_results,
-            results_json=str(results_json) if results_json else None,
+            results_json=resolved_results_json,
             files_base_path=str(files_base_path) if files_base_path else None,
             signed_by=signed_by.strip() if signed_by and signed_by.strip() else None,
             overwrite=overwrite,
@@ -214,6 +253,7 @@ def upload_build(  # pylint: disable=too-many-arguments,too-many-positional-argu
             debug=debug,
             skip_logs_repo=skip_logs_repo,
             skip_sbom_repo=skip_sbom_repo,
+            cluster=cluster,
         )
 
         # Setup repositories using helper

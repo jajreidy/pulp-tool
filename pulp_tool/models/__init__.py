@@ -23,8 +23,9 @@ from .pulp_api import (
     RpmPackageResponse,
     TaskResponse,
 )
+from .pulp_results import PULP_RESULTS_SCHEMA_VERSION
 from .repository import RepositoryRefs
-from .results import ArtifactInfo, PulpResultsModel
+from .results import ArtifactInfo, PulpResultsDocument, PulpResultsModel
 from .statistics import UploadCounts
 from .validation import RpmCheckResult
 
@@ -48,7 +49,9 @@ __all__ = [
     "FileInfoModel",
     "UploadCounts",
     "ArtifactInfo",
+    "PulpResultsDocument",
     "PulpResultsModel",
+    "PULP_RESULTS_SCHEMA_VERSION",
     "UploadContext",
     "UploadRpmContext",
     "UploadFilesContext",

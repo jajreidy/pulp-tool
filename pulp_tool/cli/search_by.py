@@ -8,22 +8,10 @@ used together (e.g. --filename X --signed-by "me"), results are
 combined with AND semantics: only packages matching ALL criteria are returned.
 
 Results.json format (--results-json input and --output-results output):
-    {
-      "artifacts": {
-        "<artifact_key>": {
-          "labels": {"arch": "...", "build_id": "...", ...},
-          "url": "https://...",
-          "sha256": "<64-char hex>"
-        },
-        ...
-      },
-      "distributions": {
-        "rpms": "https://...",
-        "logs": "https://...",
-        "sbom": "https://...",
-        "artifacts": "https://..."
-      }
-    }
+    Canonical pulp_results.json: document-level version, build_id, namespace, cluster,
+    oci_manifest object, histories; per-artifact pulp_labels, href, distributions.
+    Legacy artifact "labels" and string oci_manifest are accepted on read.
+    --results-json may be a local path or digest-pinned OCI ref (repo@sha256:…).
 
 Artifact keys may be simple filenames (e.g. "pkg.rpm") or paths (e.g.
 "namespace/build-id/sbom-merged.json"). Only entries whose key ends with
@@ -36,6 +24,7 @@ import json
 import logging
 import os
 import sys
+import tempfile
 from pathlib import Path
 
 import click
@@ -48,6 +37,7 @@ from ..models.pulp_api import RpmPackageResponse
 from ..models.pulp_label_values import normalize_signed_by_value_for_pulp
 from ..utils import setup_logging
 from ..utils.error_handling import handle_generic_error, handle_http_error
+from ..utils.results_json_io import ResultsJsonIOError, resolve_results_json_path
 from ..utils.rpm_operations import parse_rpm_filename_to_nvr, parse_rpm_filename_to_nvra
 from ..utils.rpm_pulp_search import (
     search_pulp_by_filenames as _search_pulp_by_filenames,
@@ -339,7 +329,7 @@ def _handle_validation_error(e: ValidationError, results_json_context: bool = Fa
 
 def _run_results_json_mode(
     config: str,
-    results_json: Path,
+    results_json: str,
     output_results: Path,
     checksums: list[str],
     use_checksum_from_file: bool,
@@ -352,12 +342,21 @@ def _run_results_json_mode(
     correlation_build_id: str | None = None,
 ) -> None:
     """Load results.json, remove RPMs found in Pulp, write filtered output."""
+    oci_temp: tempfile.TemporaryDirectory[str] | None = None
     try:
-        with open(results_json, encoding="utf-8") as f:
+        oci_temp = tempfile.TemporaryDirectory(prefix="pulp-tool-search-json-")
+        local_path = resolve_results_json_path(results_json.strip(), Path(oci_temp.name))
+        with open(local_path, encoding="utf-8") as f:
             results_data = json.load(f)
+    except ResultsJsonIOError as e:
+        click.echo(f"Error: {e}", err=True)
+        sys.exit(1)
     except (OSError, json.JSONDecodeError) as e:
         click.echo(f"Error: Failed to read results.json: {e}", err=True)
         sys.exit(1)
+    finally:
+        if oci_temp is not None:
+            oci_temp.cleanup()
 
     results = SearchByResultsJson(results_data)
     # Checksums and filenames are mutually exclusive. Extract only one.
@@ -496,8 +495,8 @@ def _run_results_json_mode(
 )
 @click.option(
     "--results-json",
-    type=click.Path(exists=True, path_type=Path),
-    help="Path to results.json (pulp_results.json) to filter; extracts RPM checksums/filenames and removes found",
+    type=str,
+    help=("Path or OCI @sha256 ref to pulp_results.json to filter; extracts RPM checksums/filenames and removes found"),
 )
 @click.option(
     "--output-results",
@@ -519,7 +518,7 @@ def search_by(
     use_filename_from_file: bool,
     filenames: str | None,
     signed_by_key: str | None,
-    results_json: Path | None,
+    results_json: str | None,
     output_results: Path | None,
     keep_files: bool,
 ) -> None:

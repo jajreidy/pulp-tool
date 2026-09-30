@@ -8,14 +8,13 @@ from datetime import datetime, timezone
 from ..api import PulpClient
 from ..models.artifacts import ArtifactData
 from ..models.context import PullContext
-from ..models.results import PulpResultsModel
+from ..models.pulp_results import (
+    SIDE_TAG_TRANSFER_OPERATION,
+    PulpResultsDocument,
+    SideTagRpmTransfer,
+)
 from ..services.upload_collect import _write_konflux_oci_results
 from ..utils import create_labels, determine_build_id
-from ..utils.pulp_results_document import (
-    SideTagRpmTransfer,
-    apply_side_tag_transfer_to_document,
-    document_from_artifact_json,
-)
 from ..utils.pulp_results_oci_publish import sync_pulp_results_with_oci_registry
 from ..utils.snapshot_update import update_snapshot_pulp_results_manifest
 
@@ -24,7 +23,7 @@ def publish_side_tag_results(
     pulp_client: PulpClient,
     artifact_data: ArtifactData,
     context: PullContext,
-    upload_info: PulpResultsModel,
+    upload_info: PulpResultsDocument,
     transfers: list[SideTagRpmTransfer],
     *,
     side_tag_distribution_base: str = "",
@@ -52,9 +51,8 @@ def publish_side_tag_results(
     if not distribution_base:
         raise ValueError("side_tag_distribution_base is required when publishing side-tag transfer results")
 
-    source_doc = document_from_artifact_json(artifact_data.artifact_json)
-    merged = apply_side_tag_transfer_to_document(
-        source_doc,
+    source_doc = PulpResultsDocument.from_artifact_json(artifact_data.artifact_json)
+    merged = source_doc.apply_side_tag_transfer(
         transfers,
         side_tag=side_tag,
         top_level_side_tag_distribution_url=distribution_base,
@@ -63,13 +61,17 @@ def publish_side_tag_results(
     date_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     labels = create_labels(build_id, "", context.namespace or "", parent_package, date_str)
 
+    repos = upload_info.repositories
+    if repos is None:
+        raise ValueError("repositories required for side-tag ORAS publish")
     oci_ref, _task = sync_pulp_results_with_oci_registry(
         pulp_client,
-        upload_info.repositories.artifacts_prn,
+        repos.artifacts_prn,
         merged,
         oci_storage,
         labels,
         build_id=build_id,
+        operation=SIDE_TAG_TRANSFER_OPERATION,
         record_manifest_history=True,
     )
 

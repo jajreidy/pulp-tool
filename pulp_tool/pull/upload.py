@@ -11,8 +11,8 @@ import httpx
 from ..api import PulpClient
 from ..models.artifacts import PulledArtifacts
 from ..models.context import PullContext
+from ..models.pulp_results import PulpResultsDocument
 from ..models.repository import RepositoryRefs
-from ..models.results import PulpResultsModel
 from ..utils import PulpHelper, determine_build_id, extract_metadata_from_artifacts
 from ..utils.error_handling import handle_generic_error
 from ..utils.pulp_tasks import create_file_content_and_wait, wait_for_successful_task
@@ -24,7 +24,7 @@ def _upload_sboms_and_logs(
     pulp_client: PulpClient,
     pulled_artifacts: PulledArtifacts,
     repositories: RepositoryRefs,
-    upload_info: PulpResultsModel,
+    upload_info: PulpResultsDocument,
 ) -> None:
     """Upload SBOM and log files to their respective repositories.
 
@@ -96,7 +96,7 @@ def _upload_rpms_to_repository(
     pulp_client: PulpClient,
     pulled_artifacts: PulledArtifacts,
     repositories: RepositoryRefs,
-    upload_info: PulpResultsModel,
+    upload_info: PulpResultsDocument,
 ) -> None:
     """Upload RPM files to the RPM repository.
 
@@ -140,7 +140,7 @@ def upload_downloaded_files_to_pulp(
     args: PullContext,
     *,
     repositories: RepositoryRefs | None = None,
-) -> PulpResultsModel:
+) -> PulpResultsDocument:
     """
     Upload downloaded files to the appropriate Pulp repositories.
 
@@ -151,7 +151,7 @@ def upload_downloaded_files_to_pulp(
         repositories: Optional pre-created destination repositories (avoids duplicate setup)
 
     Returns:
-        PulpResultsModel containing upload information including repository details
+        PulpResultsDocument containing upload information including repository details
     """
     # Extract parent_package from artifacts for proper distribution base_path
     parent_package = extract_metadata_from_artifacts(pulled_artifacts, "parent_package")
@@ -165,7 +165,7 @@ def upload_downloaded_files_to_pulp(
         repositories = helper.setup_repositories(build_id)
 
     # Initialize upload tracking with unified model
-    upload_info = PulpResultsModel(build_id=build_id, repositories=repositories)
+    upload_info = PulpResultsDocument(build_id=build_id, repositories=repositories)
 
     # Upload different artifact types
     _upload_sboms_and_logs(pulp_client, pulled_artifacts, repositories, upload_info)

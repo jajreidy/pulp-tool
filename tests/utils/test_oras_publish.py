@@ -6,7 +6,9 @@ import pytest
 
 from pulp_tool.utils.oras_publish import (
     OrasPublishError,
+    _parse_oras_json_digest,
     _parse_oras_resolve_output,
+    attach_pulp_results_manifest,
     push_pulp_results_manifest,
     resolve_oci_manifest,
 )
@@ -17,6 +19,30 @@ def _auth_ok() -> MagicMock:
 
 
 class TestOrasPublish:
+    def test_attach_pulp_results_manifest_success(self) -> None:
+        with (
+            patch("pulp_tool.utils.oras_publish.shutil.which", return_value="/usr/local/bin/select-oci-auth"),
+            patch("pulp_tool.utils.oras_publish.subprocess.run") as mock_run,
+        ):
+            mock_run.side_effect = [
+                _auth_ok(),
+                MagicMock(
+                    returncode=0,
+                    stdout='{"reference":"quay.io/ns/repo","digest":"sha256:attached"}',
+                    stderr="",
+                ),
+            ]
+            ref, digest = attach_pulp_results_manifest(
+                "quay.io/ns/repo@sha256:subject",
+                '{"version":2}',
+            )
+        assert ref == "quay.io/ns/repo"
+        assert digest == "sha256:attached"
+        oras_calls = [c.args[0] for c in mock_run.call_args_list if c.args[0][0] == "oras"]
+        attach_cmds = [cmd for cmd in oras_calls if "attach" in cmd]
+        assert attach_cmds
+        assert "quay.io/ns/repo@sha256:subject" in attach_cmds[0]
+
     def test_push_pulp_results_manifest_success(self) -> None:
         with (
             patch("pulp_tool.utils.oras_publish.shutil.which", return_value="/usr/local/bin/select-oci-auth"),
@@ -136,3 +162,37 @@ class TestOrasPublish:
     def test_push_empty_target(self) -> None:
         with pytest.raises(OrasPublishError, match="empty"):
             push_pulp_results_manifest("", "{}")
+
+    def test_attach_rejects_non_digest_subject(self) -> None:
+        with pytest.raises(OrasPublishError, match="digest-pinned"):
+            attach_pulp_results_manifest("quay.io/ns/repo:latest", "{}")
+
+    def test_attach_rejects_non_sha256_digest(self) -> None:
+        with pytest.raises(OrasPublishError, match="sha256 digest"):
+            attach_pulp_results_manifest("quay.io/ns/repo@deadbeef", "{}")
+
+    def test_attach_oras_failure(self) -> None:
+        with (
+            patch("pulp_tool.utils.oras_publish.shutil.which", return_value="/usr/local/bin/select-oci-auth"),
+            patch("pulp_tool.utils.oras_publish.subprocess.run") as mock_run,
+        ):
+            mock_run.side_effect = [
+                _auth_ok(),
+                MagicMock(returncode=1, stdout="", stderr="attach failed"),
+            ]
+            with pytest.raises(OrasPublishError, match="oras attach failed"):
+                attach_pulp_results_manifest("quay.io/ns/repo@sha256:subject", "{}")
+
+    def test_parse_oras_json_digest_errors(self) -> None:
+        repo = "quay.io/ns/repo"
+        with pytest.raises(OrasPublishError, match="empty JSON"):
+            _parse_oras_json_digest("  ", repo)
+        with pytest.raises(OrasPublishError, match="parse failed"):
+            _parse_oras_json_digest("{", repo)
+        with pytest.raises(OrasPublishError, match="must be an object"):
+            _parse_oras_json_digest("[]", repo)
+        with pytest.raises(OrasPublishError, match="missing digest"):
+            _parse_oras_json_digest("{}", repo)
+        ref, digest = _parse_oras_json_digest('{"digest":"abc"}', repo)
+        assert ref == repo
+        assert digest == "sha256:abc"

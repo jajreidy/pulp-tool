@@ -110,11 +110,13 @@ def _register_entrypoint_commands(group: click.Group) -> None:
     from . import create_repository as create_repository_mod
     from . import pull as pull_mod
     from . import search_by as search_by_mod
+    from . import update_build as update_build_mod
     from . import upload as upload_mod
     from . import upload_build as upload_build_mod
     from . import upload_files as upload_files_mod
 
     group.add_command(upload_build_mod.upload_build)
+    group.add_command(update_build_mod.update_build)
     group.add_command(upload_mod.upload)
     group.add_command(upload_files_mod.upload_files)
     group.add_command(pull_mod.pull)
