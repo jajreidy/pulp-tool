@@ -5,6 +5,7 @@ This module contains comprehensive tests for the DistributionClient class
 and related distribution functionality.
 """
 
+from collections.abc import Iterator
 from unittest.mock import mock_open, patch
 
 import httpx
@@ -12,7 +13,7 @@ import pytest
 from httpx import HTTPError
 
 from pulp_tool.api import DistributionClient
-from pulp_tool.exceptions import PulpToolChecksumError
+from pulp_tool.exceptions import PulpToolChecksumError, PulpToolError
 
 
 class TestDistributionClient:
@@ -164,6 +165,54 @@ class TestDistributionClient:
         client = DistributionClient(username="user", password="pass")
         response = client.pull_artifact("https://example.com/artifacts.json")
         assert response.status_code == 200
+
+    def test_pull_data_rejects_content_length_over_limit(self, httpx_mock, monkeypatch) -> None:
+        """Downloads fail fast when Content-Length exceeds the configured cap."""
+        monkeypatch.setenv("PULP_TOOL_MAX_DOWNLOAD_BYTES", "5")
+        httpx_mock.get("https://example.com/big.rpm").mock(
+            return_value=httpx.Response(200, content=b"1234567890", headers={"content-length": "10"})
+        )
+        client = DistributionClient(cert="cert.pem", key="key.pem")
+        with pytest.raises(PulpToolError, match="Content-Length"):
+            client.pull_data("big.rpm", "https://example.com/big.rpm", "x86_64", "rpm")
+
+    def test_pull_data_streaming_byte_cap_deletes_partial(self, monkeypatch) -> None:
+        """When Content-Length is absent, enforce cap while reading chunks."""
+        monkeypatch.setenv("PULP_TOOL_MAX_DOWNLOAD_BYTES", "3")
+
+        class FakeStreamResponse:
+            headers: dict[str, str] = {}
+
+            def __enter__(self) -> "FakeStreamResponse":
+                return self
+
+            def __exit__(self, *_args: object) -> None:
+                return None
+
+            def raise_for_status(self) -> None:
+                return None
+
+            def iter_bytes(self, chunk_size: int = 8192) -> Iterator[bytes]:
+                yield b"abcd"
+
+        class FakeStreamContext:
+            def __enter__(self) -> FakeStreamResponse:
+                return FakeStreamResponse()
+
+            def __exit__(self, *_args: object) -> None:
+                return None
+
+        client = DistributionClient(cert="cert.pem", key="key.pem")
+        with (
+            patch.object(client.session, "stream", return_value=FakeStreamContext()),
+            patch("pulp_tool.utils.path_utils.get_artifact_save_path", return_value="file.rpm"),
+            patch("builtins.open", mock_open()) as mock_open_func,
+            patch("pathlib.Path.unlink") as mock_unlink,
+        ):
+            with pytest.raises(PulpToolError, match="exceeded limit"):
+                client.pull_data("file.rpm", "https://example.com/file.rpm", "x86_64", "rpm")
+            mock_open_func.assert_called_once_with("file.rpm", "wb")
+            mock_unlink.assert_called()
 
     def test_pull_data_sbom_file(self, httpx_mock) -> None:
         """Test pull_data method for SBOM files."""

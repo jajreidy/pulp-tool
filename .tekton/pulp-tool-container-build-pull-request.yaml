@@ -39,7 +39,7 @@ spec:
       - name: url
         value: "https://github.com/konflux-ci/container-build-catalog.git"
       - name: revision
-        value: main
+        value: 68488516dd8988a58bd7bed3b6cd5a14a2b69a1a # container-build-catalog @ docker-build-oci-ta
       - name: pathInRepo
         value: pipelines/docker-build-oci-ta/docker-build-oci-ta.yaml
   taskRunTemplate:

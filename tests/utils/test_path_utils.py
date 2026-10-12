@@ -2,6 +2,8 @@
 
 import os
 import tempfile
+from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
@@ -54,3 +56,19 @@ class TestGetArtifactSavePath:
         """Log paths reject architecture segments that could traverse directories."""
         with pytest.raises(ValueError, match="Unsupported or invalid architecture"):
             get_artifact_save_path("build.log", "../../tmp", "log")
+
+    def test_get_artifact_save_path_rejects_resolved_path_outside_base(self, tmp_path) -> None:
+        """Defense in depth: resolved destination must stay under base_dir."""
+        base = tmp_path / "workspace"
+        base.mkdir()
+        outside = tmp_path / "outside.log"
+        real_resolve = Path.resolve
+
+        def fake_resolve(self: Path) -> Path:
+            if self.name == "build.log" and "logs" in self.parts:
+                return outside
+            return real_resolve(self)
+
+        with patch.object(Path, "resolve", fake_resolve):
+            with pytest.raises(ValueError, match="escapes base directory"):
+                get_artifact_save_path("build.log", "x86_64", "log", base_dir=str(base))

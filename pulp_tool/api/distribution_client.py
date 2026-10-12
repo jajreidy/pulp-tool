@@ -14,11 +14,12 @@ from pathlib import Path
 # Third-party imports
 import httpx
 
-from ..exceptions import PulpToolChecksumError
+from ..exceptions import PulpToolChecksumError, PulpToolError
 
 # Local imports
 from ..utils import create_session_with_retry
 from ..utils.checksum_verify import validate_sha256_hex
+from ..utils.download_limits import max_artifact_download_bytes
 from ..utils.fetch_url_policy import assert_pulp_content_fetch_url
 
 
@@ -130,6 +131,7 @@ class DistributionClient:
             validate_sha256_hex(expected_sha256, field_name=f"{filename} sha256") if expected_sha256 else None
         )
         hasher = hashlib.sha256() if expected_hex else None
+        max_bytes = max_artifact_download_bytes()
 
         with self.session.stream("GET", file_url) as response:
             response.raise_for_status()
@@ -139,11 +141,21 @@ class DistributionClient:
             chunk_size = 8192  # Default chunk size
             if content_length:
                 file_size = int(content_length)
+                if file_size > max_bytes:
+                    raise PulpToolError(
+                        f"{filename}: Content-Length {file_size} exceeds download limit {max_bytes} bytes"
+                    )
                 # Use larger chunks for bigger files, but cap at 64KB
                 chunk_size = min(max(8192, file_size // 100), 65536)
 
+            downloaded = 0
             with open(file_full_filename, "wb") as f:
                 for chunk in response.iter_bytes(chunk_size=chunk_size):
+                    downloaded += len(chunk)
+                    if downloaded > max_bytes:
+                        f.close()
+                        Path(file_full_filename).unlink(missing_ok=True)
+                        raise PulpToolError(f"{filename}: download exceeded limit of {max_bytes} bytes from {file_url}")
                     if hasher is not None:
                         hasher.update(chunk)
                     f.write(chunk)
@@ -173,7 +185,7 @@ class DistributionClient:
         try:
             file_path = self.pull_data(artifact_name, file_url, arch, artifact_type, expected_sha256)
             return artifact_name, file_path
-        except (httpx.HTTPError, PulpToolChecksumError) as e:
+        except (httpx.HTTPError, PulpToolChecksumError, PulpToolError) as e:
             logging.error("Failed to download %s: %s", artifact_name, e)
             logging.debug("Traceback: %s", traceback.format_exc())
             raise

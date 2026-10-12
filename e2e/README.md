@@ -135,6 +135,8 @@ This is an **input file** (not output) containing references to pre-existing tes
 | `test_pull_artifact_location_oci_manifest_ref` | `pull --artifact-location` with upload-build OCI ref only (no `update-build`; full attach flow is `test_upload_build_update_build_pull_pipeline`) |
 | `test_pull_side_tag_transfer` | `pull --transfer-dest --side-tag` from HTTPS `pulp_results`; writes Tekton-style OCI URL/digest via `--artifact-results` |
 | `test_pull_side_tag_transfer_from_oci_artifact_location` | Same flow with `--artifact-location` set to digest-pinned OCI ref from upload-build ORAS publish (run-scoped `--side-tag` name) |
+| `test_upload_gpg_signed_rpm_source` | GPG-sign a test RPM (`gpg` + `rpmsign --addsign`; e2e image bundles Fedora `rpmsign` + deps under `/opt/rpmsign/lib64` via `LD_LIBRARY_PATH`), upload, defer `pulp_results.json` reachability |
+| `test_pull_verify_rpm_gpg` | `pull --verify-rpm-gpg --gpg-keyring` succeeds on signed upload; fails on unsigned `test-upload-minimal` RPMs |
 
 Side-tag RPM repositories in Pulp use the global name `side-tag-<tag>` (see `pull_side_tag_rpm_repo_key` in [`names.py`](names.py)), not `{source_build_id}/side-tag-<tag>`, so multiple builds can target the same run-scoped tag.
 

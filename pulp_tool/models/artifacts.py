@@ -46,6 +46,14 @@ class DownloadTask(KonfluxBaseModel):
     artifact_type: str
     expected_sha256: str | None = None
 
+    @field_validator("arch")
+    @classmethod
+    def validate_arch_for_paths(cls, v: str) -> str:
+        """Reject path segments in architecture labels before download."""
+        from ..utils.path_utils import sanitize_arch_for_path
+
+        return sanitize_arch_for_path(v)
+
     def to_tuple(self) -> tuple[str, str, str, str, str | None]:
         """Convert to tuple for :meth:`~pulp_tool.api.DistributionClient.pull_data_async`."""
         return (

@@ -110,6 +110,8 @@ Single document from **`upload-build`** through **`update-build`**. Implementati
 
 **OCI reads:** `pull --artifact-location`, `upload-build --results-json`, `search-by --results-json`, and **`update-build --results-json`** accept a local path or digest-pinned ref `quay.io/…/manifest@sha256:…`. Digest-pinned reads **`oras discover`** attached **`pulp_results`** referrers first (then pull the referrer whose JSON has the latest **`last_updated`** date). **`pulp-tool-container`** runs ORAS via `select-oci-auth`.
 
+**RPM GPG on transfer (`pull --verify-rpm-gpg`):** After download and SHA256 verification, optionally run **`rpm --checksig`** on each pulled RPM **before** `--transfer-dest` re-upload. Mount org signing keys as a Tekton Secret and pass **`--gpg-keyring`** (GnuPG homedir; public keys are exported and imported for `rpm --checksig`) or set **`cli.gpg_keyring`** / **`cli.verify_rpm_gpg`** in the transfer-dest `cli.toml`. The runtime image includes **`rpm`** and **`gnupg2`**. This complements Konflux **`rpms-signature-scan`** on the **container image build**; it does not replace registry/OCI attestation trust for `pulp_results` itself.
+
 **Tekton result files:** Comma-separated **`--artifact-results url_path,digest_path`** requires **`--oci-storage`** and writes OCI URL (no digest) + `sha256:…` digest (same layout as import-to-quay; prefer this name over legacy **`PULP-IMAGE_*`** task result names in new docs). There is no **`cli.oci_storage`** config fallback—pass **`--oci-storage`** on the command line (Konflux `ociStorage` param).
 
 ### `update-build` (signing / BTS)

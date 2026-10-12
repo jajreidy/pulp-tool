@@ -23,6 +23,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- **`pull`**: allowlisted `arch` on download tasks, `base_dir` resolved-path check for artifact save paths, and per-download byte cap (`PULP_TOOL_MAX_DOWNLOAD_BYTES`, default ~400 MiB)
+- **`pull --verify-rpm-gpg`** / **`--gpg-keyring`** (and `cli.verify_rpm_gpg` / `cli.gpg_keyring` on transfer config): optional `rpm --checksig` after SHA256 verification, before transfer re-upload
+- CI: blocking **Bandit** (HIGH) with SARIF upload on `security-scan`; **`make bandit`** for local runs
+- Konflux **pulp-tool-container**: pin `container-build-catalog` pipeline `revision` to a full commit SHA (Renovate `tekton` updates); runtime image installs **`rpm`** for GPG checks
+
 ### Added
 
 - Canonical **`pulp_results.json`** schema via **`PulpResultsDocument`**: document-level **`version`** (JSON schema semver), **`last_updated`**, `build_id`, `namespace`, `cluster`, per-artifact **`pulp_labels`** and **`distributions`** only (no artifact **`labels`**, integer **`version`**, embedded **`oci_manifest`**, or **`cli.oci_storage`** config fallback)
@@ -73,7 +80,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- **Security (Glasswing / supply chain):** Pin GitHub Actions to full commit SHAs (FIND-001); workflow-level least-privilege `permissions` on security scanning (FIND-003); verify hadolint release binaries with published SHA256 in CI and `scripts/run-hadolint.sh` (FIND-002 analogue—no `tkn` in this repo); Tekton e2e tasks add defense-in-depth `securityContext` on step templates (FIND-004); `pull` SSRF allowlist, ORAS extraction hardening, and mandatory per-artifact SHA256 verification ([932d6f8](https://github.com/konflux-ci/pulp-tool/commit/932d6f8))
+- **Security (Glasswing / supply chain):** Pin GitHub Actions to full commit SHAs; workflow-level least-privilege `permissions` on security scanning; verify hadolint release binaries with published SHA256 in CI and `scripts/run-hadolint.sh` (no `tkn` in this repo); Tekton e2e tasks add defense-in-depth `securityContext` on step templates; `pull` SSRF allowlist, ORAS extraction hardening, and mandatory per-artifact SHA256 verification ([932d6f8](https://github.com/konflux-ci/pulp-tool/commit/932d6f8))
 - Konflux e2e: install `pulp-tool` in [`e2e/Dockerfile.e2e`](e2e/Dockerfile.e2e) at image build time instead of `pip install -e` in the `pulp-tool-test` Tekton step
 - Konflux e2e: [`e2e/Dockerfile.e2e-cleanup`](e2e/Dockerfile.e2e-cleanup) and **build-e2e-cleanup-image** pipeline task; `post-test-cleanup` no longer runs `microdnf`/`pip` at step time
 - Konflux e2e: move runner and cleanup Dockerfiles under [`e2e/`](e2e/)

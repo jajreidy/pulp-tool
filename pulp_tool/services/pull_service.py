@@ -29,6 +29,7 @@ from ..pull import (
 )
 from ..pull.publish import publish_side_tag_results
 from ..pull.side_tag import upload_rpms_to_side_tag_repository
+from ..utils.rpm_gpg_verify import RpmGpgVerifyError, verify_pulled_rpms_gpg
 
 
 @dataclass(frozen=True, slots=True)
@@ -230,6 +231,31 @@ class PullService:
             context.content_types,
             context.archs,
         )
+
+        if context.verify_rpm_gpg:
+            rpm_paths = [artifact.file for artifact in download_result.pulled_artifacts.rpms.values()]
+            if not rpm_paths:
+                return PullRunResult(
+                    pulled_artifacts=download_result.pulled_artifacts,
+                    completed=download_result.completed,
+                    failed=download_result.failed,
+                    upload_info=None,
+                    error_messages=["No RPM artifacts downloaded for GPG signature verification"],
+                    pulp_client=pulp_client,
+                    distribution_client=distribution_client,
+                )
+            try:
+                verify_pulled_rpms_gpg(rpm_paths, gpg_keyring=context.gpg_keyring)
+            except RpmGpgVerifyError as exc:
+                return PullRunResult(
+                    pulled_artifacts=download_result.pulled_artifacts,
+                    completed=download_result.completed,
+                    failed=download_result.failed,
+                    upload_info=None,
+                    error_messages=[str(exc)],
+                    pulp_client=pulp_client,
+                    distribution_client=distribution_client,
+                )
 
         upload_info: PulpResultsDocument | None = None
         if pulp_client:

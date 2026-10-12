@@ -17,6 +17,7 @@ BUILD_ID_UPLOAD_FILES: Final = "test-build-files"
 BUILD_ID_UPLOAD_LARGE: Final = "test-build-large"
 BUILD_ID_PULL_SIDE_TAG: Final = "test-pull-side-tag"
 BUILD_ID_PULL_SIDE_TAG_OCI: Final = "test-pull-side-tag-oci"
+BUILD_ID_PULL_GPG_VERIFY: Final = "test-pull-gpg-verify"
 BUILD_ID_UPLOAD_ORAS: Final = "test-upload-oras"
 BUILD_ID_UPDATE_BUILD: Final = "test-update-build"
 BUILD_ID_UPDATE_BUILD_REPLACED: Final = "test-update-build-replaced"
@@ -79,6 +80,7 @@ _RPM_REPOS_BASE: Final = {
     f"{BUILD_ID_UPDATE_BUILD_PULL}/rpms": ["test.2-1.0.0-1.noarch.rpm"],
     f"{BUILD_ID_PULL_SIDE_TAG}/rpms": ["test.0-1.0.0-1.noarch.rpm"],
     f"{BUILD_ID_PULL_SIDE_TAG_OCI}/rpms": ["test.0-1.0.0-1.noarch.rpm"],
+    f"{BUILD_ID_PULL_GPG_VERIFY}/rpms": ["test.3-1.0.0-1.noarch.rpm"],
     # Side-tag RPM repo key is run-scoped via ``pull_side_tag_rpm_repo_key`` in ``rpm_repos_for_run``.
     f"{BUILD_ID_UPLOAD_FULL}/rpms": [],
     f"{BUILD_ID_UPLOAD_FULL}/rpms-signed": [
@@ -180,6 +182,7 @@ _FILE_REPOS_BASE: Final = {
     f"{BUILD_ID_UPDATE_BUILD_PULL}/artifacts": ["pulp_results.json"],
     f"{BUILD_ID_PULL_SIDE_TAG}/artifacts": ["pulp_results.json"],
     f"{BUILD_ID_PULL_SIDE_TAG_OCI}/artifacts": ["pulp_results.json"],
+    f"{BUILD_ID_PULL_GPG_VERIFY}/artifacts": ["pulp_results.json"],
     f"{BUILD_ID_UPLOAD_FULL}/artifacts": ["pulp_results.json"],
     f"{BUILD_ID_UPLOAD_FULL}/sbom": ["sbom.json"],
     f"{BUILD_ID_UPLOAD_TARGET_ARCH}/artifacts": ["pulp_results.json"],
