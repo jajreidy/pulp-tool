@@ -171,6 +171,18 @@ def _without_optional_oci_repos(
     return {name: content for name, content in repos.items() if name not in optional}
 
 
+def _without_global_target_arch_repos(repos: dict[str, list[str]], run_id: str | None) -> dict[str, list[str]]:
+    """
+    Drop per-arch RPM repo keys when a run id is set.
+
+    ``--target-arch-repo`` creates globally named Pulp repos (``aarch64``, ``noarch``, ``x86_64``).
+    Concurrent e2e runs must not validate or destroy those names (cross-run collision).
+    """
+    if not run_id:
+        return repos
+    return {name: content for name, content in repos.items() if name not in TARGET_ARCH_REPOS}
+
+
 _FILE_REPOS_BASE: Final = {
     f"{BUILD_ID_UPLOAD_FILES}/artifacts": ["pulp_results.json", "test.md"],
     f"{BUILD_ID_UPLOAD_FILES}/logs": ["x86_64/build.log"],
@@ -193,7 +205,10 @@ _FILE_REPOS_BASE: Final = {
 
 def rpm_repos_for_run(run_id: str | None, oci_storage: str | None = None) -> dict[str, list[str]]:
     """Return RPM repository expectations keyed by run-scoped Pulp names."""
-    base = _without_optional_oci_repos(dict(_RPM_REPOS_BASE), _OCI_OPTIONAL_RPM_REPOS, oci_storage)
+    base = _without_global_target_arch_repos(
+        _without_optional_oci_repos(dict(_RPM_REPOS_BASE), _OCI_OPTIONAL_RPM_REPOS, oci_storage),
+        run_id,
+    )
     side_tag_repo: dict[str, list[str]] = {}
     if oci_storage_e2e_enabled(oci_storage):
         side_tag_repo[pull_side_tag_rpm_repo_key(run_id)] = ["test.0-1.0.0-1.noarch.rpm"]
@@ -254,5 +269,6 @@ def scoped_repo_name(base_repo: str, run_id: str | None) -> str:
         build_part, repo_suffix = base_repo.split("/", 1)
         return f"{scoped_build_id(build_part, run_id)}/{repo_suffix}"
     if base_repo in TARGET_ARCH_REPOS:
+        # Legacy single-run mode only; concurrent runs omit these repos (see _without_global_target_arch_repos).
         return base_repo
     return scoped_build_id(base_repo, run_id)

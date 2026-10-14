@@ -67,11 +67,11 @@ def test_scoped_repo_name_leaves_global_arch_repos_unsuffixed() -> None:
     assert scoped_repo_name("aarch64", "run1") == "aarch64"
 
 
-def test_rpm_repos_for_run_keeps_global_arch_repos_when_isolated() -> None:
+def test_rpm_repos_for_run_keeps_global_arch_repos_only_without_run_id() -> None:
     legacy = rpm_repos_for_run(None)
     isolated = rpm_repos_for_run("run1")
     assert "aarch64" in legacy
-    assert "aarch64" in isolated
+    assert "aarch64" not in isolated
     assert f"{BUILD_ID_UPLOAD_MINIMAL}-run1/rpms" in isolated
 
 

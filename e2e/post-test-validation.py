@@ -7,7 +7,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from names import file_repos_for_run, normalize_oci_storage, resolve_run_id, rpm_repos_for_run
+from names import TARGET_ARCH_REPOS, file_repos_for_run, normalize_oci_storage, resolve_run_id, rpm_repos_for_run
 from pulp_cli_env import env_for_pulp_cli
 
 
@@ -111,6 +111,11 @@ def verify_repos(config_path: Path, run_id: str | None, oci_storage: str | None)
 
     if run_id:
         print(f"=== Verifying repository content (run id: {run_id}) ===\n")
+        skipped = ", ".join(sorted(TARGET_ARCH_REPOS))
+        print(
+            f"Note: skipping global --target-arch-repo RPM repos ({skipped}); "
+            "they are not run-scoped and collide across concurrent PipelineRuns.\n"
+        )
     else:
         print("=== Verifying repository content ===\n")
 

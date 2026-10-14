@@ -307,7 +307,7 @@ Multiple e2e PipelineRuns can execute against the same shared Pulp domain. To av
 
 Shared naming helpers live in [`names.py`](names.py).
 
-**Note:** `--target-arch-repo` creates globally named RPM repositories (`x86_64`, `aarch64`, `noarch`). Those names are not run-suffixed; concurrent PipelineRuns may contend on them. Build-scoped repos still use the run id suffix.
+**Note:** `--target-arch-repo` creates globally named RPM repositories (`x86_64`, `aarch64`, `noarch`). Those names are not run-suffixed; concurrent PipelineRuns may contend on them. When **`E2E_RUN_ID`** / **`--run-id`** is set, `post-test-validation.py` and `post-test-cleanup.py` **skip** those global arch repos (see `names._without_global_target_arch_repos`); the target-arch upload test still runs, but only `{build_id}-{run}/artifacts` is validated for that case. Build-scoped RPM repos still use the run id suffix.
 
 PR and push PipelineRuns set `concurrency_limit: 1` per pipeline, but run ids still protect against overlap between PR and push pipelines or manual re-runs.
 

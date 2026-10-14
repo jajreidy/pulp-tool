@@ -38,6 +38,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Expanded Konflux contracts in [`docs/CLAUDE.md`](docs/CLAUDE.md), [`docs/cli-reference.md`](docs/cli-reference.md), [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
 - Golden JSON fixture test for **`PulpResultsDocument.to_canonical_json()`** on-wire shape ([`tests/fixtures/pulp_results_golden.json`](tests/fixtures/pulp_results_golden.json))
 
+### Fixed
+
+- **E2e (concurrent runs):** When `E2E_RUN_ID` / `--run-id` is set, post-test validation and cleanup skip global `--target-arch-repo` RPM repos (`aarch64`, `noarch`, `x86_64`) so parallel PipelineRuns do not cross-check or destroy shared Pulp repository names ([fb2aae7](https://github.com/konflux-ci/pulp-tool/commit/fb2aae7))
+
 ### Changed
 
 - **`update-build`** with digest-pinned **`--results-json`**: ORAS **`attach`** to the subject manifest (referrer artifact); **`upload-build`** / side-tag without attach subject still **`oras push`** to **`--oci-storage`**
