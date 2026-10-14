@@ -67,6 +67,16 @@ class TestDownloadTask:
                 {"artifact_name": "a.rpm", "file_url": "not-a-url", "arch": "x86_64", "artifact_type": "rpm"}
             )
 
+    def test_download_task_rejects_path_traversal_arch(self) -> None:
+        """Architecture labels must not contain path segments."""
+        with pytest.raises(ValidationError, match="Unsupported or invalid architecture"):
+            DownloadTask(
+                artifact_name="evil.log",
+                file_url=_http_url("https://example.com/logs/evil.log"),
+                arch="../../tmp",
+                artifact_type="log",
+            )
+
 
 class TestContentData:
     """Test ContentData model."""

@@ -62,6 +62,9 @@ UPLOAD_CONTENT_TIMEOUT = 1800
 LARGE_UPLOAD_MIN_SIZE_MB = 300
 LARGE_UPLOAD_MIN_SIZE_BYTES = LARGE_UPLOAD_MIN_SIZE_MB * 1024 * 1024
 
+# Default cap per distribution download (~400 MiB; override with PULP_TOOL_MAX_DOWNLOAD_BYTES).
+DEFAULT_MAX_ARTIFACT_DOWNLOAD_BYTES = 400 * 1024 * 1024
+
 # Cache TTL (time-to-live) in seconds for GET request caching
 CACHE_TTL = 300  # 5 minutes
 

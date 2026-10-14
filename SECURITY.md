@@ -91,8 +91,15 @@ Security updates will be:
 ### File Operations
 
 - File paths are validated before operations
-- File permissions are checked
+- Architecture labels used in log download paths are allowlisted (`SUPPORTED_ARCHITECTURES` in `pulp_tool/utils/path_utils.py`); `DownloadTask.arch` is validated before download
+- Distribution downloads enforce a maximum size (`PULP_TOOL_MAX_DOWNLOAD_BYTES`)
 - Large files are handled with streaming
+
+### Konflux deployment
+
+- Run the **pulp-tool-container** image as a non-root user (`USER 1001` in the image); set Tekton **`securityContext.runAsNonRoot: true`**
+- Mount Pulp config from Kubernetes Secrets with restrictive file permissions
+- Trust **`cli.base_url`** for the destination instance; TLS verification is always enabled
 
 ## Additional Resources
 

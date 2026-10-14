@@ -57,6 +57,8 @@ COPY LICENSE /licenses/LICENSE
 
 RUN microdnf install -y \
         python3 \
+        rpm \
+        gnupg2 \
         shadow-utils && \
     microdnf clean all
 

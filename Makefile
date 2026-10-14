@@ -3,7 +3,7 @@
 COMPARE_BRANCH ?= origin/main
 AUDIT_VENV ?= .audit-venv
 
-.PHONY: help install install-dev test test-container test-e2e-container test-e2e-cleanup-container test-diff-coverage lint format check clean audit lock lock-check pre-commit-ci release-please release-publish
+.PHONY: help install install-dev test test-container test-e2e-container test-e2e-cleanup-container test-diff-coverage lint format check clean audit bandit lock lock-check pre-commit-ci release-please release-publish
 
 # Default target
 help:
@@ -20,6 +20,7 @@ help:
 	@echo "  make check        - Run all checks (lint + test)"
 	@echo "  make pre-commit-ci - Run pre-commit commit + push stages (matches PR CI)"
 	@echo "  make audit        - Run pip-audit (reuses .audit-venv; dev deps from uv.lock)"
+	@echo "  make bandit       - Run Bandit on pulp_tool/ (HIGH severity, same gate as security-scan.yml)"
 	@echo "  make clean        - Clean build artifacts"
 	@echo "  make lock         - Regenerate uv.lock from pyproject.toml (uv lock)"
 	@echo "  make lock-check   - Fail if pyproject.toml and uv.lock are out of sync"
@@ -60,6 +61,7 @@ test-container:
 	$$ENGINE run --rm pulp-tool:test pulp-tool --version && \
 	$$ENGINE run --rm pulp-tool:test pulp-tool --help && \
 	$$ENGINE run --rm pulp-tool:test oras version && \
+	$$ENGINE run --rm pulp-tool:test rpm --version && \
 	$$ENGINE run --rm pulp-tool:test sh -c 'select-oci-auth quay.io/example/repo 2>/dev/null | grep -q auths'
 
 test-e2e-container:
@@ -69,6 +71,9 @@ test-e2e-container:
 	$$ENGINE run --rm pulp-e2e:test pulp-tool --version && \
 	$$ENGINE run --rm pulp-e2e:test pulp --help && \
 	$$ENGINE run --rm pulp-e2e:test python3 -c "import rpm_rs; print('rpm-rs OK')" && \
+	$$ENGINE run --rm pulp-e2e:test rpm --version && \
+	$$ENGINE run --rm pulp-e2e:test rpmsign --version && \
+	$$ENGINE run --rm pulp-e2e:test gpg --version && \
 	$$ENGINE run --rm pulp-e2e:test oras version && \
 	$$ENGINE run --rm pulp-e2e:test yq --version && \
 	$$ENGINE run --rm pulp-e2e:test test -x /usr/local/bin/get-reference-base
@@ -123,6 +128,9 @@ pre-commit-ci:
 
 audit:
 	@scripts/run-pip-audit-precommit.sh --force
+
+bandit:
+	python3 -m bandit -r pulp_tool -c pyproject.toml -lll
 
 # Cleanup
 clean:

@@ -26,6 +26,12 @@
       "matchManagers": ["pep621"],
       "matchUpdateTypes": ["lockFileMaintenance"],
       "groupName": "python pep621"
+    },
+    {
+      "description": "Bump pinned container-build-catalog revision in pulp-tool-container PipelineRuns",
+      "matchManagers": ["tekton"],
+      "matchFileNames": [".tekton/pulp-tool-container-build-*.yaml"],
+      "groupName": "tekton container-build-catalog"
     }
   ]
 }

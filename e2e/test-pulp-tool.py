@@ -33,6 +33,9 @@ from distribution_fetch import (
     probe_http_get_status,
 )
 from distribution_verify_queue import DistributionCheckRunner, DistributionVerifyQueue
+from gpg_sign_rpm import ensure_gpg_keyring, sign_rpm
+
+from pulp_tool.utils.rpm_gpg_verify import RpmGpgVerifyError, verify_rpm_gpg_signature
 from large_upload import (
     LARGE_RPM_ARCH,
     LARGE_RPM_FILENAME,
@@ -46,6 +49,7 @@ from names import (
     BASE_PATH_CREATE_REPOSITORY_JSON,
     BASE_PATH_E2E_ERROR_DUP,
     BUILD_ID_E2E_ERROR_EMPTY,
+    BUILD_ID_PULL_GPG_VERIFY,
     BUILD_ID_PULL_SIDE_TAG,
     BUILD_ID_PULL_SIDE_TAG_OCI,
     BUILD_ID_UPDATE_BUILD,
@@ -128,6 +132,9 @@ class E2ETestSuite:
         self._side_tag_source_pulp_results_url: str | None = None
         self._side_tag_oci_ref: str | None = None
         self._side_tag_oci_build_id: str | None = None
+        self._gpg_keyring_dir: Path | None = None
+        self._gpg_verify_pulp_results_url: str | None = None
+        self._gpg_signed_rpm_name = "test.3-1.0.0-1.noarch.rpm"
 
         with open(self.config_file, "rb") as f:
             config = tomllib.load(f)
@@ -2535,6 +2542,171 @@ class E2ETestSuite:
         )
         return True
 
+    def _gpg_e2e_prereqs(self, label: str) -> bool:
+        if shutil.which("gpg") is None or shutil.which("rpm") is None:
+            self.skip_test(label, "gpg and rpm required on PATH (Konflux e2e image)")
+            return False
+        return True
+
+    def test_upload_gpg_signed_rpm_source(self):
+        """Upload GPG-signed RPM for ``pull --verify-rpm-gpg`` (distribution verify deferred)."""
+        if not self.real_server:
+            self.skip_test("upload (GPG-signed RPM)", "DRY RUN")
+            return
+        if not self._gpg_e2e_prereqs("upload GPG-signed RPM"):
+            return
+
+        build_id = self.bid(BUILD_ID_PULL_GPG_VERIFY)
+        source_rpm = self.rpm_dirs[3] / "noarch" / self._gpg_signed_rpm_name
+        if not source_rpm.is_file():
+            matches = list(self.rpm_dirs[3].rglob(self._gpg_signed_rpm_name))
+            source_rpm = matches[0] if matches else source_rpm
+        if not source_rpm.is_file():
+            self.stats.failed += 1
+            self.log_error(f"Missing source RPM for GPG e2e: {source_rpm}")
+            return
+
+        gpg_home = self.test_dir / "gpg-keyring"
+        signed_dir = self.test_dir / "gpg-signed-rpms" / "noarch"
+        signed_dir.mkdir(parents=True, exist_ok=True)
+        signed_rpm = signed_dir / self._gpg_signed_rpm_name
+        shutil.copy2(source_rpm, signed_rpm)
+
+        self.run_test("GPG-sign test RPM", detail=str(signed_rpm))
+        try:
+            ensure_gpg_keyring(gpg_home)
+            sign_rpm(signed_rpm, gpg_home)
+            verify_rpm_gpg_signature(signed_rpm, gpg_keyring=str(gpg_home))
+        except (OSError, subprocess.CalledProcessError, RuntimeError, RpmGpgVerifyError) as exc:
+            self.stats.failed += 1
+            self.log_error(f"GPG sign failed: {exc}")
+            return
+
+        self._gpg_keyring_dir = gpg_home
+        self.run_test(
+            "pulp-tool upload (GPG-signed RPM)",
+            detail=f"build_id={build_id} rpm_dir={signed_dir.parent}",
+        )
+        upload_cmd = [
+            "pulp-tool",
+            "--config",
+            str(self.config_file),
+            "--build-id",
+            build_id,
+            "--namespace",
+            self.namespace,
+            "upload",
+            "--rpm-path",
+            str(signed_dir.parent),
+        ]
+        exit_code, output = self.run_command(upload_cmd)
+        if not self.assert_exit_code(0, exit_code, "Upload GPG-signed RPM"):
+            self.log_error(output)
+            return
+
+        pulp_results_url = (
+            f"{self.base_url}/api/pulp-content/{self.namespace}/{build_id}/artifacts/pulp_results.json"
+        )
+        self._gpg_verify_pulp_results_url = pulp_results_url
+        self.defer_distribution_check(
+            "GPG-signed upload pulp_results.json on pulp-content",
+            lambda suite: suite._execute_gpg_upload_pulp_results_reachable(pulp_results_url),
+            build_id=build_id,
+        )
+
+    def _execute_gpg_upload_pulp_results_reachable(self, pulp_results_url: str) -> None:
+        try:
+            client = distribution_client_from_config(self.config_file)
+            fetch_bytes(client, pulp_results_url, label="pulp_results.json (GPG upload)")
+        except DistributionFetchError as exc:
+            self.stats.failed += 1
+            self.log_error(f"GPG upload pulp_results.json not available: {exc}")
+            return
+        self.stats.passed += 1
+        self.log_success("GPG upload pulp_results.json is reachable")
+
+    def test_pull_verify_rpm_gpg(self):
+        """``pull --verify-rpm-gpg`` accepts signed RPMs and rejects unsigned relay."""
+        if not self.real_server:
+            self.skip_test("pull --verify-rpm-gpg", "DRY RUN")
+            return
+        if not self._gpg_e2e_prereqs("pull --verify-rpm-gpg"):
+            return
+
+        pulp_results_url = self._gpg_verify_pulp_results_url
+        gpg_home = self._gpg_keyring_dir
+        if not pulp_results_url or not gpg_home:
+            self.skip_test(
+                "pull --verify-rpm-gpg",
+                "prior test_upload_gpg_signed_rpm_source did not complete (sign/upload skipped or failed)",
+            )
+            return
+
+        pull_dir = self.output_dir / "pull-gpg-verify-output"
+        pull_dir.mkdir(parents=True, exist_ok=True)
+        self.run_test(
+            "pulp-tool pull --verify-rpm-gpg (signed RPM)",
+            detail=pulp_results_url,
+        )
+        pull_cmd = [
+            "pulp-tool",
+            "--config",
+            str(self.config_file),
+            "pull",
+            "--artifact-location",
+            pulp_results_url,
+            "--content-types",
+            "rpm",
+            "--archs",
+            "noarch",
+            "--verify-rpm-gpg",
+            "--gpg-keyring",
+            str(gpg_home),
+        ]
+        exit_code, output = self.run_command(pull_cmd, cwd=pull_dir)
+        if not self.assert_exit_code(0, exit_code, "Pull with GPG verify on signed RPM"):
+            self.log_error(output)
+            return
+        if not self.assert_file_exists(
+            pull_dir / self._gpg_signed_rpm_name,
+            "Pull directory contains GPG-signed RPM",
+        ):
+            return
+
+        unsigned_url = (
+            f"{self.base_url}/api/pulp-content/{self.namespace}/"
+            f"{self.bid(BUILD_ID_UPLOAD_MINIMAL)}/artifacts/pulp_results.json"
+        )
+        unsigned_pull_dir = self.output_dir / "pull-gpg-verify-unsigned-fail"
+        unsigned_pull_dir.mkdir(parents=True, exist_ok=True)
+        self.run_test(
+            "pulp-tool pull --verify-rpm-gpg (unsigned RPM must fail)",
+            detail=unsigned_url,
+        )
+        fail_cmd = [
+            "pulp-tool",
+            "--config",
+            str(self.config_file),
+            "pull",
+            "--artifact-location",
+            unsigned_url,
+            "--content-types",
+            "rpm",
+            "--archs",
+            "noarch",
+            "--verify-rpm-gpg",
+            "--gpg-keyring",
+            str(gpg_home),
+        ]
+        fail_exit, fail_output = self.run_command(fail_cmd, cwd=unsigned_pull_dir)
+        if fail_exit == 0:
+            self.stats.failed += 1
+            self.log_error("Expected pull with --verify-rpm-gpg to fail on unsigned RPM")
+            self.log_error(fail_output)
+            return
+        self.stats.passed += 1
+        self.log_success("pull --verify-rpm-gpg passed for signed RPM and failed for unsigned RPM")
+
     def test_upload_side_tag_transfer_source(self):
         """Upload source build for HTTPS side-tag pull (distribution verify deferred)."""
         if not self.real_server:
@@ -3035,6 +3207,12 @@ class E2ETestSuite:
             requires_real_server=True,
         )
         self.invoke_test_case(
+            self.test_upload_gpg_signed_rpm_source,
+            "test_upload_gpg_signed_rpm_source",
+            f"Upload GPG-signed RPM for pull verify; build_id={self.bid(BUILD_ID_PULL_GPG_VERIFY)}.",
+            requires_real_server=True,
+        )
+        self.invoke_test_case(
             self.test_upload_side_tag_transfer_source,
             "test_upload_side_tag_transfer_source",
             f"Upload source for side-tag HTTPS pull; build_id={self.bid(BUILD_ID_PULL_SIDE_TAG)}.",
@@ -3086,6 +3264,12 @@ class E2ETestSuite:
             self.test_pull_by_artifact_location,
             "test_pull_by_artifact_location",
             f"Pull via --artifact-location fixture ({self.pulp_results.name}).",
+            requires_real_server=True,
+        )
+        self.invoke_test_case(
+            self.test_pull_verify_rpm_gpg,
+            "test_pull_verify_rpm_gpg",
+            f"pull --verify-rpm-gpg on build_id={self.bid(BUILD_ID_PULL_GPG_VERIFY)}; unsigned pull must fail.",
             requires_real_server=True,
         )
 

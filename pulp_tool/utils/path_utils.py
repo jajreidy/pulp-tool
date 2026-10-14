@@ -76,6 +76,12 @@ def get_artifact_save_path(filename: str, arch: str, artifact_type: str, base_di
     else:
         file_full_filename = file_basename
 
+    if base_dir:
+        base = Path(base_dir).resolve()
+        dest = Path(file_full_filename).resolve()
+        if not dest.is_relative_to(base):
+            raise ValueError(f"Resolved artifact path escapes base directory: {dest}")
+
     return file_full_filename
 
 

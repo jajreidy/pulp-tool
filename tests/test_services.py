@@ -196,6 +196,49 @@ class TestPullService:
         assert not result.success
         assert result.error_messages[0] == "--side-tag requires --transfer-dest"
 
+    @patch("pulp_tool.services.pull_service.download_artifacts_concurrently")
+    @patch("pulp_tool.services.pull_service.load_and_validate_artifacts")
+    def test_run_fails_when_verify_rpm_gpg_but_no_rpms_downloaded(self, mock_load, mock_download) -> None:
+        from pulp_tool.models.artifacts import ArtifactData, PulledArtifacts
+        from pulp_tool.models.pulp_results import PulpResultsDocument
+
+        mock_load.return_value = ArtifactData(
+            artifact_json=PulpResultsDocument(artifacts={}),
+            artifacts={},
+        )
+        mock_download.return_value = Mock(pulled_artifacts=PulledArtifacts(), completed=0, failed=0)
+
+        context = PullContext(
+            artifact_location="/tmp/pulp_results.json",
+            verify_rpm_gpg=True,
+            gpg_keyring="/tmp/gpg",
+        )
+        result = PullService().run(context, distribution_client=Mock(), max_workers=1)
+        assert not result.success
+        assert "No RPM artifacts downloaded" in result.error_messages[0]
+
+    @patch("pulp_tool.services.pull_service.verify_pulled_rpms_gpg")
+    @patch("pulp_tool.services.pull_service.download_artifacts_concurrently")
+    @patch("pulp_tool.services.pull_service.load_and_validate_artifacts")
+    def test_run_fails_when_rpm_gpg_verify_fails(self, mock_load, mock_download, mock_gpg) -> None:
+        from pulp_tool.models.artifacts import ArtifactData, PulledArtifacts
+        from pulp_tool.models.pulp_results import PulpResultsDocument
+        from pulp_tool.utils.rpm_gpg_verify import RpmGpgVerifyError
+
+        mock_load.return_value = ArtifactData(
+            artifact_json=PulpResultsDocument(artifacts={}),
+            artifacts={},
+        )
+        pulled = PulledArtifacts()
+        pulled.add_rpm("pkg.rpm", "/tmp/pkg.rpm", {"arch": "x86_64"})
+        mock_download.return_value = Mock(pulled_artifacts=pulled, completed=1, failed=0)
+        mock_gpg.side_effect = RpmGpgVerifyError("signature NOT OK")
+
+        context = PullContext(artifact_location="/tmp/pulp_results.json", verify_rpm_gpg=True)
+        result = PullService().run(context, distribution_client=Mock(), max_workers=1)
+        assert not result.success
+        assert "signature NOT OK" in result.error_messages[0]
+
 
 class TestUploadService:
     """Test UploadService class."""

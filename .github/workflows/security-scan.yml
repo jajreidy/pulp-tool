@@ -39,3 +39,16 @@ jobs:
           pip-audit -l --desc on \
             --ignore-vuln CVE-2026-4539 \
             --ignore-vuln GHSA-5239-wwwm-4pmq
+
+      # Bandit 1.9+ removed built-in SARIF; bandit-sarif-formatter registers --format sarif.
+      - name: Run Bandit (HIGH severity gate)
+        run: |
+          pip install 'bandit[toml]>=1.8.0' 'bandit-sarif-formatter>=1.1.1'
+          bandit -r pulp_tool -c pyproject.toml -f sarif -o bandit.sarif -lll
+          bandit -r pulp_tool -c pyproject.toml -lll
+
+      - name: Upload Bandit SARIF
+        uses: github/codeql-action/upload-sarif@9f759ee644a3e7c15c1390abf49868036c00067b # v3
+        with:
+          sarif_file: bandit.sarif
+          category: bandit

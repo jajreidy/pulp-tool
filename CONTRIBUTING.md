@@ -112,6 +112,7 @@ We use multiple linting tools:
 - **Mypy**: Static type checking
 - **yamllint**, **ShellCheck**, **hadolint**, **codespell**: YAML, shell scripts, Dockerfile, and spelling (pre-commit + CI)
 - **Checkton**: ShellCheck on embedded Tekton scripts (pre-push hook + CI)
+- **pip-audit** / **Bandit**: Dependency CVE audit (`make audit`) and SAST (`make bandit`, HIGH severity); weekly **security-scan** workflow uploads Bandit SARIF to GitHub Security
 
 ```bash
 # Run Python linters (same commands as CI python-lint job)

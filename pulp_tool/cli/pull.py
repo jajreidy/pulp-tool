@@ -101,6 +101,22 @@ from ..utils.oci_storage_resolve import resolve_oci_storage
         "create-trusted-artifact step."
     ),
 )
+@click.option(
+    "--verify-rpm-gpg",
+    is_flag=True,
+    help=(
+        "After download, verify RPM GPG signatures with rpm --checksig before transfer upload. "
+        "Also enabled when cli.verify_rpm_gpg is true in --transfer-dest config."
+    ),
+)
+@click.option(
+    "--gpg-keyring",
+    type=click.Path(exists=True),
+    help=(
+        "GnuPG homedir with signing public keys (exported via gpg for rpm --checksig; mount from a Tekton Secret). "
+        "Defaults to cli.gpg_keyring in --transfer-dest config when set."
+    ),
+)
 @click.pass_context
 def pull(  # pylint: disable=too-many-positional-arguments
     ctx: click.Context,
@@ -115,6 +131,8 @@ def pull(  # pylint: disable=too-many-positional-arguments
     artifact_results: str | None,
     snapshot_path: str | None,
     oci_storage: str | None,
+    verify_rpm_gpg: bool,
+    gpg_keyring: str | None,
 ) -> None:
     """Download artifacts and optionally re-upload to Pulp repositories."""
     config = ctx.obj["config"]
@@ -154,6 +172,21 @@ def pull(  # pylint: disable=too-many-positional-arguments
 
     content_types_list = [ct.strip() for ct in content_types.split(",")] if content_types else None
     archs_list = [arch.strip() for arch in archs.split(",")] if archs else None
+
+    verify_rpm_gpg_enabled = verify_rpm_gpg
+    gpg_keyring_path = (gpg_keyring or "").strip() or None
+    if dest_config_path:
+        try:
+            transfer_cfg = ConfigManager(dest_config_path)
+            transfer_cfg.load()
+            if not verify_rpm_gpg_enabled:
+                raw_verify = transfer_cfg.get("cli.verify_rpm_gpg")
+                verify_rpm_gpg_enabled = bool(raw_verify) if raw_verify is not None else False
+            if not gpg_keyring_path:
+                raw_keyring = transfer_cfg.get("cli.gpg_keyring")
+                gpg_keyring_path = str(raw_keyring).strip() if raw_keyring else None
+        except Exception as e:
+            logging.debug("Could not load transfer-dest config for GPG settings: %s", e)
 
     auth_config_path = distribution_config or source_config_path or dest_config_path
     auth = load_distribution_auth_from_config(
@@ -208,6 +241,8 @@ def pull(  # pylint: disable=too-many-positional-arguments
                 max_workers=max_workers,
                 content_types=content_types_list,
                 archs=archs_list,
+                verify_rpm_gpg=verify_rpm_gpg_enabled,
+                gpg_keyring=gpg_keyring_path,
             )
 
             distribution_client = _build_distribution_client(auth)

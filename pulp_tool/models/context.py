@@ -105,6 +105,8 @@ class PullContext(KonfluxBaseModel):
         max_workers: Maximum number of concurrent workers
         content_types: Optional list of content types to filter (rpm, log, sbom)
         archs: Optional list of architectures to filter
+        verify_rpm_gpg: When True, verify RPM GPG signatures after download (before transfer upload)
+        gpg_keyring: Optional GnuPG homedir for rpm --checksig (keys imported via gpg export)
     """
 
     artifact_location: str | None = None
@@ -122,6 +124,8 @@ class PullContext(KonfluxBaseModel):
     max_workers: int = Field(default=10, ge=1, le=100)
     content_types: list[str] | None = None
     archs: list[str] | None = None
+    verify_rpm_gpg: bool = False
+    gpg_keyring: str | None = None
 
     @field_validator("content_types")
     @classmethod

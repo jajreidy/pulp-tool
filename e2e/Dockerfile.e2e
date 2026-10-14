@@ -6,6 +6,14 @@
 # ORAS CLI + select-oci-auth (Konflux release-service-utils pattern).
 FROM quay.io/konflux-ci/oras:latest@sha256:1cc659b4d30536ec98300ac551739ef36dee345a7dcfe06129fd78abdc3688ac AS oras
 
+# UBI minimal has no rpm-sign package; ship Fedora rpmsign + non-glibc deps for e2e signing only.
+FROM quay.io/fedora/fedora:42 AS rpmsign
+COPY e2e/bundle-rpmsign.sh /usr/local/sbin/bundle-rpmsign.sh
+RUN dnf install -y rpm-sign ima-evm-utils-libs && dnf clean all && \
+    chmod +x /usr/local/sbin/bundle-rpmsign.sh && \
+    /usr/local/sbin/bundle-rpmsign.sh && \
+    LD_LIBRARY_PATH=/opt/rpmsign/lib64 /opt/rpmsign/usr/bin/rpmsign --version
+
 FROM registry.access.redhat.com/ubi10/ubi-minimal:10.2-1789645153
 
 # Skip microdnf update — metadata refresh is a common Konflux failure point.
@@ -16,7 +24,9 @@ RUN microdnf install -y \
         gcc \
         python3-devel \
         rust \
-        cargo && \
+        cargo \
+        rpm \
+        gnupg2 && \
     microdnf clean all
 
 COPY e2e/requirements.txt /opt/e2e/requirements.txt
@@ -26,6 +36,11 @@ RUN python3 -m pip install --no-cache-dir --upgrade pip && \
     pulp --version && \
     python3 -c "import rpm_rs" && \
     rm -rf /root/.cache /tmp/.cache
+
+COPY --from=rpmsign /opt/rpmsign/usr/bin/rpmsign /usr/bin/rpmsign
+COPY --from=rpmsign /opt/rpmsign/lib64/ /opt/rpmsign/lib64/
+ENV LD_LIBRARY_PATH=/opt/rpmsign/lib64
+RUN rpmsign --version
 
 COPY --from=oras /usr/bin/oras /usr/bin/oras
 COPY --from=oras /usr/bin/yq /usr/bin/yq
