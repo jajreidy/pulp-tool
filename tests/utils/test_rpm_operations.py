@@ -11,7 +11,7 @@ import httpx
 import pytest
 
 from pulp_tool.models.pulp_results import PulpResultsDocument
-from pulp_tool.utils import upload_rpms_logs
+from pulp_tool.upload.artifacts import upload_rpms_logs
 from pulp_tool.utils.rpm_operations import (
     calculate_sha256_checksum,
     parse_rpm_filename_to_nvr,
@@ -170,7 +170,7 @@ class TestRPMUtilities:
         with (
             patch("glob.glob", return_value=[temp_rpm_file]),
             patch(
-                "pulp_tool.utils.uploads.upload_rpms_parallel",
+                "pulp_tool.upload.artifacts.upload_rpms_parallel",
                 return_value=([(temp_rpm_file, "/pulp/api/v3/content/rpm/packages/12345/")], []),
             ),
             patch.object(mock_pulp_client, "add_content") as mock_add,

@@ -59,6 +59,8 @@ Prefer Makefile targets over invoking tools directly.
 | Ruff S105 on OAuth/token URLs | Use `RED_HAT_SSO_TOKEN_URL` constant or `# noqa: S105` |
 | Mypy errors in specific modules | Check `[[tool.mypy.overrides]]` in `pyproject.toml` |
 | Hooks fail on commit | Loop `pre-commit run --all-files` until clean |
+| Local vs CI pylint mismatch | Use `make lint-pylint` (same as GHA); pre-commit pylint uses `scripts/run-pylint.sh staged` with the same flags and default `-j 0`; set `PYLINT_JOBS` to reduce parallelism locally |
+| Pre-commit fans out CPU (many hooks) | `PRE_COMMIT_NO_CONCURRENCY=1` runs hook repos one at a time |
 | Yamllint truthy on `on:` | `# yamllint disable-line rule:truthy` (see release workflow) |
 | Hadolint DL3041/DL3013 | Ignored in pre-commit/CI (UBI microdnf + pip pattern) |
 | checkton: docker/podman required | Install podman/docker, or rely on CI `tekton-lint` |
