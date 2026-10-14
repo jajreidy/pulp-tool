@@ -218,6 +218,18 @@ class TestPulpClientErrorPaths:
         result = mock_pulp_client._build_rpm_distribution_url("pkg.rpm", {}, labels=labels, target_arch_repo=True)
         assert result == "https://pulp.example.com/api/pulp-content/test-domain/x86_64/Packages/p/pkg.rpm"
 
+    def test_build_rpm_distribution_url_target_arch_repo_build_scoped(self, mock_pulp_client) -> None:
+        """Build-scoped per-arch mode uses {build_id}/{arch} in the URL path."""
+        labels = {"arch": "x86_64", "build_id": "my-build"}
+        result = mock_pulp_client._build_rpm_distribution_url(
+            "pkg.rpm",
+            {},
+            labels=labels,
+            target_arch_repo=True,
+            target_arch_repo_build_scoped=True,
+        )
+        assert result == "https://pulp.example.com/api/pulp-content/test-domain/my-build/x86_64/Packages/p/pkg.rpm"
+
     def test_build_rpm_distribution_url_target_arch_repo_with_signed_by_label(self, mock_pulp_client) -> None:
         """signed_by label does not change per-arch distribution path (same as unsigned)."""
         labels = {"arch": "aarch64", "signed_by": "key-1"}
@@ -251,6 +263,12 @@ class TestPulpClientErrorPaths:
             labels = {"arch": "x86_64"}
             base = mock_pulp_client._rpm_distribution_base_url_from_labels(labels)
         assert base == "https://pulp.example.com/api/pulp-content/test-domain/noarch/"
+
+    def test_rpm_distribution_base_url_build_scoped(self, mock_pulp_client) -> None:
+        """Build-scoped target-arch base URL uses {build_id}/{arch}."""
+        labels = {"arch": "x86_64", "build_id": "my-build"}
+        base = mock_pulp_client._rpm_distribution_base_url_from_labels(labels, target_arch_repo_build_scoped=True)
+        assert base == "https://pulp.example.com/api/pulp-content/test-domain/my-build/x86_64/"
 
     def test_build_file_distribution_url_with_arch(self) -> None:
         """Test _build_file_distribution_url with arch prefix."""

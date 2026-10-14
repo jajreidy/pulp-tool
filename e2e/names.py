@@ -61,13 +61,10 @@ REPO_CREATE_REPOSITORY_JSON: Final = "test-repo-json"
 BASE_PATH_CREATE_REPOSITORY: Final = "repo_0/test"
 BASE_PATH_CREATE_REPOSITORY_JSON: Final = "repo_1/path"
 
-# Per-arch RPM repos (--target-arch-repo); globally named in Pulp and cannot be shared concurrently.
-TARGET_ARCH_REPOS: Final = frozenset({"aarch64", "noarch", "x86_64"})
-
 _RPM_REPOS_BASE: Final = {
-    "aarch64": ["test.3-1.0.0-1.aarch64.rpm"],
-    "noarch": ["test.3-1.0.0-1.noarch.rpm"],
-    "x86_64": ["test.3-1.0.0-1.x86_64.rpm"],
+    f"{BUILD_ID_UPLOAD_TARGET_ARCH}/aarch64": ["test.3-1.0.0-1.aarch64.rpm"],
+    f"{BUILD_ID_UPLOAD_TARGET_ARCH}/noarch": ["test.3-1.0.0-1.noarch.rpm"],
+    f"{BUILD_ID_UPLOAD_TARGET_ARCH}/x86_64": ["test.3-1.0.0-1.x86_64.rpm"],
     f"{BUILD_ID_UPLOAD_FILES}/rpms": ["test.4-1.0.0-1.x86_64.rpm"],
     f"{BUILD_ID_UPLOAD_MINIMAL}/rpms": [
         "test.0-1.0.0-1.aarch64.rpm",
@@ -253,6 +250,4 @@ def scoped_repo_name(base_repo: str, run_id: str | None) -> str:
     if "/" in base_repo:
         build_part, repo_suffix = base_repo.split("/", 1)
         return f"{scoped_build_id(build_part, run_id)}/{repo_suffix}"
-    if base_repo in TARGET_ARCH_REPOS:
-        return base_repo
     return scoped_build_id(base_repo, run_id)

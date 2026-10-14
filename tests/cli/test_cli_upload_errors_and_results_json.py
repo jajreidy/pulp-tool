@@ -201,6 +201,30 @@ class TestUploadCommandErrorsAndResultsJson:
             assert result.exit_code == 1
             assert "--files-base-path can only be used with --results-json" in result.output
 
+    def test_upload_target_arch_repo_build_scoped_requires_target_arch_repo(self) -> None:
+        """--target-arch-repo-build-scoped without --target-arch-repo exits with an error."""
+        runner = CliRunner()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config_path = Path(tmpdir) / "config.toml"
+            config_path.write_text(
+                '[cli]\nbase_url = "https://pulp.example.com"\napi_root = "/pulp/api/v3"\ndomain = "test-domain"'
+            )
+            result = runner.invoke(
+                cli,
+                [
+                    "--build-id",
+                    "test-build",
+                    "--namespace",
+                    "test-ns",
+                    "--config",
+                    str(config_path),
+                    "upload",
+                    "--target-arch-repo-build-scoped",
+                ],
+            )
+            assert result.exit_code == 1
+            assert "--target-arch-repo-build-scoped requires --target-arch-repo" in result.output
+
     @patch("pulp_tool.cli.upload_build.PulpClient")
     @patch("pulp_tool.cli.upload_build.PulpHelper")
     def test_upload_with_results_json(self, mock_helper_class, mock_client_class) -> None:

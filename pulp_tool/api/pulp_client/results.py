@@ -113,6 +113,7 @@ class PulpClientResultsMixin:
         is_rpm: bool,
         distribution_urls: dict[str, str],
         target_arch_repo: bool = False,
+        target_arch_repo_build_scoped: bool = False,
         file_relative_path: str | None = None,
     ) -> None:
         """
@@ -134,6 +135,7 @@ class PulpClientResultsMixin:
             labels,
             distribution_urls,
             target_arch_repo=target_arch_repo,
+            target_arch_repo_build_scoped=target_arch_repo_build_scoped,
         )
         results_model.add_artifact(key=artifact_key, url=artifact_url, sha256=sha256_hex, pulp_labels=labels)
 
@@ -145,6 +147,7 @@ class PulpClientResultsMixin:
         distribution_urls: dict[str, str] | None = None,
         *,
         target_arch_repo: bool = False,
+        target_arch_repo_build_scoped: bool = False,
         merge: bool = False,
     ) -> Any:
         """
@@ -226,6 +229,7 @@ class PulpClientResultsMixin:
                     labels,
                     distribution_urls or {},
                     target_arch_repo=target_arch_repo,
+                    target_arch_repo_build_scoped=target_arch_repo_build_scoped,
                 )
 
                 if merge and artifact_key in results_model.artifacts:

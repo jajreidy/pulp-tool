@@ -63,15 +63,17 @@ def test_scoped_repo_name_qualifies_build_scoped_repo() -> None:
     assert scoped_repo_name(f"{BUILD_ID_UPLOAD_MINIMAL}/rpms", "run1") == f"{BUILD_ID_UPLOAD_MINIMAL}-run1/rpms"
 
 
-def test_scoped_repo_name_leaves_global_arch_repos_unsuffixed() -> None:
-    assert scoped_repo_name("aarch64", "run1") == "aarch64"
+def test_scoped_repo_name_scopes_target_arch_build_paths() -> None:
+    assert scoped_repo_name(f"{BUILD_ID_UPLOAD_TARGET_ARCH}/aarch64", "run1") == (
+        f"{BUILD_ID_UPLOAD_TARGET_ARCH}-run1/aarch64"
+    )
 
 
-def test_rpm_repos_for_run_keeps_global_arch_repos_when_isolated() -> None:
+def test_rpm_repos_for_run_includes_build_scoped_target_arch_repos() -> None:
     legacy = rpm_repos_for_run(None)
     isolated = rpm_repos_for_run("run1")
-    assert "aarch64" in legacy
-    assert "aarch64" in isolated
+    assert f"{BUILD_ID_UPLOAD_TARGET_ARCH}/aarch64" in legacy
+    assert f"{BUILD_ID_UPLOAD_TARGET_ARCH}-run1/aarch64" in isolated
     assert f"{BUILD_ID_UPLOAD_MINIMAL}-run1/rpms" in isolated
 
 

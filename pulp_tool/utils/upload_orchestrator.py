@@ -116,7 +116,11 @@ class UploadOrchestrator:
             if args.target_arch_repo:
                 if pulp_helper is None:
                     raise ValueError("target_arch_repo requires PulpHelper for per-arch RPM repositories")
-                arch_rpm_href = pulp_helper.ensure_rpm_repository_for_arch(args.build_id, arch)
+                arch_rpm_href = pulp_helper.ensure_rpm_repository_for_arch(
+                    args.build_id,
+                    arch,
+                    target_arch_repo_build_scoped=bool(getattr(args, "target_arch_repo_build_scoped", False)),
+                )
             else:
                 arch_rpm_href = rpm_href
             future = executor.submit(
@@ -320,7 +324,11 @@ class UploadOrchestrator:
                     logging.warning("Uploading %d root-level RPM(s) for architecture %s", len(rpm_list), arch)
                     if args.target_arch_repo:
                         assert pulp_helper is not None  # noqa: S101  # enforced at start when target_arch_repo is set
-                        root_rpm_href = pulp_helper.ensure_rpm_repository_for_arch(args.build_id, arch)
+                        root_rpm_href = pulp_helper.ensure_rpm_repository_for_arch(
+                            args.build_id,
+                            arch,
+                            target_arch_repo_build_scoped=bool(getattr(args, "target_arch_repo_build_scoped", False)),
+                        )
                     else:
                         root_rpm_href = rpm_href
                     created_resources.extend(
@@ -349,6 +357,7 @@ class UploadOrchestrator:
                 args.sbom_path,
                 distribution_urls=distribution_urls,
                 target_arch_repo=args.target_arch_repo,
+                target_arch_repo_build_scoped=bool(getattr(args, "target_arch_repo_build_scoped", False)),
             )
             created_resources.extend(sbom_created_resources)
         else:

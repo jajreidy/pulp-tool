@@ -185,6 +185,63 @@ class TestUploadCommandPathsAndSuccess:
 
     @patch("pulp_tool.cli.upload_build.PulpClient")
     @patch("pulp_tool.cli.upload_build.PulpHelper")
+    def test_upload_target_arch_repo_build_scoped_flag(self, mock_helper_class, mock_client_class) -> None:
+        """--target-arch-repo-build-scoped is stored on UploadRpmContext."""
+        runner = CliRunner()
+        mock_client = Mock()
+        mock_client.close = Mock()
+        mock_client_class.create_from_config_file.return_value = mock_client
+        mock_helper = Mock()
+        from pulp_tool.models.repository import RepositoryRefs
+
+        mock_repos = RepositoryRefs(
+            rpms_href="",
+            rpms_prn="",
+            logs_href="",
+            logs_prn="",
+            sbom_href="",
+            sbom_prn="",
+            artifacts_href="",
+            artifacts_prn="",
+        )
+        mock_helper.setup_repositories.return_value = mock_repos
+        mock_helper.process_uploads.return_value = "https://example.com/results.json"
+        mock_helper_class.return_value = mock_helper
+        with tempfile.TemporaryDirectory() as tmpdir:
+            rpm_dir = Path(tmpdir) / "rpms"
+            rpm_dir.mkdir()
+            sbom_path = Path(tmpdir) / "sbom.json"
+            sbom_path.write_text("{}")
+            config_path = Path(tmpdir) / "config.toml"
+            config_path.write_text(
+                '[cli]\nbase_url = "https://pulp.example.com"\napi_root = "/pulp/api/v3"\ndomain = "test-domain"'
+            )
+            result = runner.invoke(
+                cli,
+                [
+                    "--build-id",
+                    "test-build",
+                    "--namespace",
+                    "test-ns",
+                    "--config",
+                    str(config_path),
+                    "upload",
+                    "--parent-package",
+                    "test-pkg",
+                    "--rpm-path",
+                    str(rpm_dir),
+                    "--sbom-path",
+                    str(sbom_path),
+                    "--target-arch-repo",
+                    "--target-arch-repo-build-scoped",
+                ],
+            )
+            assert result.exit_code == 0
+            context = mock_helper.process_uploads.call_args[0][1]
+            assert context.target_arch_repo_build_scoped is True
+
+    @patch("pulp_tool.cli.upload_build.PulpClient")
+    @patch("pulp_tool.cli.upload_build.PulpHelper")
     def test_upload_with_base64_config(self, mock_helper_class, mock_client_class) -> None:
         """Test upload command with base64-encoded config."""
         runner = CliRunner()

@@ -112,7 +112,9 @@ class TestUploadOrchestratorProcessArchitectureUploads:
                     )
                     for fut in future_to_arch:
                         fut.result()
-            mock_helper.ensure_rpm_repository_for_arch.assert_called_once_with("test-build", "x86_64")
+            mock_helper.ensure_rpm_repository_for_arch.assert_called_once_with(
+                "test-build", "x86_64", target_arch_repo_build_scoped=False
+            )
             mock_upload.assert_called_once()
             assert mock_upload.call_args.kwargs["rpm_repository_href"] == "/arch-specific/rpm"
 

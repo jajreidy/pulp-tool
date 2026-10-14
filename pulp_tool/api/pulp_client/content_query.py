@@ -98,7 +98,12 @@ class PulpClientContentQueryMixin:
             return "file.file"
         return "unknown"
 
-    def _rpm_distribution_base_url_from_labels(self, labels: dict[str, str]) -> str:
+    def _rpm_distribution_base_url_from_labels(
+        self,
+        labels: dict[str, str],
+        *,
+        target_arch_repo_build_scoped: bool = False,
+    ) -> str:
         """Build RPM distribution base URL when using ``--target-arch-repo`` (per-arch base paths)."""
         base_url_str = str(self.config["base_url"]).rstrip("/")
         pulp_content = f"{base_url_str}/api/pulp-content/"
@@ -107,14 +112,35 @@ class PulpClientContentQueryMixin:
         arch_seg = sanitize_build_id_for_repository(arch)
         if not validate_build_id(arch_seg):
             arch_seg = "noarch"
+        if target_arch_repo_build_scoped:
+            build_id = (labels.get("build_id") or "").strip()
+            if build_id:
+                from ...utils.repository_manager import target_arch_repository_name
+
+                path_seg = target_arch_repository_name(build_id, arch_seg, build_scoped=True)
+                return f"{pulp_content}{ns}/{path_seg}/"
         return f"{pulp_content}{ns}/{arch_seg}/"
 
-    def _build_rpm_packages_url_for_arch(self, arch: str, relative_path: str) -> str:
+    def _build_rpm_packages_url_for_arch(
+        self,
+        arch: str,
+        relative_path: str,
+        *,
+        labels: dict[str, str] | None = None,
+        target_arch_repo_build_scoped: bool = False,
+    ) -> str:
         """Build RPM content URL under per-arch distribution (namespace/arch/Packages/...)."""
         base_url_str = str(self.config["base_url"]).rstrip("/")
         pulp_content_base_url = f"{base_url_str}/api/pulp-content"
         ns = self.namespace if isinstance(self.namespace, str) else ""
-        base = f"{pulp_content_base_url}/{ns}/{arch}/"
+        path_seg = arch
+        if target_arch_repo_build_scoped and labels:
+            build_id = (labels.get("build_id") or "").strip()
+            if build_id:
+                from ...utils.repository_manager import target_arch_repository_name
+
+                path_seg = target_arch_repository_name(build_id, arch, build_scoped=True)
+        base = f"{pulp_content_base_url}/{ns}/{path_seg}/"
         filename, first_letter = rpm_packages_letter_and_basename(relative_path)
         if filename:
             return f"{base}Packages/{first_letter}/{filename}"
@@ -127,14 +153,23 @@ class PulpClientContentQueryMixin:
         labels: dict[str, str] | None = None,
         *,
         target_arch_repo: bool = False,
+        target_arch_repo_build_scoped: bool = False,
     ) -> str:
         """Build distribution URL for RPM artifacts (Packages/<lowercase-first-of-basename>/<basename>)."""
         labels = labels or {}
         if target_arch_repo:
             arch = (labels.get("arch") or "").strip()
             if arch and arch in SUPPORTED_ARCHITECTURES:
-                return self._build_rpm_packages_url_for_arch(arch, relative_path)
-            rpms_url = self._rpm_distribution_base_url_from_labels(labels)
+                return self._build_rpm_packages_url_for_arch(
+                    arch,
+                    relative_path,
+                    labels=labels,
+                    target_arch_repo_build_scoped=target_arch_repo_build_scoped,
+                )
+            rpms_url = self._rpm_distribution_base_url_from_labels(
+                labels,
+                target_arch_repo_build_scoped=target_arch_repo_build_scoped,
+            )
             filename, first_letter = rpm_packages_letter_and_basename(relative_path)
             if filename:
                 return f"{rpms_url}Packages/{first_letter}/{filename}"
@@ -191,6 +226,7 @@ class PulpClientContentQueryMixin:
         distribution_urls: dict[str, str],
         *,
         target_arch_repo: bool = False,
+        target_arch_repo_build_scoped: bool = False,
     ) -> str:
         """
         Build distribution URL for an artifact based on its type and relative path.
@@ -201,6 +237,7 @@ class PulpClientContentQueryMixin:
             labels: Labels from content (may contain arch, etc.)
             distribution_urls: Dictionary mapping repo_type to distribution base URL
             target_arch_repo: When True, RPM URLs use per-arch paths from labels (or sanitized fallback)
+            target_arch_repo_build_scoped: When True with target_arch_repo, use ``{build_id}/{arch}`` paths
 
         Returns:
             Full distribution URL for the artifact
@@ -211,6 +248,7 @@ class PulpClientContentQueryMixin:
                 distribution_urls,
                 labels=labels,
                 target_arch_repo=target_arch_repo,
+                target_arch_repo_build_scoped=target_arch_repo_build_scoped,
             )
         return self._build_file_distribution_url(relative_path, labels, distribution_urls)
 

@@ -160,9 +160,19 @@ class PulpHelper:
             skip_artifacts_repo=skip_artifacts,
         )
 
-    def ensure_rpm_repository_for_arch(self, build_id: str, arch: str) -> str:
-        """Create or get RPM repository for ``target_arch_repo`` mode (base_path = arch)."""
-        return self._repository_manager.ensure_rpm_repository_for_arch(build_id, arch)
+    def ensure_rpm_repository_for_arch(
+        self,
+        build_id: str,
+        arch: str,
+        *,
+        target_arch_repo_build_scoped: bool = False,
+    ) -> str:
+        """Create or get RPM repository for ``target_arch_repo`` mode (base_path = arch or build/arch)."""
+        return self._repository_manager.ensure_rpm_repository_for_arch(
+            build_id,
+            arch,
+            target_arch_repo_build_scoped=target_arch_repo_build_scoped,
+        )
 
     def ensure_side_tag_rpm_repository(self, build_id: str, side_tag: str) -> tuple[str, str]:
         """

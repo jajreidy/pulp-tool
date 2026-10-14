@@ -191,7 +191,9 @@ class TestProcessUploadsFromResultsJson:
                 mock_pulp_client, context, repositories, pulp_helper=mock_ph_instance
             )
         assert result == "https://example.com/r.json"
-        mock_ph_instance.ensure_rpm_repository_for_arch.assert_called_once_with("test-build", "x86_64")
+        mock_ph_instance.ensure_rpm_repository_for_arch.assert_called_once_with(
+            "test-build", "x86_64", target_arch_repo_build_scoped=False
+        )
         assert mock_upload_rpms.call_args.kwargs["rpm_repository_href"] == "/per-arch/rpm"
 
     def test_upload_from_results_json_files_base_path(self, tmp_path, mock_pulp_client) -> None:

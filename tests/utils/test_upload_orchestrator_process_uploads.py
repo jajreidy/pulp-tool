@@ -347,7 +347,9 @@ class TestUploadOrchestratorProcessUploads:
             mock_upload_rpms.assert_called_once()
             _call_pos, call_kw = mock_upload_rpms.call_args
             assert call_kw["rpm_repository_href"] == "/per-arch/href"
-            mock_helper.ensure_rpm_repository_for_arch.assert_called_once_with("test-build", "noarch")
+            mock_helper.ensure_rpm_repository_for_arch.assert_called_once_with(
+                "test-build", "noarch", target_arch_repo_build_scoped=False
+            )
 
     def test_process_architecture_uploads_target_arch_repo_requires_pulp_helper(self) -> None:
         """process_architecture_uploads raises when target_arch_repo set but pulp_helper is None."""
