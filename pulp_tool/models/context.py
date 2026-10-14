@@ -62,6 +62,8 @@ class UploadRpmContext(UploadContext):
         target_arch_repo: When True, RPM repos use architecture as name/base_path (e.g. x86_64) instead
             of build_id/rpms; created lazily per arch at upload time. With signed_by, the same per-arch
             repo is used (signed_by is label-only; no rpms-signed path segment).
+        target_arch_repo_build_scoped: When True with target_arch_repo, use ``{build_id}/{arch}`` as the
+            repository/distribution name (e.g. concurrent e2e) instead of global ``{arch}`` only.
     """
 
     rpm_path: str | None = None
@@ -71,6 +73,7 @@ class UploadRpmContext(UploadContext):
     signed_by: str | None = None
     overwrite: bool = False
     target_arch_repo: bool = False
+    target_arch_repo_build_scoped: bool = False
 
     @field_validator("signed_by")
     @classmethod

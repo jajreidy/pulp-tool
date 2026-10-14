@@ -10,7 +10,12 @@ import pytest
 
 from pulp_tool.exceptions import PulpToolHTTPError
 from pulp_tool.models.pulp_api import RpmRepositoryRequest, TaskResponse
-from pulp_tool.utils.repository_manager import RepositoryApiOps, RepositoryManager, _resource_log_label
+from pulp_tool.utils.repository_manager import (
+    RepositoryApiOps,
+    RepositoryManager,
+    _resource_log_label,
+    target_arch_repository_name,
+)
 
 
 def _create_or_get_repository_side_effect(
@@ -309,6 +314,10 @@ class TestRepositoryManagerTargetArchRepo:
         assert result.rpms_href == ""
         assert result.rpms_prn == ""
 
+    def test_target_arch_repository_name_build_scoped(self) -> None:
+        assert target_arch_repository_name("my-build", "x86_64", build_scoped=False) == "x86_64"
+        assert target_arch_repository_name("my-build", "x86_64", build_scoped=True) == "my-build/x86_64"
+
     def test_ensure_rpm_repository_for_arch(self) -> None:
         """ensure_rpm_repository_for_arch creates arch-named repo and returns href."""
         mock_client = Mock()
@@ -322,6 +331,18 @@ class TestRepositoryManagerTargetArchRepo:
         assert mock_impl.call_args[0][2] == "rpm"
         assert mock_impl.call_args.kwargs.get("build_id") == "test-build"
         assert mock_impl.call_args.kwargs.get("distribution_cache_type") == "rpm_arch:x86_64"
+
+    def test_ensure_rpm_repository_for_arch_build_scoped(self) -> None:
+        """build-scoped mode uses {build_id}/{arch} repository and distribution names."""
+        mock_client = Mock()
+        mock_client.namespace = "test-namespace"
+        manager = RepositoryManager(mock_client)
+        with patch.object(manager, "_create_or_get_repository_impl", return_value=("prn-1", "/rpm/href/")) as mock_impl:
+            href = manager.ensure_rpm_repository_for_arch("test-build", "x86_64", target_arch_repo_build_scoped=True)
+        assert href == "/rpm/href/"
+        req = mock_impl.call_args[0][0]
+        assert req.name == "test-build/x86_64"
+        assert mock_impl.call_args.kwargs.get("distribution_cache_type") == "rpm_arch:test-build:x86_64"
 
     def test_ensure_rpm_repository_for_arch_second_arch_same_pattern(self) -> None:
         """Another arch uses the same naming pattern (no rpms-signed suffix)."""
@@ -346,17 +367,17 @@ class TestRepositoryManagerTargetArchRepo:
             manager.ensure_rpm_repository_for_arch("test-build", "bogus")
 
     def test_ensure_rpm_repository_for_arch_rejects_invalid_build_id(self) -> None:
-        """Invalid or unsanitizable build_id raises ValueError."""
+        """Invalid or unsanitizable build_id raises ValueError when build-scoped."""
         mock_client = Mock()
         manager = RepositoryManager(mock_client)
         with pytest.raises(ValueError, match="Invalid build ID"):
-            manager.ensure_rpm_repository_for_arch("", "x86_64")
+            manager.ensure_rpm_repository_for_arch("", "x86_64", target_arch_repo_build_scoped=True)
         with (
             patch("pulp_tool.utils.repository_manager.sanitize_build_id_for_repository", return_value="bad"),
             patch("pulp_tool.utils.repository_manager.validate_build_id", return_value=False),
         ):
             with pytest.raises(ValueError, match="Invalid build ID"):
-                manager.ensure_rpm_repository_for_arch("raw", "x86_64")
+                manager.ensure_rpm_repository_for_arch("raw", "x86_64", target_arch_repo_build_scoped=True)
 
     def test_ensure_rpm_repository_for_arch_empty_distribution_base_path(self) -> None:
         """Defensive check when DistributionRequest has empty base_path."""

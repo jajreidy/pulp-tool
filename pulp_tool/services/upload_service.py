@@ -147,6 +147,7 @@ def upload_sbom(
     *,
     distribution_urls: dict[str, str] | None = None,
     target_arch_repo: bool = False,
+    target_arch_repo_build_scoped: bool = False,
 ) -> list[str]:
     """
     Upload SBOM file to repository.
@@ -202,6 +203,7 @@ def upload_sbom(
             is_rpm=False,
             distribution_urls=distribution_urls,
             target_arch_repo=target_arch_repo,
+            target_arch_repo_build_scoped=target_arch_repo_build_scoped,
             file_relative_path=rel_path,
         )
 
@@ -377,7 +379,13 @@ def _execute_upload_plan(
 
     for arch, rpm_list in plan.rpms_by_arch.items():
         arch_href = (
-            helper.ensure_rpm_repository_for_arch(context.build_id, arch) if context.target_arch_repo else rpm_href
+            helper.ensure_rpm_repository_for_arch(
+                context.build_id,
+                arch,
+                target_arch_repo_build_scoped=bool(context.target_arch_repo_build_scoped),
+            )
+            if context.target_arch_repo
+            else rpm_href
         )
         created_resources.extend(
             upload_rpms(
@@ -420,6 +428,7 @@ def _execute_upload_plan(
             sbom_path,
             distribution_urls=distribution_urls,
             target_arch_repo=context.target_arch_repo,
+            target_arch_repo_build_scoped=bool(context.target_arch_repo_build_scoped),
         )
         created_resources.extend(sbom_resources)
 
@@ -448,6 +457,7 @@ def _execute_upload_plan(
                 is_rpm=False,
                 distribution_urls=distribution_urls,
                 target_arch_repo=context.target_arch_repo,
+                target_arch_repo_build_scoped=bool(context.target_arch_repo_build_scoped),
                 file_relative_path=rel_path,
             )
     return created_resources

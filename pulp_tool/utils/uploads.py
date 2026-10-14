@@ -66,6 +66,7 @@ def upload_log(
     results_model: PulpResultsDocument | None = None,
     distribution_urls: dict[str, str] | None = None,
     target_arch_repo: bool = False,
+    target_arch_repo_build_scoped: bool = False,
 ) -> list[str]:
     """
     Upload a log file to the specified file repository.
@@ -112,6 +113,7 @@ def upload_log(
             is_rpm=False,
             distribution_urls=distribution_urls,
             target_arch_repo=target_arch_repo,
+            target_arch_repo_build_scoped=target_arch_repo_build_scoped,
             file_relative_path=rel_path,
         )
 
@@ -130,6 +132,7 @@ def _upload_logs_sequential(
     results_model: PulpResultsDocument | None = None,
     distribution_urls: dict[str, str] | None = None,
     target_arch_repo: bool = False,
+    target_arch_repo_build_scoped: bool = False,
 ) -> None:
     """
     Upload logs sequentially.
@@ -158,6 +161,7 @@ def _upload_logs_sequential(
             results_model=results_model,
             distribution_urls=distribution_urls,
             target_arch_repo=target_arch_repo,
+            target_arch_repo_build_scoped=target_arch_repo_build_scoped,
         )
 
 
@@ -274,6 +278,7 @@ def upload_rpms(
     rpm_path_href_pairs, upload_errors = upload_rpms_parallel(client, rpms, labels, arch)
     rpm_results_artifacts = [href for _path, href in rpm_path_href_pairs]
 
+    build_scoped = target_arch_repo and bool(getattr(context, "target_arch_repo_build_scoped", False))
     if distribution_urls is not None:
         for rpm_path, content_href in rpm_path_href_pairs:
             client.add_uploaded_artifact_to_results_model(
@@ -283,6 +288,7 @@ def upload_rpms(
                 is_rpm=True,
                 distribution_urls=distribution_urls,
                 target_arch_repo=target_arch_repo,
+                target_arch_repo_build_scoped=build_scoped,
             )
             art_key = os.path.basename(rpm_path)
             meta = results_model.artifacts.get(art_key)
@@ -386,6 +392,7 @@ def upload_rpms_logs(
         )
 
     # Upload logs sequentially
+    build_scoped = target_arch_repo and bool(getattr(context, "target_arch_repo_build_scoped", False))
     if logs:
         logging.warning("Uploading %d logs for %s", len(logs), arch)
         _upload_logs_sequential(
@@ -398,6 +405,7 @@ def upload_rpms_logs(
             results_model=results_model,
             distribution_urls=distribution_urls,
             target_arch_repo=target_arch_repo,
+            target_arch_repo_build_scoped=build_scoped,
         )
         # Update upload counts
         results_model.increment_counts(logs=len(logs))

@@ -2271,6 +2271,7 @@ class E2ETestSuite:
             "--rpm-path",
             str(rpm_dir),
             "--target-arch-repo",
+            "--target-arch-repo-build-scoped",
         ]
         exit_code, output = self.run_command(cmd)
         self.assert_exit_code(0, exit_code, "Upload with target-arch-repo completes successfully")

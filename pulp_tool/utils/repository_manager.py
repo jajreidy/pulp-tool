@@ -39,6 +39,21 @@ from .validation import (
 )
 
 
+def target_arch_repository_name(build_id: str, arch: str, *, build_scoped: bool) -> str:
+    """Pulp repository/distribution name for ``--target-arch-repo`` (optionally under ``{build_id}/``)."""
+    arch_name = arch.strip()
+    if arch_name not in SUPPORTED_ARCHITECTURES:
+        raise ValueError(f"Unsupported architecture for RPM repository: {arch}")
+    if not build_scoped:
+        return arch_name
+    if not build_id or not isinstance(build_id, str) or not build_id.strip():
+        raise ValueError(f"Invalid build ID: {build_id}")
+    sanitized_build_id = sanitize_build_id_for_repository(build_id)
+    if not validate_build_id(sanitized_build_id):
+        raise ValueError(f"Invalid build ID: {build_id} (sanitized: {sanitized_build_id})")
+    return f"{sanitized_build_id}/{arch_name}"
+
+
 @dataclass(frozen=True)
 class RepositoryApiOps:
     """
@@ -256,30 +271,38 @@ class RepositoryManager:
             artifacts_signed_prn=repositories.get("artifacts_signed_prn", ""),
         )
 
-    def ensure_rpm_repository_for_arch(self, build_id: str, arch: str) -> str:
+    def ensure_rpm_repository_for_arch(
+        self,
+        build_id: str,
+        arch: str,
+        *,
+        target_arch_repo_build_scoped: bool = False,
+    ) -> str:
         """
         Create or get the RPM repository whose distribution uses the architecture as base_path.
 
         Used with ``target_arch_repo`` so RPM URLs are
         ``/api/pulp-content/{namespace}/{arch}/Packages/...`` instead of ``.../{build}/rpms/...``.
+        When ``target_arch_repo_build_scoped`` is True, repository and distribution use
+        ``{build_id}/{arch}`` (for isolated e2e runs).
         """
-        if arch not in SUPPORTED_ARCHITECTURES:
-            raise ValueError(f"Unsupported architecture for RPM repository: {arch}")
-        if not build_id or not isinstance(build_id, str) or not build_id.strip():
-            raise ValueError(f"Invalid build ID: {build_id}")
-
+        full_name = target_arch_repository_name(
+            build_id,
+            arch,
+            build_scoped=target_arch_repo_build_scoped,
+        )
         sanitized_build_id = sanitize_build_id_for_repository(build_id)
-        if not validate_build_id(sanitized_build_id):
-            raise ValueError(f"Invalid build ID: {build_id} (sanitized: {sanitized_build_id})")
-
-        full_name = arch.strip()
         self._validate_full_name(full_name, full_name, "rpm")
         new_repository = RepositoryRequest(name=full_name, autopublish=True)
         new_distribution = DistributionRequest(name=full_name, base_path=full_name)
         if not new_distribution.base_path or not new_distribution.base_path.strip():
             raise ValueError(f"Invalid distribution base_path for arch repository {arch}")
 
-        cache_type = f"rpm_arch:{arch}"
+        cache_type = (
+            f"rpm_arch:{sanitized_build_id}:{arch.strip()}"
+            if target_arch_repo_build_scoped
+            else f"rpm_arch:{arch.strip()}"
+        )
         _prn, repository_href = self._create_or_get_repository_impl(
             new_repository,
             new_distribution,

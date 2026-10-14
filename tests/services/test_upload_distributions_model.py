@@ -129,6 +129,43 @@ class TestBuildResultsStructure:
                 == "https://pulp.example.com/api/pulp-content/test-namespace/x86_64/"
             )
 
+    def test_add_distributions_to_results_target_arch_repo_build_scoped(self, mock_pulp_client) -> None:
+        """Build-scoped target-arch uses {build_id}/{arch} for per-arch distribution URLs."""
+        repositories = RepositoryRefs(
+            rpms_href="",
+            rpms_prn="",
+            logs_href="/logs/",
+            logs_prn="logs-prn",
+            sbom_href="/sbom/",
+            sbom_prn="sbom-prn",
+            artifacts_href="/artifacts/",
+            artifacts_prn="artifacts-prn",
+        )
+        results_model = PulpResultsDocument(build_id="test-build", repositories=repositories)
+        results_model.add_artifact(
+            "pkg.rpm",
+            "https://example.com/pkg.rpm",
+            "deadbeef",
+            {"arch": "x86_64", "build_id": "test-build", "namespace": "test-namespace"},
+        )
+        context = UploadRpmContext(
+            build_id="test-build",
+            date_str="2024-01-01",
+            namespace="test-namespace",
+            parent_package="test-package",
+            target_arch_repo=True,
+            target_arch_repo_build_scoped=True,
+        )
+        with patch("pulp_tool.services.upload_collect.PulpHelper") as mock_helper_class:
+            mock_helper = Mock()
+            mock_helper.get_distribution_urls_for_upload_context.return_value = {"logs": "https://example.com/logs/"}
+            mock_helper.distribution_url_for_base_path.return_value = (
+                "https://pulp.example.com/api/pulp-content/test-namespace/test-build/x86_64/"
+            )
+            mock_helper_class.return_value = mock_helper
+            _add_distributions_to_results(mock_pulp_client, context, results_model)
+            mock_helper.distribution_url_for_base_path.assert_called_once_with("test-build/x86_64")
+
     def test_add_distributions_to_results_omits_artifacts_for_local_artifact_results(self, mock_pulp_client) -> None:
         """Folder --artifact-results must not add a synthetic artifacts distribution entry."""
         repositories = RepositoryRefs(

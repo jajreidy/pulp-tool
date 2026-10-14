@@ -239,6 +239,7 @@ def _populate_results_model(
     repository_helper = PulpHelper(client, parent_package=context.parent_package)
     distribution_urls = _distribution_urls_for_context(repository_helper, context.build_id, context)
     target_arch_repo = bool(getattr(context, "target_arch_repo", False))
+    target_arch_repo_build_scoped = bool(getattr(context, "target_arch_repo_build_scoped", False))
 
     client.build_results_structure(
         results_model,
@@ -246,6 +247,7 @@ def _populate_results_model(
         file_info_map,
         distribution_urls,
         target_arch_repo=target_arch_repo,
+        target_arch_repo_build_scoped=target_arch_repo_build_scoped,
         merge=True,
     )
 
@@ -265,12 +267,21 @@ def _add_distributions_to_results(
     else:
         logging.warning("No distribution URLs found")
 
-    if bool(getattr(context, "target_arch_repo", False)) and results_model.artifacts:
+    target_arch_repo = bool(getattr(context, "target_arch_repo", False))
+    target_arch_repo_build_scoped = bool(getattr(context, "target_arch_repo_build_scoped", False))
+    if target_arch_repo and results_model.artifacts:
+        from ..utils.repository_manager import target_arch_repository_name
+
         arch_urls: dict[str, str] = {}
         for info in results_model.artifacts.values():
             arch = (info.pulp_labels.get("arch") or "").strip()
             if arch in SUPPORTED_ARCHITECTURES:
-                arch_urls[arch] = repository_helper.distribution_url_for_base_path(arch)
+                base_path = (
+                    target_arch_repository_name(context.build_id, arch, build_scoped=target_arch_repo_build_scoped)
+                    if target_arch_repo_build_scoped
+                    else arch
+                )
+                arch_urls[arch] = repository_helper.distribution_url_for_base_path(base_path)
         for arch in sorted(arch_urls.keys()):
             dist_key = results_json_rpm_arch_distribution_key(arch)
             results_model.add_distribution(dist_key, arch_urls[arch])

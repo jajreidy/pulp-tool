@@ -133,6 +133,15 @@ def _extract_build_id_namespace_from_results_json(results_json_path: Path) -> tu
         "logs/SBOM/artifacts stay build-scoped. With --signed-by, same arch repo; signed_by is label-only."
     ),
 )
+@click.option(
+    "--target-arch-repo-build-scoped",
+    is_flag=True,
+    default=False,
+    help=(
+        "With --target-arch-repo, name repositories and distributions "
+        "{build_id}/{arch} instead of global {arch} (for isolated e2e / concurrent uploads)."
+    ),
+)
 @click.pass_context
 def upload_build(  # pylint: disable=too-many-arguments,too-many-positional-arguments
     ctx: click.Context,
@@ -147,6 +156,7 @@ def upload_build(  # pylint: disable=too-many-arguments,too-many-positional-argu
     signed_by: str | None,
     overwrite: bool,
     target_arch_repo: bool,
+    target_arch_repo_build_scoped: bool,
 ) -> None:
     """Upload RPMs, logs, and SBOM files to Pulp (and ORAS when ``--oci-storage`` or config is set)."""
     # Get shared options from context
@@ -183,6 +193,9 @@ def upload_build(  # pylint: disable=too-many-arguments,too-many-positional-argu
 
     if files_base_path is not None and not resolved_results_json:
         click.echo("Error: --files-base-path can only be used with --results-json", err=True)
+        ctx.exit(1)
+    if target_arch_repo_build_scoped and not target_arch_repo:
+        click.echo("Error: --target-arch-repo-build-scoped requires --target-arch-repo", err=True)
         ctx.exit(1)
 
     # Set default rpm_path to current directory if not provided (ignored when --results-json used)
@@ -243,6 +256,7 @@ def upload_build(  # pylint: disable=too-many-arguments,too-many-positional-argu
             signed_by=signed_by.strip() if signed_by and signed_by.strip() else None,
             overwrite=overwrite,
             target_arch_repo=target_arch_repo,
+            target_arch_repo_build_scoped=target_arch_repo_build_scoped,
             debug=debug,
             skip_logs_repo=skip_logs_repo,
             skip_sbom_repo=skip_sbom_repo,
