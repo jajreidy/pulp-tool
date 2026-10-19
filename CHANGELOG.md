@@ -5,6 +5,31 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.0](https://github.com/konflux-ci/pulp-tool/compare/v1.2.0...v1.3.0) (2026-10-19)
+
+
+### Added
+
+* **pull,upload:** side-tag transfer, upload-build ORAS, and Konflux OCI integration ([#242](https://github.com/konflux-ci/pulp-tool/issues/242)) ([91defa2](https://github.com/konflux-ci/pulp-tool/commit/91defa28570112c0968053ec991e1c22b7cf0f88))
+* **results:** canonical pulp_results.json and update-build command ([3f6abc5](https://github.com/konflux-ci/pulp-tool/commit/3f6abc5b049cb6cb0efa871f497cf35d293ab736))
+* **results:** canonical pulp_results.json and update-build command ([3750e5a](https://github.com/konflux-ci/pulp-tool/commit/3750e5a73f6c896d171b0e5b82cec4c5e6394fcb))
+* **upload:** add target-arch-repo-build-scoped for per-build arch RPM repos ([bd5228b](https://github.com/konflux-ci/pulp-tool/commit/bd5228b1298c29035af9d970814666090b8ee6b2))
+* **upload:** target-arch-repo-build-scoped for concurrent e2e ([3da88a2](https://github.com/konflux-ci/pulp-tool/commit/3da88a2692dd5f788bdc3a58437ee78737288cd9))
+
+
+### Fixed
+
+* **pull:** raise default artifact download limit ([#263](https://github.com/konflux-ci/pulp-tool/issues/263)) ([a1048d9](https://github.com/konflux-ci/pulp-tool/commit/a1048d939741f43fea0538dafd1e60989ddd70f4))
+* **pull:** use global side-tag RPM repository path ([58e0f8f](https://github.com/konflux-ci/pulp-tool/commit/58e0f8f05a2898a2f8a1ce9364d0c698845cfc4c))
+* **pull:** use global side-tag RPM repository path ([2283d10](https://github.com/konflux-ci/pulp-tool/commit/2283d10928b118a43b887f99e0259e1d4e4d0160))
+* **security:** Glasswing CI hardening and pull integrity checks ([932d6f8](https://github.com/konflux-ci/pulp-tool/commit/932d6f87e7692da1692d339769d9c8261fa180c8))
+* **upload,e2e:** require completed Pulp tasks and extend pulp-content wait ([34d2254](https://github.com/konflux-ci/pulp-tool/commit/34d2254d4ff2f91494f69d1104bec8e70cee6e6a))
+
+
+### Changed
+
+* **client:** bound PulpClient memory and fix pylint defaults ([#261](https://github.com/konflux-ci/pulp-tool/issues/261)) ([5ade4a3](https://github.com/konflux-ci/pulp-tool/commit/5ade4a3206a285c937d872f34352b600c52e2413))
+
 ## [1.2.0](https://github.com/konflux-ci/pulp-tool/compare/v1.1.0...v1.2.0) (2026-09-18)
 
 
