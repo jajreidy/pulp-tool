@@ -130,7 +130,7 @@ pre-commit-ci:
 	pre-commit run --all-files
 	pre-commit run --hook-stage pre-push --all-files
 
-# Pygments CVE-2026-4539: see scripts/run-pip-audit-precommit.sh and security-scan.yml
+# pip-audit: scripts/run-pip-audit-precommit.sh and security-scan.yml
 
 audit:
 	@scripts/run-pip-audit-precommit.sh --force

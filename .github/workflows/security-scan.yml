@@ -28,17 +28,13 @@ jobs:
         with:
           python-version: '3.15'
 
-      # pip-audit: fail on new OSV/PyPI advisories. Pygments CVE-2026-4539 (dev-only via pytest/diff-cover):
-      # no release >2.19.2 on PyPI yet — remove these --ignore-vuln flags when pyproject pins pygments>=2.19.3.
-      # Dev deps install from uv.lock (no editable install) so setuptools-scm does not rewrite pulp_tool/_version.py.
+      # pip-audit: fail on new OSV/PyPI advisories. Dev deps from uv.lock (no editable install).
       - name: Run pip-audit
         run: |
-          python -m pip install --upgrade pip uv pip-audit
+          python -m pip install --upgrade 'pip>=26.2' 'uv>=0.13.4' 'pip-audit>=2.10.0'
           uv export --frozen --extra dev --no-emit-project -o /tmp/requirements-audit.txt
           pip install -r /tmp/requirements-audit.txt
-          pip-audit -l --desc on \
-            --ignore-vuln CVE-2026-4539 \
-            --ignore-vuln GHSA-5239-wwwm-4pmq
+          pip-audit -l --desc on
 
       # Bandit 1.9+ removed built-in SARIF; bandit-sarif-formatter registers --format sarif.
       - name: Run Bandit (HIGH severity gate)

@@ -50,6 +50,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Dev **`uv.lock`**: bump certifi, filelock, setuptools, and virtualenv for **`pip-audit`** / security-scan advisories; pin audit tooling (`pip`, `uv`); remove legacy Pygments CVE ignores ([c971f3d](https://github.com/konflux-ci/pulp-tool/commit/c971f3d))
 - **Container base images:** bump `ubi10/ubi-minimal` from `10.2-1789645153` to `10.2-1791891203` in `container/Dockerfile`, `e2e/Dockerfile.e2e`, and `e2e/Dockerfile.e2e-cleanup`.
 - **PulpClient memory defaults for Konflux pods:** HTTP connection pools default to 24 (was 100 on `PulpClient`); GET cache is bounded (64 entries, TTL still 300s); RPM upload parallelism defaults to 2 workers per architecture and up to 3 parallel architecture threads. Override via `PULP_TOOL_HTTP_MAX_CONNECTIONS`, `PULP_TOOL_GET_CACHE_MAX_ENTRIES`, `PULP_TOOL_GET_CACHE_TTL`, `PULP_TOOL_MAX_UPLOAD_WORKERS`, and `PULP_TOOL_MAX_ARCH_UPLOAD_WORKERS`. `close()` now also tears down the async httpx session; repository create/update clears the GET cache.
 - **Pylint performance:** default **`PYLINT_JOBS=1`** (was `0` auto-parallel, which regressed on this import-heavy tree); **`persistent=yes`** cache in **`config/pylintrc`** (`.pylint.d/`, cleared by **`make clean`**).

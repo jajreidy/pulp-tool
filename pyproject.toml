@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=82.0.1", "wheel>=0.47.0", "setuptools_scm[toml]>=10.3.4"]
+requires = ["setuptools>=84.1.0", "wheel>=0.47.0", "setuptools_scm[toml]>=10.3.4"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -52,11 +52,9 @@ dev = [
     "pre-commit>=4.6.0",
     "yamllint>=1.37.0",
     # Build tools
-    "setuptools>=82.0.1",
+    "setuptools>=84.1.0",
     "wheel>=0.47.0",
     "setuptools-scm[toml]>=10.3.4",
-    # Dependency CVE audit (local: make audit). When Pygments >2.19.2 is on PyPI, add
-    # "pygments>=2.19.3" here and remove CVE-2026-4539 ignores from .github/workflows/security-scan.yml.
     "pip-audit>=2.10.0",
     "bandit[toml]>=1.8.0",
     "bandit-sarif-formatter>=1.1.1",
@@ -270,6 +268,13 @@ exclude_dirs = ["tests", "e2e"]
 
 # Keep transitive pin aligned with closed MintMaker PRs until a deliberate bump.
 # urllib3>=2.8.0: CVE-2026-97687, CVE-2026-97689 (HTTPS proxy TLS / chunked streaming).
-# virtualenv>=21.7.13: PYSEC-2026-4011–4014 (transitive via pre-commit).
+# virtualenv>=21.14.9: CVE-2026-113714–113776 (transitive via pre-commit).
+# certifi/filelock: PYSEC-2026-4320, CVE-2026-112907–112940 (transitive dev/httpx).
 [tool.uv]
-constraint-dependencies = ["markdown-it-py==4.1.0", "urllib3>=2.8.0", "virtualenv>=21.7.13"]
+constraint-dependencies = [
+    "certifi>=2026.10.19",
+    "filelock>=4.2.1",
+    "markdown-it-py==4.1.0",
+    "urllib3>=2.8.0",
+    "virtualenv>=21.14.9",
+]
