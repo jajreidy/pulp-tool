@@ -14,8 +14,7 @@ for arg in "$@"; do
   esac
 done
 
-# Keep in sync with security-scan.yml
-AUDIT_IGNORES=(--ignore-vuln CVE-2026-4539 --ignore-vuln GHSA-5239-wwwm-4pmq)
+AUDIT_IGNORES=()
 
 deps_hash() {
   sha256sum uv.lock pyproject.toml | sha256sum | awk '{print $1}'
@@ -33,8 +32,10 @@ if [[ ! -x "${AUDIT_VENV}/bin/pip-audit" ]]; then
   echo "pip-audit: creating ${AUDIT_VENV}..."
   rm -rf "${AUDIT_VENV}"
   python3 -m venv "${AUDIT_VENV}"
-  "${AUDIT_VENV}/bin/python" -m pip install -q -U pip uv pip-audit
+  "${AUDIT_VENV}/bin/python" -m pip install -q -U 'pip>=26.2' 'uv>=0.13.4' 'pip-audit>=2.10.0'
 fi
+
+"${AUDIT_VENV}/bin/python" -m pip install -q -U 'pip>=26.2' 'uv>=0.13.4' 'pip-audit>=2.10.0'
 
 "${AUDIT_VENV}/bin/uv" export --frozen --extra dev --no-emit-project \
   -o "${AUDIT_VENV}/requirements-audit.txt" >/dev/null
