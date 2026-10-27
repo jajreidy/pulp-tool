@@ -855,6 +855,42 @@ class E2ETestSuite:
             digest = f"sha256:{digest}"
         return f"{url}@{digest}"
 
+    def _rpm_paths_for_oras_subject_seed(self, rpm_dir: Path) -> list[Path]:
+        rpms = sorted(rpm_dir.glob("*.rpm"))
+        if not rpms:
+            rpms = sorted(rpm_dir.rglob("*.rpm"))
+        if not rpms:
+            raise RuntimeError(f"No RPM files under {rpm_dir} for ORAS RPM subject seed")
+        return rpms
+
+    def _seed_oras_rpm_build_subject(self, storage: str, rpm_dir: Path) -> None:
+        """
+        Push RPM build artifact to ``storage`` (import-to-quay ``push-to-quay-select-auth``).
+
+        ``upload-build`` ORAS-attach requires a resolvable subject manifest at ``--oci-storage``.
+        """
+        work_dir = rpm_dir.resolve()
+        rpms = self._rpm_paths_for_oras_subject_seed(work_dir)
+        registry_config = self._oras_registry_config_file(storage)
+        # ORAS rejects absolute paths in file arguments; push relative names from rpm_dir (Tekton cwd).
+        file_args = [str(path.resolve().relative_to(work_dir)) for path in rpms]
+        cmd = [
+            "oras",
+            "--registry-config",
+            str(registry_config),
+            "push",
+            "--artifact-type",
+            "application/vnd.rpm.build.v0",
+            storage,
+            *file_args,
+        ]
+        result = subprocess.run(cmd, capture_output=True, text=True, check=False, cwd=work_dir)
+        if result.returncode != 0:
+            raise RuntimeError(
+                "oras RPM subject seed failed "
+                f"(exit {result.returncode}): {result.stderr or result.stdout or ''}"
+            )
+
     def _run_upload_build_oras(
         self,
         oci_storage: str,
@@ -864,8 +900,9 @@ class E2ETestSuite:
         image_url_path: Path,
         image_digest_path: Path,
     ) -> str:
-        """Run ``upload-build`` with ORAS publish; return OCI ref from Tekton ``--artifact-results`` files."""
+        """Run ``upload-build`` with ORAS attach; return OCI ref from Tekton ``--artifact-results`` files."""
         storage = scoped_oci_storage(oci_storage, build_id, self.run_id)
+        self._seed_oras_rpm_build_subject(storage, rpm_dir)
         upload_cmd = [
             "pulp-tool",
             "--config",
@@ -1406,9 +1443,9 @@ class E2ETestSuite:
 
     def test_upload_build_update_build_pull_pipeline(self):
         """
-        End-to-end Konflux flow: ``upload-build`` (ORAS push) → ``update-build`` (attach) → ``pull``.
+        End-to-end Konflux flow: RPM ORAS subject → ``upload-build`` (attach) → ``update-build`` (attach) → ``pull``.
 
-        ``pull --artifact-location`` uses the **subject** digest from the initial upload (``oras discover``
+        ``pull --artifact-location`` uses the **referrer** digest from the initial upload (``oras discover``
         for attached ``pulp_results``), then the Tekton **artifact-results** digest from ``update-build``.
         """
         oci_storage = self._oci_oras_prereqs("upload-build → update-build → pull")
@@ -2022,6 +2059,13 @@ class E2ETestSuite:
             "pulp-tool upload (full options)",
             detail=f"rpm_dir={rpm_dir} build_id={full_build_id} namespace={self.namespace} oci_storage={storage}",
         )
+
+        try:
+            self._seed_oras_rpm_build_subject(storage, rpm_dir)
+        except RuntimeError as exc:
+            self.stats.failed += 1
+            self.log_error(str(exc))
+            return
 
         cmd = [
             "pulp-tool",

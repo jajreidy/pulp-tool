@@ -39,6 +39,7 @@ def sync_pulp_results_with_oci_registry(
     operation: str = BUILD_UPLOAD_OPERATION,
     record_manifest_history: bool | None = None,
     attach_subject: str | None = None,
+    attach_to_resolved_subject: bool = False,
 ) -> tuple[str, TaskResponse]:
     """
     Upload results JSON to Pulp and ORAS.
@@ -49,6 +50,10 @@ def sync_pulp_results_with_oci_registry(
     When ``attach_subject`` is set (digest-pinned ``repo@sha256:…``), publish uses ``oras attach`` to
     the subject instead of ``oras push`` to ``oci_storage`` (``update-build``), preserving attestations
     on the original OCI object.
+
+    When ``attach_to_resolved_subject`` is true (``upload-build`` after import-to-quay RPM ORAS push),
+    resolve ``oci_storage`` and attach ``pulp_results.json`` to that manifest so RPM layers are not
+    replaced.
 
     Returns ``(oci_ref, last_pulp_task_response)`` where ``oci_ref`` is ``image@sha256:…``.
     """
@@ -91,14 +96,19 @@ def sync_pulp_results_with_oci_registry(
         try:
             if attach_subject:
                 return attach_pulp_results_manifest(attach_subject, payload)
+            if attach_to_resolved_subject:
+                subject_image_ref, subject_digest = resolve_oci_manifest(target)
+                subject_ref = _format_oci_ref(subject_image_ref, subject_digest)
+                return attach_pulp_results_manifest(subject_ref, payload)
             return push_pulp_results_manifest(target, payload)
         except OrasPublishError as e:
             logging.error("ORAS publish failed: %s", e)
             raise
 
+    used_attach = bool((attach_subject or "").strip()) or attach_to_resolved_subject
     last_task = upload_to_pulp("upload pulp_results.json before ORAS publish")
     image_ref, digest = oras_publish()
-    if not attach_subject:
+    if not used_attach:
         image_ref, digest = resolve_oci_manifest(target)
     last_task = upload_to_pulp("upload final pulp_results.json after ORAS publish")
 

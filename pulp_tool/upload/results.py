@@ -122,6 +122,7 @@ def _upload_and_get_results_url(
                 labels,
                 build_id=context.build_id,
                 record_manifest_history=False,
+                attach_to_resolved_subject=True,
             )
             logging.info("Results JSON uploaded to Pulp and ORAS")
             results_json_url = _extract_results_url(client, context, task_response)
