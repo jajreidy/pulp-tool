@@ -47,6 +47,40 @@ class TestSyncPulpResultsWithOciRegistry:
         assert task is mock_task
         assert mock_upload.call_count == 2
 
+    def test_sync_attach_to_resolved_subject_for_upload(self) -> None:
+        document = _results_doc({"artifacts": {}})
+        with (
+            patch(
+                "pulp_tool.utils.pulp_results_oci_publish.create_file_content_and_wait",
+                return_value=Mock(),
+            ),
+            patch(
+                "pulp_tool.utils.pulp_results_oci_publish.resolve_oci_manifest",
+                return_value=("quay.io/ns/repo", "sha256:rpm-subject"),
+            ) as mock_resolve,
+            patch(
+                "pulp_tool.utils.pulp_results_oci_publish.attach_pulp_results_manifest",
+                return_value=("quay.io/ns/repo", "sha256:referrer"),
+            ) as mock_attach,
+            patch(
+                "pulp_tool.utils.pulp_results_oci_publish.push_pulp_results_manifest",
+            ) as mock_push,
+        ):
+            oci_ref, _ = sync_pulp_results_with_oci_registry(
+                Mock(),
+                "prn",
+                document,
+                "quay.io/ns/repo:latest",
+                {},
+                build_id="b1",
+                attach_to_resolved_subject=True,
+            )
+        mock_resolve.assert_called_once_with("quay.io/ns/repo:latest")
+        mock_attach.assert_called_once()
+        assert mock_attach.call_args[0][0] == "quay.io/ns/repo@sha256:rpm-subject"
+        mock_push.assert_not_called()
+        assert oci_ref == "quay.io/ns/repo@sha256:referrer"
+
     def test_sync_uses_attach_when_subject_set(self) -> None:
         document = _results_doc({"artifacts": {}, "version": 1})
         with (
