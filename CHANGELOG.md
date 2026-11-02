@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Mintmaker/Renovate dependency updates run every three days (cron `* 0-5 */3 * *`); Dependabot covers GitHub Actions only (Python via Renovate) ([523696c](https://github.com/konflux-ci/pulp-tool/commit/523696c))
+- Dev **`uv.lock`**: bump **pylint** (CVE-2026-114608) and transitive **msgpack** (CVE-2026-114613); pin **`pylint>=4.0.9`** and **`msgpack>=1.2.3`** via **`constraint-dependencies`** ([523696c](https://github.com/konflux-ci/pulp-tool/commit/523696c))
+
+### Fixed
+
+- **`make release-publish`:** infer GitHub **`owner/repo`** from **`RELEASE_GIT_REMOTE`** (not **`GITHUB_REPOSITORY`**) when syncing **`autorelease`** labels; skip tag push when the tag already exists but still mark the release PR; optional **`git config pulp-tool.releaseGitRemote`** ([523696c](https://github.com/konflux-ci/pulp-tool/commit/523696c))
+- **CI (Python 3.15):** set **`asyncio_default_fixture_loop_scope = function`** so pytest-asyncio’s deprecation warning is not promoted to error by **`filterwarnings`** ([523696c](https://github.com/konflux-ci/pulp-tool/commit/523696c))
+
 ## [1.3.1](https://github.com/konflux-ci/pulp-tool/compare/v1.3.0...v1.3.1) (2026-10-27)
 
 ### Fixed

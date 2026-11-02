@@ -77,7 +77,7 @@ make lock
 
 Commit the updated **`uv.lock`**. Normal installs remain **`pip install -e ".[dev]"`** from pyproject; the lockfile supports reproducible CI, audits, and the Konflux container image. **`setup.py`** is a thin shim only — all dependency ranges and package metadata are in **`pyproject.toml`**. The Konflux image [`container/Dockerfile`](container/Dockerfile) exports runtime pins from **`uv.lock`** (`uv export --frozen --no-dev`) and installs with **`pip`**.
 
-**Mintmaker / Renovate** ([`.github/renovate.json`](.github/renovate.json)) bumps **`pyproject.toml`** and regenerates **`uv.lock`** in the same PR (`pep621` manager + `lockFileMaintenance`). CI runs **`make lock-check`** (`uv lock --check`) so the two files cannot drift on merge.
+**Mintmaker / Renovate** ([`.github/renovate.json`](.github/renovate.json)) bumps **`pyproject.toml`** and regenerates **`uv.lock`** in the same PR (`pep621` manager + `lockFileMaintenance`), on a **three-day** cadence (before 06:00 UTC on every third calendar day). CI runs **`make lock-check`** (`uv lock --check`) so the two files cannot drift on merge. **Dependabot** in this repo updates **GitHub Actions** only; Python deps are Renovate-only.
 
 ### Commit messages
 

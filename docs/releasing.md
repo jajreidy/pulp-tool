@@ -121,7 +121,13 @@ make release-please BUMP=bugfix
 make release-publish
 ```
 
-Pin the CLI version with `RELEASE_PLEASE_VERSION` (default **`17.2.0`** in the script). Override the GitHub repo with `GITHUB_REPOSITORY=owner/repo`, or set **`RELEASE_GIT_REMOTE`** so both `release-please` and `release-publish` infer `owner/repo` from that remote (default **`origin`**).
+Pin the CLI version with `RELEASE_PLEASE_VERSION` (default **`17.2.0`** in the script). Override the GitHub repo with `GITHUB_REPOSITORY=owner/repo` only when **`RELEASE_GIT_REMOTE`** does not point at a parseable github.com URL. **`make release-publish`** always infers `owner/repo` from **`RELEASE_GIT_REMOTE`** when it can — if you have **`GITHUB_REPOSITORY`** set in your shell (common after CI tooling) to a **fork**, label sync would target the wrong repo unless you set **`RELEASE_GIT_REMOTE=upstream`** or persist the remote once:
+
+```bash
+git config pulp-tool.releaseGitRemote upstream
+```
+
+Then **`make release-please`** and **`make release-publish`** use **`upstream`** for git and GitHub API calls without repeating the env var.
 
 Optional **`BUMP=major`**, **`BUMP=minor`**, or **`BUMP=bugfix`** (alias **`patch`**) on **`make release-please`** computes the next version from [`.release-please-manifest.json`](../.release-please-manifest.json) and passes **`--release-as`** to Release Please — use when conventional commits would pick the wrong bump level. On **`make release-publish`**, the same variable tags the bumped version instead of the manifest (mainly for hotfix recovery; after a normal release PR merge, omit **`BUMP`** so the tag matches the manifest).
 
@@ -138,9 +144,10 @@ RELEASE_GIT_REMOTE=upstream make release-please
 
 # After merging the Release PR — push v* tag to upstream (triggers release.yml + PyPI)
 RELEASE_GIT_REMOTE=upstream make release-publish
+# Or once per clone: git config pulp-tool.releaseGitRemote upstream
 ```
 
-You can still set `GITHUB_REPOSITORY=konflux-ci/pulp-tool` explicitly if the remote URL is not on github.com. `gh auth login` must have permission to open PRs on the canonical repo.
+**Label sync (`autorelease: pending` → `autorelease: tagged`)** uses the same GitHub repo as **`RELEASE_GIT_REMOTE`**. If the tag push succeeded but labels did not update, you probably published against **`origin`** (fork) or had **`GITHUB_REPOSITORY`** pointing at a fork — run **`RELEASE_GIT_REMOTE=upstream ./scripts/release-please.sh sync-release-labels`** on up-to-date **`main`**, or re-run **`make release-publish`** (it skips an existing tag and still syncs labels).
 
 ### Konflux container build and release
 
