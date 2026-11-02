@@ -18,6 +18,8 @@ cd "$REPO_ROOT"
 
 RELEASE_PLEASE_VERSION="${RELEASE_PLEASE_VERSION:-17.2.0}"
 TARGET_BRANCH="${RELEASE_PLEASE_TARGET_BRANCH:-main}"
+# Optional: git config pulp-tool.releaseGitRemote upstream (fork workflow)
+RELEASE_GIT_REMOTE="${RELEASE_GIT_REMOTE:-$(git config --get pulp-tool.releaseGitRemote 2>/dev/null)}"
 RELEASE_GIT_REMOTE="${RELEASE_GIT_REMOTE:-origin}"
 CONFIG_FILE="${RELEASE_PLEASE_CONFIG_FILE:-.github/release-please-config.json}"
 MANIFEST_FILE="${RELEASE_PLEASE_MANIFEST_FILE:-.release-please-manifest.json}"
@@ -102,7 +104,10 @@ Environment:
                               make release-please BUMP=major
   GITHUB_TOKEN or GH_TOKEN   Optional if `gh auth login` is configured (pr command only)
   GITHUB_REPOSITORY          owner/repo (optional; inferred from RELEASE_GIT_REMOTE)
-  RELEASE_GIT_REMOTE         Git remote for fetch/pull/tag push and repo inference (default: origin)
+  RELEASE_GIT_REMOTE         Git remote for fetch/pull/tag push and GitHub API repo inference
+                              (default: origin, or git config pulp-tool.releaseGitRemote)
+  GITHUB_REPOSITORY          Fallback owner/repo only when the release remote URL is not parseable
+                              (ignored when RELEASE_GIT_REMOTE resolves to a github.com repo)
   RELEASE_PLEASE_VERSION     npm package pin (default: 17.2.0)
   RELEASE_PLEASE_TARGET_BRANCH Target branch (default: main)
 
@@ -129,13 +134,17 @@ parse_github_repo_from_remote_url() {
 }
 
 resolve_repo_url() {
-  if [[ -n "${GITHUB_REPOSITORY:-}" ]]; then
-    printf '%s' "$GITHUB_REPOSITORY"
+  local remote_url="" from_remote=""
+  remote_url="$(git remote get-url "$RELEASE_GIT_REMOTE" 2>/dev/null || true)"
+  if from_remote="$(parse_github_repo_from_remote_url "$remote_url")"; then
+    if [[ -n "${GITHUB_REPOSITORY:-}" && "$GITHUB_REPOSITORY" != "$from_remote" ]]; then
+      echo "Using GitHub repo ${from_remote} from ${RELEASE_GIT_REMOTE} (ignoring GITHUB_REPOSITORY=${GITHUB_REPOSITORY})." >&2
+    fi
+    printf '%s' "$from_remote"
     return 0
   fi
-  local remote_url=""
-  remote_url="$(git remote get-url "$RELEASE_GIT_REMOTE" 2>/dev/null || true)"
-  if parse_github_repo_from_remote_url "$remote_url"; then
+  if [[ -n "${GITHUB_REPOSITORY:-}" ]]; then
+    printf '%s' "$GITHUB_REPOSITORY"
     return 0
   fi
   echo "Set GITHUB_REPOSITORY=owner/repo or configure RELEASE_GIT_REMOTE (${RELEASE_GIT_REMOTE}) with a github.com URL." >&2
@@ -272,6 +281,13 @@ mark_merged_release_pr_tagged() {
     --jq '[.[] | select(.title | test(": release [0-9]"))][0].number // empty' 2>/dev/null || true)"
 
   if [[ -z "$pr_number" ]]; then
+    pr_number="$(gh pr list --repo "$repo_url" --state merged \
+      --label "autorelease: pending" \
+      --json number,title \
+      --jq "[.[] | select(.title | contains(\"release ${version}\"))][0].number // empty" 2>/dev/null || true)"
+  fi
+
+  if [[ -z "$pr_number" ]]; then
     local pending_count="0"
     pending_count="$(gh search issues --repo "$repo_url" \
       'is:pr is:merged label:"autorelease: pending"' \
@@ -293,7 +309,10 @@ mark_merged_release_pr_tagged() {
 }
 
 publish_git_tag() {
-  local version tag manifest_version=""
+  local version tag manifest_version="" repo_url=""
+
+  repo_url="$(resolve_repo_url)" || exit 1
+  echo "Release git remote: ${RELEASE_GIT_REMOTE} → GitHub repo ${repo_url}"
 
   git fetch "$RELEASE_GIT_REMOTE" "$TARGET_BRANCH"
   git checkout "$TARGET_BRANCH"
@@ -316,22 +335,20 @@ publish_git_tag() {
     exit 1
   fi
 
-  if git rev-parse "refs/tags/${tag}" >/dev/null 2>&1; then
-    echo "Tag ${tag} already exists locally." >&2
-    exit 1
-  fi
   if git ls-remote --exit-code --tags "$RELEASE_GIT_REMOTE" "refs/tags/${tag}" >/dev/null 2>&1; then
-    echo "Tag ${tag} already exists on ${RELEASE_GIT_REMOTE}." >&2
-    exit 1
+    echo "Tag ${tag} already exists on ${RELEASE_GIT_REMOTE}; skipping tag push." >&2
+  else
+    if git rev-parse "refs/tags/${tag}" >/dev/null 2>&1; then
+      echo "Pushing existing local tag ${tag} to ${RELEASE_GIT_REMOTE}..."
+      git push "$RELEASE_GIT_REMOTE" "$tag"
+    else
+      echo "Tagging ${tag} from ${MANIFEST_FILE} at $(git rev-parse --short HEAD) on ${TARGET_BRANCH} (${RELEASE_GIT_REMOTE})"
+      git tag "$tag"
+      git push "$RELEASE_GIT_REMOTE" "$tag"
+    fi
+    echo "Pushed ${tag} to ${RELEASE_GIT_REMOTE}. release.yml should start on GitHub Actions."
   fi
 
-  echo "Tagging ${tag} from ${MANIFEST_FILE} at $(git rev-parse --short HEAD) on ${TARGET_BRANCH} (${RELEASE_GIT_REMOTE})"
-  git tag "$tag"
-  git push "$RELEASE_GIT_REMOTE" "$tag"
-  echo "Pushed ${tag} to ${RELEASE_GIT_REMOTE}. release.yml should start on GitHub Actions."
-
-  local repo_url=""
-  repo_url="$(resolve_repo_url)"
   mark_merged_release_pr_tagged "$version" "$repo_url"
 }
 

@@ -47,7 +47,8 @@ dev = [
     # Code formatting and linting
     "ruff>=0.11.0",
     "mypy>=2.0.0",
-    "pylint>=4.0.5",
+    # CVE-2026-114608: pickle in PYLINT_HOME stat cache (fixed in 4.0.9).
+    "pylint>=4.0.9",
     # Pre-commit hooks
     "pre-commit>=4.6.0",
     "yamllint>=1.37.0",
@@ -243,6 +244,7 @@ pythonpath = ["."]
 testpaths = ["tests"]
 python_files = ["test_*.py", "*_test.py"]
 asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
 python_classes = ["Test*"]
 python_functions = ["test_*"]
 addopts = "-v --tb=short --cov=pulp_tool --cov-report=term-missing --cov-report=html --cov-report=xml --cov-fail-under=85"
@@ -270,11 +272,13 @@ exclude_dirs = ["tests", "e2e"]
 # urllib3>=2.8.0: CVE-2026-97687, CVE-2026-97689 (HTTPS proxy TLS / chunked streaming).
 # virtualenv>=21.14.9: CVE-2026-113714–113776 (transitive via pre-commit).
 # certifi/filelock: PYSEC-2026-4320, CVE-2026-112907–112940 (transitive dev/httpx).
+# msgpack>=1.2.3: CVE-2026-114613 (transitive via pip-audit → cachecontrol).
 [tool.uv]
 constraint-dependencies = [
     "certifi>=2026.10.19",
     "filelock>=4.2.1",
     "markdown-it-py==4.1.0",
+    "msgpack>=1.2.3",
     "urllib3>=2.8.0",
     "virtualenv>=21.14.9",
 ]

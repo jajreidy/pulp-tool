@@ -4,16 +4,16 @@
     "github>konflux-ci/mintmaker-presets:cve-automerge-all",
     "group:recommended"
   ],
-  "schedule": ["before 6am on Monday"],
+  "schedule": ["* 0-5 */3 * *"],
   "tekton": {
-    "schedule": ["before 6am on Monday"]
+    "schedule": ["* 0-5 */3 * *"]
   },
   "updateNotScheduled": false,
   "prConcurrentLimit": 3,
   "prHourlyLimit": 1,
   "lockFileMaintenance": {
     "enabled": true,
-    "schedule": ["before 6am on Monday"]
+    "schedule": ["* 0-5 */3 * *"]
   },
   "packageRules": [
     {
