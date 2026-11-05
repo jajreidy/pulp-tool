@@ -30,7 +30,7 @@ Shared: namespace `artifact-storage-tenant`, app/component `tooling` / `pulp-too
 1. **`init`** — gate build; optional cache proxy.
 2. **`git-clone-oci-ta`** — checkout repo at `revision`.
 3. **`prefetch-dependencies-oci-ta`** — Cachi2 (empty for pulp-tool; no prefetch config in-repo).
-4. **`buildah-oci-ta` (`build-container`)** — **Buildah builds [container/Dockerfile](../../container/Dockerfile) (`path-context: .`) and pushes `output-image`.** Builder stage uses network for `microdnf`/`pip`/`uv`; runtime stage installs `python3`, **`rpm`** and **`gnupg2`** (for `pull --verify-rpm-gpg`), and `shadow-utils`, then copies prefetched Python packages (no `microdnf update`, no runtime `uv`).
+4. **`buildah-oci-ta` (`build-container`)** — **Buildah builds [container/Dockerfile](../../container/Dockerfile) (`path-context: .`) and pushes `output-image`.** Builder stage uses network for `microdnf`/`pip`/`uv`; runtime stage installs `python3`, **`rpm`** and **`gnupg2`** (for **`transfer --verify-rpm-gpg`**), and `shadow-utils`, then copies prefetched Python packages (no `microdnf update`, no runtime `uv`).
 5. **`build-image-index`** — pass-through when `build-image-index=false`; pipeline `IMAGE_URL` / `IMAGE_DIGEST` results come from this task.
 6. **`source-build-oci-ta` (`build-source-image`)** — builds and pushes a `.src` source container (PipelineRuns set `build-source-image=true`; release `push-snapshot` expects tag `{sha256-digest-with-colons-as-dashes}.src` on the same Quay repo).
 7. **Post-build checks** (unless `skip-checks`) — deprecated base image, Clair, cert preflight, Snyk SAST, ClamAV, shell/unicode SAST, RPM signature scan, apply-tags, push-dockerfile.

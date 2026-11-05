@@ -7,8 +7,10 @@ from unittest.mock import Mock
 
 import httpx
 
+from pulp_tool.models.artifacts import PulledArtifacts
 from pulp_tool.models.context import UploadRpmContext
 from pulp_tool.models.repository import RepositoryRefs
+from pulp_tool.models.results import DownloadResult
 from pulp_tool.models.upload_distribution import DistributionUrlMap
 
 
@@ -39,6 +41,20 @@ def make_repository_refs(**overrides: str) -> RepositoryRefs:
     }
     defaults.update(overrides)
     return RepositoryRefs(**defaults)
+
+
+def make_download_result(
+    *,
+    pulled_artifacts: PulledArtifacts | None = None,
+    completed: int = 0,
+    failed: int = 0,
+) -> DownloadResult:
+    """Minimal :class:`DownloadResult` for pull/transfer service mocks."""
+    return DownloadResult(
+        pulled_artifacts=pulled_artifacts or PulledArtifacts(),
+        completed=completed,
+        failed=failed,
+    )
 
 
 def make_distribution_url_map(urls: dict[str, str] | None = None) -> DistributionUrlMap:

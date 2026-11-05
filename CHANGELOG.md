@@ -7,8 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`transfer`** command: promote build artifacts from **build Pulp** (or OCI `pulp_results`) to **release Pulp**; side-tag ORAS publish, GPG verify, snapshot update, and Konflux **`--artifact-results`** / **`--oci-storage`** flags (moved off **`pull`**) ([5b42de7](https://github.com/konflux-ci/pulp-tool/commit/5b42de7))
+- Shared download/promote runner in **`pulp_tool/cli/artifact_pull_run.py`** used by **`pull`** and **`transfer`** ([5b42de7](https://github.com/konflux-ci/pulp-tool/commit/5b42de7))
+
 ### Changed
 
+- **`pull`**: download-only; removed **`--transfer-dest`**, **`--side-tag`**, and related promotion flags (use **`transfer`** instead) ([5b42de7](https://github.com/konflux-ci/pulp-tool/commit/5b42de7))
+- **Docs and agent skills:** **`pull`** vs **`transfer`**, Konflux **`push-artifacts-to-storage`** vs target **`transfer`** contract, **build Pulp** / **release Pulp** terminology (replacing informal “RoK” / “Path 4” wording) ([5b42de7](https://github.com/konflux-ci/pulp-tool/commit/5b42de7))
 - Mintmaker/Renovate dependency updates run every three days (cron `* 0-5 */3 * *`); Dependabot covers GitHub Actions only (Python via Renovate) ([523696c](https://github.com/konflux-ci/pulp-tool/commit/523696c))
 - Dev **`uv.lock`**: bump **pylint** (CVE-2026-114608) and transitive **msgpack** (CVE-2026-114613); pin **`pylint>=4.0.9`** and **`msgpack>=1.2.3`** via **`constraint-dependencies`** ([523696c](https://github.com/konflux-ci/pulp-tool/commit/523696c))
 
@@ -40,7 +47,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - E2e harness: CLI validation smoke, live read-only error paths (auth, 404 `pulp_results`, bad checksum, pull filters, bad local/OCI refs), and live mutating errors (empty `--rpm-path`, bad `--results-json`, missing `upload-files` path, duplicate `create-repository`) with isolated build IDs and in-test `pulp` cleanup; documented in `e2e/README.md` ([ec3d824](https://github.com/konflux-ci/pulp-tool/commit/ec3d824))
 - `upload-build` command (`upload` remains a compatibility alias): ORAS publish of `pulp_results.json` via **`--oci-storage`** (Konflux `ociStorage`); with comma-separated `--artifact-results`, Tekton files get OCI image URL (without digest) and `sha256:` digest matching import-to-quay `PULP-IMAGE_*` results ([2a3f5c8](https://github.com/konflux-ci/pulp-tool/commit/2a3f5c8)) — config **`cli.oci_storage`** and non-ORAS Tekton result files were removed later in this release (see **Removed** above)
 - `pull --oci-storage` for side-tag ORAS publish (flag overrides transfer config) ([2a3f5c8](https://github.com/konflux-ci/pulp-tool/commit/2a3f5c8))
-- `pull --side-tag` (with `--transfer-dest`): extra ROK RPM repo/distribution, versioned `pulp_results.json` merge, ORAS push, `--artifact-results` Tekton outputs, and optional `--snapshot-path` (`pulpResultsOciManifest`) for trusted-artifact release workspaces ([2a3f5c8](https://github.com/konflux-ci/pulp-tool/commit/2a3f5c8))
+- `pull --side-tag` (with `--transfer-dest`): extra release-Pulp RPM repo/distribution, versioned `pulp_results.json` merge, ORAS push, `--artifact-results` Tekton outputs, and optional `--snapshot-path` (`pulpResultsOciManifest`) for trusted-artifact release workspaces ([2a3f5c8](https://github.com/konflux-ci/pulp-tool/commit/2a3f5c8))
 - `pulp-tool-container` image: ORAS CLI, `jq`, and Konflux `select-oci-auth` for registry auth (`oras --registry-config`); e2e ORAS tests when e2e **`--oci-storage`** is set (Konflux `ociStorage` param) ([2a3f5c8](https://github.com/konflux-ci/pulp-tool/commit/2a3f5c8))
 - `pull --artifact-location` accepts an OCI manifest reference (`registry/repo@sha256:…` or `oci:…`); `pulp_results.json` is fetched with ORAS (`select-oci-auth`) before artifact download ([6e0cb3f](https://github.com/konflux-ci/pulp-tool/commit/6e0cb3f))
 - Konflux e2e: side-tag pull transfer from HTTPS `pulp_results.json` or OCI manifest ref, with run-scoped `--side-tag` names and Tekton-style `--artifact-results` ([6e0cb3f](https://github.com/konflux-ci/pulp-tool/commit/6e0cb3f))

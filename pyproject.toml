@@ -73,6 +73,7 @@ update-build = "pulp_tool.cli.update_build:update_build"
 upload = "pulp_tool.cli.upload:upload"
 upload_files = "pulp_tool.cli.upload_files:upload_files"
 pull = "pulp_tool.cli.pull:pull"
+transfer = "pulp_tool.cli.transfer:transfer"
 search_by = "pulp_tool.cli.search_by:search_by"
 create_repository = "pulp_tool.cli.create_repository:create_repository"
 

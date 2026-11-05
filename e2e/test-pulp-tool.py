@@ -748,10 +748,19 @@ class E2ETestSuite:
             self.log_error(output)
         self.assert_output_contains(output, "--artifact-location", "Help shows --artifact-location option")
         self.assert_output_contains(output, "--content-types", "Help shows --content-types option")
+        self.assert_output_contains(output, "--distribution-config", "Help shows --distribution-config option")
+
+    def test_transfer_help(self):
+        self.run_test("pulp-tool transfer --help")
+        exit_code, output = self.run_command(["pulp-tool", "transfer", "--help"])
+        self.assert_exit_code(0, exit_code, "Transfer help command")
+        if exit_code > 0:
+            self.log_error(output)
         self.assert_output_contains(output, "--side-tag", "Help shows --side-tag option")
         self.assert_output_contains(output, "--artifact-results", "Help shows --artifact-results option")
         self.assert_output_contains(output, "--snapshot-path", "Help shows --snapshot-path option")
         self.assert_output_contains(output, "--oci-storage", "Help shows --oci-storage option")
+        self.assert_output_contains(output, "--source-config", "Help shows --source-config option")
 
     def _oci_oras_prereqs(self, test_name: str) -> str | None:
         """Return ``--oci-storage`` when ORAS e2e prerequisites are met; else skip."""
@@ -781,7 +790,7 @@ class E2ETestSuite:
         return side_tag_e2e_name(self.run_id)
 
     def _write_transfer_dest_config(self) -> Path:
-        """Copy ``cli.toml`` for ``pull --transfer-dest`` (destination credentials + cluster label)."""
+        """Copy ``cli.toml`` for ``transfer`` destination (release Pulp / rok-access credentials + cluster label)."""
         path = self.test_dir / "transfer-cli.toml"
         base = self.config_file.read_text(encoding="utf-8")
         cluster_line = 'cluster = "e2e-cluster"'
@@ -1664,18 +1673,16 @@ class E2ETestSuite:
         cfg = str(self.config_file)
 
         self.expect_cli_failure(
-            "pull: --side-tag requires --transfer-dest",
+            "transfer: missing destination --config",
             [
                 "pulp-tool",
-                "--config",
-                cfg,
-                "pull",
+                "transfer",
                 "--side-tag",
                 "e2e-side-tag-smoke",
                 "--artifact-location",
                 fixture_location,
             ],
-            substring="--side-tag requires --transfer-dest",
+            substring="--config is required for transfer",
         )
         self.expect_cli_failure(
             "pull: --artifact-location with --build-id/--namespace",
@@ -1700,16 +1707,16 @@ class E2ETestSuite:
         )
         transfer_no_oci = self._write_transfer_dest_config_no_oci()
         self.expect_cli_failure(
-            "pull: side-tag without oci_storage on transfer-dest",
+            "transfer: side-tag without oci_storage",
             [
                 "pulp-tool",
                 "--config",
+                str(transfer_no_oci),
+                "transfer",
+                "--source-config",
                 cfg,
-                "pull",
                 "--artifact-location",
                 fixture_location,
-                "--transfer-dest",
-                str(transfer_no_oci),
                 "--side-tag",
                 "e2e-side-tag-smoke",
             ],
@@ -2529,15 +2536,15 @@ class E2ETestSuite:
         storage = scoped_oci_storage(oci_storage, build_id, self.run_id)
 
         self.run_test(step_label, detail=f"side_tag={side_tag} artifact_location={artifact_location[:80]}…")
-        pull_cmd = [
+        transfer_cmd = [
             "pulp-tool",
             "--config",
+            str(transfer_config),
+            "transfer",
+            "--source-config",
             str(self.config_file),
-            "pull",
             "--artifact-location",
             artifact_location,
-            "--transfer-dest",
-            str(transfer_config),
             "--side-tag",
             side_tag,
             "--oci-storage",
@@ -2549,7 +2556,7 @@ class E2ETestSuite:
             "--archs",
             "noarch",
         ]
-        exit_code, output = self.run_command(pull_cmd, cwd=pull_dir)
+        exit_code, output = self.run_command(transfer_cmd, cwd=pull_dir)
         if not self.assert_exit_code(0, exit_code, "Pull side-tag transfer completes successfully"):
             self.log_error(output)
             return False
@@ -2594,7 +2601,7 @@ class E2ETestSuite:
         return True
 
     def test_upload_gpg_signed_rpm_source(self):
-        """Upload GPG-signed RPM for ``pull --verify-rpm-gpg`` (distribution verify deferred)."""
+        """Upload GPG-signed RPM for ``transfer --verify-rpm-gpg`` (distribution verify deferred)."""
         if not self.real_server:
             self.skip_test("upload (GPG-signed RPM)", "DRY RUN")
             return
@@ -2671,18 +2678,18 @@ class E2ETestSuite:
         self.log_success("GPG upload pulp_results.json is reachable")
 
     def test_pull_verify_rpm_gpg(self):
-        """``pull --verify-rpm-gpg`` accepts signed RPMs and rejects unsigned relay."""
+        """``transfer --verify-rpm-gpg`` accepts signed RPMs and rejects unsigned relay."""
         if not self.real_server:
-            self.skip_test("pull --verify-rpm-gpg", "DRY RUN")
+            self.skip_test("transfer --verify-rpm-gpg", "DRY RUN")
             return
-        if not self._gpg_e2e_prereqs("pull --verify-rpm-gpg"):
+        if not self._gpg_e2e_prereqs("transfer --verify-rpm-gpg"):
             return
 
         pulp_results_url = self._gpg_verify_pulp_results_url
         gpg_home = self._gpg_keyring_dir
         if not pulp_results_url or not gpg_home:
             self.skip_test(
-                "pull --verify-rpm-gpg",
+                "transfer --verify-rpm-gpg",
                 "prior test_upload_gpg_signed_rpm_source did not complete (sign/upload skipped or failed)",
             )
             return
@@ -2690,14 +2697,14 @@ class E2ETestSuite:
         pull_dir = self.output_dir / "pull-gpg-verify-output"
         pull_dir.mkdir(parents=True, exist_ok=True)
         self.run_test(
-            "pulp-tool pull --verify-rpm-gpg (signed RPM)",
+            "pulp-tool transfer --verify-rpm-gpg (signed RPM)",
             detail=pulp_results_url,
         )
-        pull_cmd = [
+        transfer_cmd = [
             "pulp-tool",
             "--config",
             str(self.config_file),
-            "pull",
+            "transfer",
             "--artifact-location",
             pulp_results_url,
             "--content-types",
@@ -2708,8 +2715,8 @@ class E2ETestSuite:
             "--gpg-keyring",
             str(gpg_home),
         ]
-        exit_code, output = self.run_command(pull_cmd, cwd=pull_dir)
-        if not self.assert_exit_code(0, exit_code, "Pull with GPG verify on signed RPM"):
+        exit_code, output = self.run_command(transfer_cmd, cwd=pull_dir)
+        if not self.assert_exit_code(0, exit_code, "Transfer with GPG verify on signed RPM"):
             self.log_error(output)
             return
         if not self.assert_file_exists(
@@ -2725,14 +2732,14 @@ class E2ETestSuite:
         unsigned_pull_dir = self.output_dir / "pull-gpg-verify-unsigned-fail"
         unsigned_pull_dir.mkdir(parents=True, exist_ok=True)
         self.run_test(
-            "pulp-tool pull --verify-rpm-gpg (unsigned RPM must fail)",
+            "pulp-tool transfer --verify-rpm-gpg (unsigned RPM must fail)",
             detail=unsigned_url,
         )
         fail_cmd = [
             "pulp-tool",
             "--config",
             str(self.config_file),
-            "pull",
+            "transfer",
             "--artifact-location",
             unsigned_url,
             "--content-types",
@@ -2746,11 +2753,11 @@ class E2ETestSuite:
         fail_exit, fail_output = self.run_command(fail_cmd, cwd=unsigned_pull_dir)
         if fail_exit == 0:
             self.stats.failed += 1
-            self.log_error("Expected pull with --verify-rpm-gpg to fail on unsigned RPM")
+            self.log_error("Expected transfer with --verify-rpm-gpg to fail on unsigned RPM")
             self.log_error(fail_output)
             return
         self.stats.passed += 1
-        self.log_success("pull --verify-rpm-gpg passed for signed RPM and failed for unsigned RPM")
+        self.log_success("transfer --verify-rpm-gpg passed for signed RPM and failed for unsigned RPM")
 
     def test_upload_side_tag_transfer_source(self):
         """Upload source build for HTTPS side-tag pull (distribution verify deferred)."""
@@ -2833,7 +2840,7 @@ class E2ETestSuite:
         self._side_tag_oci_build_id = build_id
 
     def test_pull_side_tag_transfer(self):
-        """Pull --transfer-dest --side-tag with ORAS manifest push (requires prior source upload)."""
+        """``transfer --side-tag`` with ORAS manifest push (requires prior source upload)."""
         oci_storage = self._oci_oras_prereqs("pull side-tag transfer")
         if oci_storage is None:
             return
@@ -2854,7 +2861,7 @@ class E2ETestSuite:
             side_tag=side_tag,
             image_url_path=image_url_path,
             image_digest_path=image_digest_path,
-            step_label="pulp-tool pull --transfer-dest --side-tag (HTTPS pulp_results)",
+            step_label="pulp-tool transfer --side-tag (HTTPS pulp_results)",
         )
 
     def test_pull_side_tag_transfer_from_oci_artifact_location(self):
@@ -2877,7 +2884,7 @@ class E2ETestSuite:
             side_tag=side_tag,
             image_url_path=self.output_dir / "side_tag_transfer_oci_image_url",
             image_digest_path=self.output_dir / "side_tag_transfer_oci_image_digest",
-            step_label="pulp-tool pull --transfer-dest --side-tag (OCI manifest ref)",
+            step_label="pulp-tool transfer --side-tag (OCI manifest ref)",
         )
 
     # Test: search-by command with checksums
@@ -3301,7 +3308,7 @@ class E2ETestSuite:
         self.invoke_test_case(
             self.test_pull_side_tag_transfer,
             "test_pull_side_tag_transfer",
-            f"Pull --transfer-dest --side-tag with ORAS (build_id={self.bid(BUILD_ID_PULL_SIDE_TAG)}; "
+            f"transfer --side-tag with ORAS (build_id={self.bid(BUILD_ID_PULL_SIDE_TAG)}; "
             "requires --oci-storage and oras in PATH).",
             requires_real_server=True,
         )
@@ -3314,7 +3321,7 @@ class E2ETestSuite:
         self.invoke_test_case(
             self.test_pull_verify_rpm_gpg,
             "test_pull_verify_rpm_gpg",
-            f"pull --verify-rpm-gpg on build_id={self.bid(BUILD_ID_PULL_GPG_VERIFY)}; unsigned pull must fail.",
+            f"transfer --verify-rpm-gpg on build_id={self.bid(BUILD_ID_PULL_GPG_VERIFY)}; unsigned transfer must fail.",
             requires_real_server=True,
         )
 

@@ -8,11 +8,11 @@ abstracting the complexity of downloading and optionally re-uploading artifacts.
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Optional
 
 from ..models.artifacts import ArtifactData, PulledArtifacts
 from ..models.context import PullContext
+from ..models.pull_workflow import PullDestinationSetup, PullRunResult
 from ..models.pulp_results import PulpResultsDocument
 
 if TYPE_CHECKING:
@@ -20,7 +20,6 @@ if TYPE_CHECKING:
     from ..models.repository import RepositoryRefs
 
 from ..pull import (
-    PullDestinationSetup,
     download_artifacts_concurrently,
     generate_pull_report,
     load_and_validate_artifacts,
@@ -32,23 +31,6 @@ from ..pull.side_tag import upload_rpms_to_side_tag_repository
 from ..utils.rpm_gpg_verify import RpmGpgVerifyError, verify_pulled_rpms_gpg
 
 
-@dataclass(frozen=True, slots=True)
-class PullRunResult:
-    """Outcome of a full pull run (download, optional transfer upload, side-tag)."""
-
-    pulled_artifacts: PulledArtifacts
-    completed: int
-    failed: int
-    upload_info: PulpResultsDocument | None
-    error_messages: list[str] = field(default_factory=list)
-    pulp_client: Any | None = None
-    distribution_client: Any | None = None
-
-    @property
-    def success(self) -> bool:
-        return not self.error_messages
-
-
 def validate_pull_side_tag_context(context: PullContext) -> str | None:
     """Return an error message when side-tag options are inconsistent."""
     side_tag = (context.side_tag or "").strip()
@@ -56,9 +38,9 @@ def validate_pull_side_tag_context(context: PullContext) -> str | None:
         return None
     transfer_dest = (context.transfer_dest or "").strip()
     if not transfer_dest:
-        return "--side-tag requires --transfer-dest"
+        return "--side-tag requires destination --config (transfer command)"
     if not (context.oci_storage or "").strip():
-        return "--oci-storage in --transfer-dest is required when using --side-tag"
+        return "--oci-storage is required when using --side-tag"
     return None
 
 
@@ -172,7 +154,7 @@ class PullService:
 
         td = context.transfer_dest
         if td is None or not isinstance(td, str) or not td.strip():
-            logging.debug("No transfer destination (--transfer-dest) specified, skipping repository setup")
+            logging.debug("No transfer destination configured, skipping repository setup")
             return None
 
         logging.info("Setting up destination repositories")

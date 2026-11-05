@@ -8,15 +8,15 @@ Tests are grouped by package area. Prefer adding new tests next to the code they
 |-----------|---------|
 | `tests/support/` | Shared factories, TLS helpers, constants (import as `tests.support`) |
 | `tests/api/` | `PulpClient` and API-layer behavior |
-| `tests/cli/` | Click CLI commands (`upload`, `pull`, `search-by`, …) |
-| `tests/pull/` | Pull/download flow and reporting |
+| `tests/cli/` | Click CLI commands (`upload`, **`transfer`**, `pull`, `search-by`, …) |
+| `tests/pull/` | Pull/transfer download flow and reporting (used by **`pull`** and **`transfer`**) |
 | `tests/upload/` | Upload pipeline, batch JSON, artifacts, results, layout/DTO models |
 | `tests/services/` | Non-upload services (pull helpers, update-build, …) |
 | `tests/utils/` | Utilities, capabilities, small pure helpers |
 | `tests/models/` | Pydantic models |
 | `tests/e2e/` | Unit tests for [`e2e/`](../e2e/) helpers (e.g. `distribution_fetch`, `distribution_verify_queue`) |
 
-**Konflux live e2e** (mutating Pulp in Tekton) is implemented under [`e2e/`](../e2e/), not under `tests/`. New `--real-server` cases must follow the upload → deferred pulp-content verification → pull structure documented in [e2e/README.md § Conventions for new live e2e tests](../e2e/README.md#conventions-for-new-live-e2e-tests).
+**Konflux live e2e** (mutating Pulp in Tekton) is implemented under [`e2e/`](../e2e/), not under `tests/`. New `--real-server` cases must follow the upload → deferred pulp-content verification → **`pull`** / **`transfer`** structure documented in [e2e/README.md § Conventions for new live e2e tests](../e2e/README.md#conventions-for-new-live-e2e-tests).
 
 ## Hypothesis (property-based tests)
 

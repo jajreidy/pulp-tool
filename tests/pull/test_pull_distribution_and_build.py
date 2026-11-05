@@ -185,7 +185,7 @@ class TestRepositoryManagement:
             assert result is None
 
     def test_setup_repositories_no_transfer_dest(self, temp_config_file) -> None:
-        """Test setup_repositories_if_needed skips when --transfer-dest was not specified."""
+        """Test setup_repositories_if_needed skips when no destination transfer config."""
         args = Mock()
         args.config = temp_config_file
         args.transfer_dest = None

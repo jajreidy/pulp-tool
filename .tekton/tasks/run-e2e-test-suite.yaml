@@ -22,7 +22,7 @@ spec:
   stepTemplate:
     image: $(params.e2e-image)
     imagePullPolicy: Always
-    # Match release-service-catalog push-artifacts-to-storage (pulp-tool upload step).
+    # Match release-service-catalog push-artifacts-to-storage step memory (release-service-utils upload).
     computeResources:
       limits:
         memory: 2Gi

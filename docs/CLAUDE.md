@@ -20,7 +20,7 @@ Platform: [Konflux documentation](https://konflux-ci.dev/docs/). Upstream Pulp: 
 | **Upload changes** | **changing-pulp-upload** skill ([`skills/changing-pulp-upload/SKILL.md`](../skills/changing-pulp-upload/SKILL.md)) + this file |
 | **Container image build** | **changing-pulp-container** skill ([`skills/changing-pulp-container/SKILL.md`](../skills/changing-pulp-container/SKILL.md)); Konflux Tekton builds via [`.tekton/`](../.tekton/) — not GitHub Actions |
 
-**PR review rule:** Any PR touching **`upload`**, global options, SBOM/artifact paths, TLS/config paths in containers, or the image must still match the **two pipelines** below — open the linked YAML on GitHub; upstream tasks evolve.
+**PR review rule:** Any PR touching **`upload`**, **`pull`**, **`transfer`**, global options, SBOM/artifact paths, TLS/config paths in containers, or the image must still match the **linked Tekton contracts** below — open the linked YAML on GitHub; upstream tasks evolve.
 
 **Structure, invariants, glossary:** [ARCHITECTURE.md](ARCHITECTURE.md).
 
@@ -60,26 +60,45 @@ pulp-tool --config /pulp-access/cli.toml \
 
 ### 2. `push-artifacts-to-storage` (release-service-catalog)
 
-- **Pipeline/Task (branch `development`):** [`push-artifacts-to-storage.yaml`](https://github.com/konflux-ci/release-service-catalog/blob/development/tasks/managed/push-artifacts-to-storage/push-artifacts-to-storage.yaml) — step **`push-build-to-artifact-storage`**
+- **Task (branch `development`):** [`push-artifacts-to-storage.yaml`](https://github.com/konflux-ci/release-service-catalog/blob/development/tasks/managed/push-artifacts-to-storage/push-artifacts-to-storage.yaml) — step **`push-artifacts-to-storage`**
+- **Implementation:** [release-service-utils](https://github.com/konflux-ci/release-service-utils) module **`push_artifacts_to_storage`** (`python3 -m push_artifacts_to_storage` in the task). **Not** a direct `pulp-tool` invocation in the task YAML.
+- **Flow today:** ORAS-pull each snapshot **`containerImage`** (RPM bundle in the image) into a temp dir, then shell out to **`pulp-tool upload`** when **`/etc/rok-access/cli.toml`** exists and **`pushOptions.koji_import_draft`** is not false.
 
 ```bash
 pulp-tool --config /etc/rok-access/cli.toml \
   --build-id "<snapshotBuildId>" \
   --namespace "<snapshotNamespace>" \
   upload \
-  --rpm-path "/var/workdir/results"
+  --rpm-path "<per-component download dir>"
 ```
 
-- **`/etc/rok-access/cli.toml`** (**rok-access** secret). **Missing file:** step exits **0** **without** invoking `pulp-tool`.
+- **`/etc/rok-access/cli.toml`** (**`rok-access`** secret — **release Pulp** artifact storage). **Missing file:** step skips Pulp upload (no `pulp-tool` call).
 - Pipeline may skip storage when merged data has **`koji_import_draft`** **`false`**.
 
-| | import-to-quay | push-artifacts-to-storage |
-|--|----------------|---------------------------|
-| **Config** | `/pulp-access/cli.toml` | `/etc/rok-access/cli.toml` |
-| **`upload` flags (in task)** | `--parent-package`, `--sbom-path`, `--artifact-results` | `--rpm-path` only |
+| | import-to-quay | push-artifacts-to-storage (today) |
+|--|----------------|-----------------------------------|
+| **Config** | `/pulp-access/cli.toml` (build Pulp) | `/etc/rok-access/cli.toml` (release Pulp) |
+| **`upload` flags (in task)** | `--parent-package`, `--sbom-path`, `--artifact-results`, **`--oci-storage`** | `--rpm-path` only (after ORAS bundle pull) |
 | **SBOM** | `--sbom-path` … `oras-staging/sbom-merged.json` when Pulp runs | no `--sbom-path` in script |
 
-**Where to change code:** [ARCHITECTURE.md](ARCHITECTURE.md) (code map, data flow, Konflux diagram). Do not duplicate upload logic outside `PulpHelper` → `pulp_tool.upload`.
+### 3. `transfer` (release promotion to Pulp — target contract, catalog wiring TBD)
+
+**`pull`** is download-only. **`transfer`** downloads build metadata (HTTPS, local JSON, or OCI `pulp_results`) and promotes bytes to the **release Pulp** artifact storage target (Konflux **`rok-access`** → `/etc/rok-access/cli.toml`). Global **`--config`** is **required** (that destination). Use **`--source-config`** on the **`transfer`** subcommand when **build Pulp** credentials differ (e.g. `/pulp-access/cli.toml` vs `/etc/rok-access/cli.toml`).
+
+```bash
+pulp-tool --config /etc/rok-access/cli.toml \
+  transfer \
+  --source-config /pulp-access/cli.toml \
+  --artifact-location "quay.io/<tenant>/…/manifest@sha256:<digest>" \
+  --side-tag "<optional-test-tag>" \
+  --oci-storage "$(params.ociStorage)" \
+  --artifact-results "$(results.pulpImageURL.path),$(results.pulpImageDigest.path)" \
+  --snapshot-path "$(params.dataDir)/…/snapshot_spec.json"
+```
+
+Side-tag, ORAS publish, GPG verify (`--verify-rpm-gpg`, `--gpg-keyring`), and snapshot update flags live on **`transfer`** only. Planned **release-service-catalog** work for **Pulp-backed release promotion** (promote from build Pulp / OCI `pulp_results` instead of ORAS RPM-bundle pull + raw **`upload`**) should invoke **`transfer`**; catalog wiring is still TBD (KONFLUX-14464).
+
+**Where to change code:** [ARCHITECTURE.md](ARCHITECTURE.md) (code map, data flow). Upload logic stays **`PulpHelper` → `pulp_tool.upload`**; pull/transfer orchestration stays **`PullService`** + `pulp_tool/pull/`.
 
 ---
 
@@ -93,6 +112,7 @@ Before merging changes that affect the above, re-read both task YAMLs and extend
 - Config/TLS/paths assumed in containers; image entrypoint and `pulp-tool` invocation
 - RPM discovery under `--rpm-path`
 - Upstream may change staging (ORAS, `oras-staging/`, etc.) — re-verify **rpmbuild-pipeline** and **release-service-catalog**; update this file if call sites move
+- **`pull`** (download-only), **`transfer`** (promote to release Pulp + side-tag / ORAS / GPG flags), **`--source-config`** on **`transfer`**
 - **`update-build`**, **`pulp_results.json` schema**, **`--artifact-results`** (required on update-build), digest-pinned OCI reads (`repo@sha256:…`)
 - Global **`cli.cluster`** / document **`cluster`** and per-artifact **`origin_*`** lineage (RHELDST-44544)
 
@@ -106,11 +126,11 @@ Single document from **`upload-build`** through **`update-build`**. Implementati
 
 **Per-artifact (key = logical filename):** `href`, `sha256`, `url`, `href_history`, **`pulp_labels`**, **`distributions`** (authoritative per file).
 
-**Mutations (upload re-run, `pull --side-tag`, `update-build`):** republish runs append prior hrefs to **`href_history`**, set **`last_updated`** to the current date (schema **`version`** unchanged), ORAS publish in-process, upload **new** JSON to Pulp. **`upload-build`** with **`--oci-storage`** (import-to-quay after the RPM ORAS push) **`oras attach`**es `pulp_results.json` to the manifest already at `ociStorage` so RPM blobs are not replaced. **`update-build`** with an OCI **`--results-json`** attaches to that digest-pinned subject. Side-tag transfer and other flows may still **`oras push`** when no prior subject exists at the target. Operations: `build_upload`, `build_sign`, `release_sign`, `bts_update`, `transfer`, …
+**Mutations (upload re-run, `transfer --side-tag`, `update-build`):** republish runs append prior hrefs to **`href_history`**, set **`last_updated`** to the current date (schema **`version`** unchanged), ORAS publish in-process, upload **new** JSON to Pulp. **`upload-build`** with **`--oci-storage`** (import-to-quay after the RPM ORAS push) **`oras attach`**es `pulp_results.json` to the manifest already at `ociStorage` so RPM blobs are not replaced. **`update-build`** with an OCI **`--results-json`** attaches to that digest-pinned subject. Side-tag transfer and other flows may still **`oras push`** when no prior subject exists at the target. Operations: `build_upload`, `build_sign`, `release_sign`, `bts_update`, `transfer`, …
 
 **OCI reads:** `pull --artifact-location`, `upload-build --results-json`, `search-by --results-json`, and **`update-build --results-json`** accept a local path or digest-pinned ref `quay.io/…/manifest@sha256:…`. Digest-pinned reads **`oras discover`** attached **`pulp_results`** referrers first (then pull the referrer whose JSON has the latest **`last_updated`** date). **`pulp-tool-container`** runs ORAS via `select-oci-auth`.
 
-**RPM GPG on transfer (`pull --verify-rpm-gpg`):** After download and SHA256 verification, optionally run **`rpm --checksig`** on each pulled RPM **before** `--transfer-dest` re-upload. Mount org signing keys as a Tekton Secret and pass **`--gpg-keyring`** (GnuPG homedir; public keys are exported and imported for `rpm --checksig`) or set **`cli.gpg_keyring`** / **`cli.verify_rpm_gpg`** in the transfer-dest `cli.toml`. The runtime image includes **`rpm`** and **`gnupg2`**. This complements Konflux **`rpms-signature-scan`** on the **container image build**; it does not replace registry/OCI attestation trust for `pulp_results` itself.
+**RPM GPG on transfer (`transfer --verify-rpm-gpg`):** After download and SHA256 verification, optionally run **`rpm --checksig`** on each pulled RPM **before** destination re-upload. Mount org signing keys as a Tekton Secret and pass **`--gpg-keyring`** (GnuPG homedir; public keys are exported and imported for `rpm --checksig`) or set **`cli.gpg_keyring`** / **`cli.verify_rpm_gpg`** in the destination **`--config`** (`cli.toml`). The runtime image includes **`rpm`** and **`gnupg2`**. This complements Konflux **`rpms-signature-scan`** on the **container image build**; it does not replace registry/OCI attestation trust for `pulp_results` itself.
 
 **Tekton result files:** Comma-separated **`--artifact-results url_path,digest_path`** requires **`--oci-storage`** and writes OCI URL (no digest) + `sha256:…` digest (same layout as import-to-quay; prefer this name over legacy **`PULP-IMAGE_*`** task result names in new docs). There is no **`cli.oci_storage`** config fallback—pass **`--oci-storage`** on the command line (Konflux `ociStorage` param).
 
@@ -128,7 +148,7 @@ pulp-tool --config /pulp-access/cli.toml update-build \
 
 **Required:** `--results-json`, **`--artifact-results`**, **`--oci-storage`**. Logs **`X-Correlation-ID`** (NF2) at command start.
 
-**vs `pull --transfer-dest`:** transfer copies content across Pulp domains; side-tag path merges lineage + ORAS. **`update-build`** updates the same build’s artifact pointers after signing/BTS in-place.
+**vs `pull`:** **`transfer`** copies content across Pulp domains; side-tag path merges lineage + ORAS. **`update-build`** updates the same build’s artifact pointers after signing/BTS in-place.
 
 ---
 
