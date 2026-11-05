@@ -20,7 +20,7 @@ from ..models.pulp_api import (
     RepositoryRequest,
     TaskResponse,
 )
-from ..models.repository import RepositoryRefs
+from ..models.repository import ExistingDistributionInfo, RepositoryRefs
 
 if TYPE_CHECKING:
     from ..api.pulp_client import PulpClient  # pragma: no cover
@@ -72,14 +72,6 @@ class RepositoryApiOps:
 
     def wait_for_finished_task(self, task_id: str) -> TaskResponse:
         return self.client.wait_for_finished_task(task_id)
-
-
-@dataclass(frozen=True)
-class ExistingDistributionInfo:
-    """Existing Pulp distribution fields needed for idempotent create recovery."""
-
-    base_path: str
-    repository: str | None = None
 
 
 def _repository_resource_id(repository_ref: str | None) -> str | None:

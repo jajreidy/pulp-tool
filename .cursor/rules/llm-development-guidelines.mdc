@@ -35,7 +35,7 @@ Do not treat the branch as PR-ready without clean pre-commit (commit + pre-push 
 
 | Topic | Where |
 |-------|--------|
-| Skill index (PR draft, diff-cover, lint CI) | `llm-development-guidelines-deep.mdc` · [`skills/`](../../skills/) |
+| Skill index (PR draft, diff-cover, lint CI, Pydantic models) | `llm-development-guidelines-deep.mdc` · [`skills/`](../../skills/) |
 | Copy-paste setup & merge policy | `AGENTS.md` |
 | PR template / commit layout | `.github/PULL_REQUEST_TEMPLATE.md`, `.github/commit-message-template.txt` |
 | CONTRIBUTING | `CONTRIBUTING.md` |

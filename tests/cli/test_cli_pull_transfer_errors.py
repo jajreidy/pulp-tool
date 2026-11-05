@@ -9,6 +9,7 @@ from click.testing import CliRunner
 
 from pulp_tool.cli import cli
 from pulp_tool.models.pulp_results import PulpResultsDocument
+from tests.support.factories import make_download_result
 
 
 class TestPullCommandTransferAndErrors:
@@ -35,11 +36,7 @@ class TestPullCommandTransferAndErrors:
             )
             mock_load.return_value = mock_artifact_data
             mock_setup.return_value = None
-            mock_result = Mock()
-            mock_result.pulled_artifacts = Mock()
-            mock_result.completed = 0
-            mock_result.failed = 0
-            mock_download.return_value = mock_result
+            mock_download.return_value = make_download_result(completed=0, failed=0)
             result = runner.invoke(
                 cli,
                 [
@@ -81,11 +78,7 @@ class TestPullCommandTransferAndErrors:
             )
             mock_load.return_value = mock_artifact_data
             mock_setup.return_value = None
-            mock_result = Mock()
-            mock_result.pulled_artifacts = Mock()
-            mock_result.completed = 0
-            mock_result.failed = 0
-            mock_download.return_value = mock_result
+            mock_download.return_value = make_download_result(completed=0, failed=0)
             result = runner.invoke(cli, ["pull", "--artifact-location", artifact_path])
             assert result.exit_code == 0
             call_args = mock_download.call_args
@@ -109,7 +102,7 @@ class TestPullCommandTransferAndErrors:
         finally:
             os.unlink(artifact_path)
 
-    @patch("pulp_tool.cli.pull.DistributionClient")
+    @patch("pulp_tool.cli.artifact_pull_run.DistributionClient")
     @patch("pulp_tool.services.pull_service.load_and_validate_artifacts")
     @patch("pulp_tool.services.pull_service.setup_repositories_if_needed")
     @patch("pulp_tool.services.pull_service.download_artifacts_concurrently")
@@ -143,11 +136,7 @@ class TestPullCommandTransferAndErrors:
             )
             mock_load.return_value = mock_artifact_data
             mock_setup.return_value = None
-            mock_result = Mock()
-            mock_result.pulled_artifacts = Mock()
-            mock_result.completed = 0
-            mock_result.failed = 0
-            mock_download.return_value = mock_result
+            mock_download.return_value = make_download_result(completed=0, failed=0)
             result = runner.invoke(
                 cli,
                 [
@@ -157,9 +146,7 @@ class TestPullCommandTransferAndErrors:
                     "test-build",
                     "--namespace",
                     "test-ns",
-                    "pull",
-                    "--transfer-dest",
-                    str(config_path),
+                    "transfer",
                 ],
             )
             assert result.exit_code == 0
@@ -167,16 +154,16 @@ class TestPullCommandTransferAndErrors:
             pull_ctx = mock_load.call_args.args[0]
             assert "pulp.example.com" in pull_ctx.artifact_location
 
-    @patch("pulp_tool.cli.pull.DistributionClient")
+    @patch("pulp_tool.cli.artifact_pull_run.DistributionClient")
     @patch("pulp_tool.services.pull_service.load_and_validate_artifacts")
     @patch("pulp_tool.services.pull_service.setup_repositories_if_needed")
     @patch("pulp_tool.services.pull_service.download_artifacts_concurrently")
     @patch("pulp_tool.services.pull_service.generate_pull_report")
     @patch("pulp_tool.services.pull_service.upload_downloaded_files_to_pulp")
-    def test_auto_artifact_location_uses_source_config_not_transfer_dest(
+    def test_auto_artifact_location_uses_source_config_not_destination(
         self, mock_upload, mock_report, mock_download, mock_setup, mock_load, mock_dist_client
     ) -> None:
-        """``--build-id`` auto URL must use group ``--config`` base_url, not ``--transfer-dest``."""
+        """Auto URL for ``--build-id`` uses ``--source-config``, not destination ``--config``."""
         runner = CliRunner()
         with tempfile.TemporaryDirectory() as tmpdir:
             cert_path = Path(tmpdir) / "cert.pem"
@@ -205,23 +192,19 @@ class TestPullCommandTransferAndErrors:
             )
             mock_load.return_value = mock_artifact_data
             mock_setup.return_value = None
-            mock_result = Mock()
-            mock_result.pulled_artifacts = Mock()
-            mock_result.completed = 0
-            mock_result.failed = 0
-            mock_download.return_value = mock_result
+            mock_download.return_value = make_download_result(completed=0, failed=0)
             result = runner.invoke(
                 cli,
                 [
                     "--config",
-                    str(source_cfg),
+                    str(dest_cfg),
                     "--build-id",
                     "test-build",
                     "--namespace",
                     "test-ns",
-                    "pull",
-                    "--transfer-dest",
-                    str(dest_cfg),
+                    "transfer",
+                    "--source-config",
+                    str(source_cfg),
                 ],
             )
             assert result.exit_code == 0
@@ -231,7 +214,7 @@ class TestPullCommandTransferAndErrors:
 
     @patch("pulp_tool.services.pull_service.publish_side_tag_results")
     @patch("pulp_tool.services.pull_service.upload_rpms_to_side_tag_repository")
-    @patch("pulp_tool.cli.pull.DistributionClient")
+    @patch("pulp_tool.cli.artifact_pull_run.DistributionClient")
     @patch("pulp_tool.services.pull_service.load_and_validate_artifacts")
     @patch("pulp_tool.services.pull_service.setup_repositories_if_needed")
     @patch("pulp_tool.services.pull_service.download_artifacts_concurrently")
@@ -291,26 +274,22 @@ class TestPullCommandTransferAndErrors:
                 artifacts_href="/artifacts/",
             )
             mock_setup.return_value = PullDestinationSetup(client=Mock(), repositories=repos)
-            mock_result = Mock()
-            mock_result.pulled_artifacts = PulledArtifacts()
-            mock_result.completed = 0
-            mock_result.failed = 0
-            mock_download.return_value = mock_result
+            mock_download.return_value = make_download_result(pulled_artifacts=PulledArtifacts(), completed=0, failed=0)
 
             mock_upload.return_value = PulpResultsDocument(build_id="test", repositories=repos)
             from pulp_tool.pull.side_tag import SideTagUploadResult
 
-            mock_side_upload.return_value = SideTagUploadResult([], "https://rok/side/")
+            mock_side_upload.return_value = SideTagUploadResult(transfers=[], distribution_base_url="https://rok/side/")
             result = runner.invoke(
                 cli,
                 [
+                    "--config",
+                    str(config_path),
                     "--build-id",
                     "test-build",
                     "--namespace",
                     "test-ns",
-                    "pull",
-                    "--transfer-dest",
-                    str(config_path),
+                    "transfer",
                     "--side-tag",
                     "mytest",
                     "--oci-storage",
@@ -321,7 +300,7 @@ class TestPullCommandTransferAndErrors:
             mock_side_upload.assert_called_once()
             mock_publish.assert_called_once()
 
-    @patch("pulp_tool.cli.pull.DistributionClient")
+    @patch("pulp_tool.cli.artifact_pull_run.DistributionClient")
     @patch("pulp_tool.services.pull_service.load_and_validate_artifacts")
     @patch("pulp_tool.services.pull_service.setup_repositories_if_needed")
     @patch("pulp_tool.services.pull_service.download_artifacts_concurrently")
@@ -330,7 +309,7 @@ class TestPullCommandTransferAndErrors:
     def test_pull_with_build_id_namespace_using_config(
         self, mock_upload, mock_report, mock_download, mock_setup, mock_load, mock_dist_client
     ) -> None:
-        """Test pull with build_id and namespace using group-level --config instead of --transfer-dest."""
+        """Test pull with build_id and namespace using group-level --config (download only)."""
         runner = CliRunner()
         with tempfile.TemporaryDirectory() as tmpdir:
             cert_path = Path(tmpdir) / "cert.pem"
@@ -355,11 +334,7 @@ class TestPullCommandTransferAndErrors:
             )
             mock_load.return_value = mock_artifact_data
             mock_setup.return_value = None
-            mock_result = Mock()
-            mock_result.pulled_artifacts = Mock()
-            mock_result.completed = 0
-            mock_result.failed = 0
-            mock_download.return_value = mock_result
+            mock_download.return_value = make_download_result(completed=0, failed=0)
             result = runner.invoke(
                 cli, ["--config", str(config_path), "--build-id", "test-build", "--namespace", "test-ns", "pull"]
             )
@@ -408,11 +383,7 @@ class TestPullCommandTransferAndErrors:
                 artifacts_prn="",
             )
             mock_setup.return_value = PullDestinationSetup(client=mock_client, repositories=transfer_repos)
-            mock_result = Mock()
-            mock_result.pulled_artifacts = Mock()
-            mock_result.completed = 1
-            mock_result.failed = 0
-            mock_download.return_value = mock_result
+            mock_download.return_value = make_download_result(completed=1, failed=0)
 
             mock_upload_info = PulpResultsDocument(
                 build_id="test-build",
@@ -424,7 +395,8 @@ class TestPullCommandTransferAndErrors:
             mock_upload_info.upload_errors = []
             mock_upload.return_value = mock_upload_info
             result = runner.invoke(
-                cli, ["pull", "--artifact-location", artifact_path, "--transfer-dest", transfer_config_path]
+                cli,
+                ["--config", transfer_config_path, "transfer", "--artifact-location", artifact_path],
             )
             assert result.exit_code == 0
             mock_upload.assert_called_once()
@@ -456,11 +428,7 @@ class TestPullCommandTransferAndErrors:
             )
             mock_load.return_value = mock_artifact_data
             mock_setup.return_value = None
-            mock_result = Mock()
-            mock_result.pulled_artifacts = Mock()
-            mock_result.completed = 1
-            mock_result.failed = 1
-            mock_download.return_value = mock_result
+            mock_download.return_value = make_download_result(completed=1, failed=1)
             result = runner.invoke(cli, ["pull", "--artifact-location", artifact_path])
             assert result.exit_code == 1
         finally:
@@ -507,11 +475,7 @@ class TestPullCommandTransferAndErrors:
                 artifacts_prn="",
             )
             mock_setup.return_value = PullDestinationSetup(client=mock_client, repositories=transfer_repos)
-            mock_result = Mock()
-            mock_result.pulled_artifacts = Mock()
-            mock_result.completed = 1
-            mock_result.failed = 0
-            mock_download.return_value = mock_result
+            mock_download.return_value = make_download_result(completed=1, failed=0)
 
             mock_upload_info = PulpResultsDocument(
                 build_id="test-build",
@@ -523,7 +487,8 @@ class TestPullCommandTransferAndErrors:
             mock_upload_info.upload_errors = ["Error 1", "Error 2"]
             mock_upload.return_value = mock_upload_info
             result = runner.invoke(
-                cli, ["pull", "--artifact-location", artifact_path, "--transfer-dest", transfer_config_path]
+                cli,
+                ["--config", transfer_config_path, "transfer", "--artifact-location", artifact_path],
             )
             assert result.exit_code == 1
         finally:
@@ -567,11 +532,7 @@ class TestPullCommandTransferAndErrors:
             mock_setup.return_value = None
             from pulp_tool.models.artifacts import PulledArtifacts
 
-            mock_result = Mock()
-            mock_result.pulled_artifacts = PulledArtifacts()
-            mock_result.completed = 0
-            mock_result.failed = 0
-            mock_download.return_value = mock_result
+            mock_download.return_value = make_download_result(pulled_artifacts=PulledArtifacts(), completed=0, failed=0)
             result = runner.invoke(cli, ["pull", "--artifact-location", artifact_path])
             assert result.exit_code == 0
         finally:

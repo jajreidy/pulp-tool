@@ -111,11 +111,11 @@ class PullContext(KonfluxBaseModel):
         artifact_location: Path or URL to artifact metadata (can be generated from namespace+build_id)
         namespace: Optional namespace for auto-generating artifact URL (requires build_id and config)
         key_path: Optional path to SSL private key (required for remote URLs, can come from config)
-        config: Path to Pulp config file (from --transfer-dest or --config, used for auth, base_url, and upload)
-        transfer_dest: If set, path from ``--transfer-dest``; repository/distribution setup and upload use this
-                            (``--config`` alone supplies auth/URL without creating destination repos)
+        config: Path to destination Pulp config (``transfer`` command global ``--config``) for upload; or source
+            ``--config`` on ``pull`` for auth/URL only
+        transfer_dest: Destination config path when running ``transfer`` (enables repository setup and re-upload)
         build_id: Optional build identifier (can be used for override or with namespace for URL generation)
-        side_tag: Optional side-tag name for extra ROK RPM promotion (requires transfer_dest)
+        side_tag: Optional side-tag name for extra release-Pulp RPM promotion (``transfer`` command only)
         artifact_results: Konflux ``url_path,digest_path`` for OCI manifest Tekton results after side-tag transfer
         oci_storage: OCI registry target (--oci-storage) for ORAS push
         snapshot_path: Optional Konflux release snapshot JSON to update with pulpResultsOciManifest

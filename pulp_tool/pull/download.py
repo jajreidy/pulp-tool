@@ -8,7 +8,6 @@ repositories for pull operations.
 import json
 import logging
 import traceback
-from dataclasses import dataclass
 from typing import Any
 
 import httpx
@@ -18,20 +17,12 @@ from ..api import DistributionClient, PulpClient
 from ..exceptions import PulpToolChecksumError, PulpToolError
 from ..models.artifacts import ArtifactData, DownloadTask
 from ..models.context import PullContext
+from ..models.pull_workflow import PullDestinationSetup
 from ..models.pulp_results import PulpResultsDocument
-from ..models.repository import RepositoryRefs
 from ..models.results import DownloadResult
 from ..utils import PulpHelper, determine_build_id, extract_metadata_from_artifact_json
 from ..utils.artifact_detection import categorize_artifacts_by_type
 from ..utils.config_manager import ConfigManager
-
-
-@dataclass(frozen=True, slots=True)
-class PullDestinationSetup:
-    """Destination Pulp client and repositories created for a pull transfer."""
-
-    client: PulpClient
-    repositories: RepositoryRefs
 
 
 def _categorize_artifacts(
@@ -138,7 +129,7 @@ def setup_repositories_if_needed(
     transfer_dest = getattr(args, "transfer_dest", None)
     if transfer_dest is None or not isinstance(transfer_dest, str) or not transfer_dest.strip():
         logging.debug(
-            "No transfer destination (--transfer-dest) specified, skipping repository and distribution setup",
+            "No transfer destination configured, skipping repository and distribution setup",
         )
         return None
 

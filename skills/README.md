@@ -27,10 +27,11 @@ Point your agent at `skills/<name>/SKILL.md` or rely on auto-discovery via the s
 
 | Skill | Load when |
 |-------|-----------|
-| [changing-pulp-upload](changing-pulp-upload/SKILL.md) | Changing `upload`, CLI flags, SBOM, artifacts, Tekton paths that *run* pulp-tool |
+| [changing-pulp-upload](changing-pulp-upload/SKILL.md) | Changing `upload`, **`pull`**, **`transfer`**, CLI flags, SBOM, artifacts, Tekton paths that *run* pulp-tool |
 | [changing-pulp-container](changing-pulp-container/SKILL.md) | Changing `Dockerfile`, `.tekton/` PipelineRuns, or Konflux image build ([reference.md](changing-pulp-container/reference.md) — remote pipeline tasks) |
 | [drafting-pulp-tool-pr](drafting-pulp-tool-pr/SKILL.md) | User confirms paste-ready PR body, commit message, or CHANGELOG; writes `pr-description.md` |
 | [troubleshooting-pulp-tool-ci](troubleshooting-pulp-tool-ci/SKILL.md) | Pre-commit, lint, or diff-cover failures; local vs CI mismatch |
+| [pydantic-data-models](pydantic-data-models/SKILL.md) | Multi-field structured data, CLI option bags, cross-layer contexts — use **`KonfluxBaseModel`** instead of dataclasses/dicts |
 
 Index, lint quick-ref, and CI parity table: [`.cursor/rules/llm-development-guidelines-deep.mdc`](../.cursor/rules/llm-development-guidelines-deep.mdc).
 

@@ -60,9 +60,10 @@ pulp-tool --config ~/.config/pulp/cli.toml \
 ```
 
 ```bash
-pulp-tool pull \
-  --artifact-location /path/to/artifacts.json \
-  --transfer-dest ~/.config/pulp/cli.toml
+pulp-tool --config ~/.config/pulp/cli.toml \
+  transfer \
+  --source-config ~/.config/pulp/build-cli.toml \
+  --artifact-location quay.io/org/repo@sha256:…
 
 pulp-tool --config ~/.config/pulp/cli.toml search-by --checksums <sha256>
 ```
@@ -79,6 +80,8 @@ pulp-tool --config ~/.config/pulp/cli.toml \
 ```bash
 pulp-tool --help
 pulp-tool upload --help
+pulp-tool transfer --help
+pulp-tool pull --help
 pulp-tool update-build --help
 pulp-tool search-by --help
 ```

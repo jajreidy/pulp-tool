@@ -6,6 +6,7 @@ from pulp_tool.models.artifacts import ArtifactData
 from pulp_tool.models.context import PullContext
 from pulp_tool.models.pulp_results import PulpResultsDocument
 from pulp_tool.services.pull_service import PullService, validate_pull_side_tag_context
+from tests.support.factories import make_download_result
 
 
 class TestPullService:
@@ -13,7 +14,7 @@ class TestPullService:
 
     def test_validate_pull_side_tag_requires_transfer_dest(self) -> None:
         context = PullContext(artifact_location="/x.json", side_tag="tag1", transfer_dest=None)
-        assert validate_pull_side_tag_context(context) == "--side-tag requires --transfer-dest"
+        assert validate_pull_side_tag_context(context) == "--side-tag requires destination --config (transfer command)"
 
     def test_validate_pull_side_tag_requires_oci_storage(self) -> None:
         context = PullContext(
@@ -55,11 +56,7 @@ class TestPullService:
         mock_artifact_data = ArtifactData(
             artifact_json=PulpResultsDocument(artifacts={}, distributions={}), artifacts={}
         )
-        mock_result = Mock()
-        mock_result.pulled_artifacts = Mock()
-        mock_result.completed = 5
-        mock_result.failed = 2
-        mock_download.return_value = mock_result
+        mock_download.return_value = make_download_result(completed=5, failed=2)
         pulled, completed, failed = service.download_artifacts(mock_artifact_data, None, context, 4)
         assert completed == 5
         assert failed == 2
@@ -103,7 +100,7 @@ class TestPullService:
     @patch("pulp_tool.services.pull_service.setup_repositories_if_needed")
     @patch("pulp_tool.services.pull_service.logging")
     def test_setup_destination_repositories_with_config(self, mock_logging, mock_setup) -> None:
-        """Test setup_destination_repositories with config and --transfer-dest."""
+        """Test setup_destination_repositories with destination config (transfer)."""
         service = PullService()
         context = PullContext(
             artifact_location="/test/path.json", config="/test/config.toml", transfer_dest="/test/config.toml"
@@ -171,9 +168,9 @@ class TestPullService:
         )
         mock_client = Mock()
         mock_setup.return_value = Mock(client=mock_client, repositories=Mock())
-        mock_download.return_value = Mock(pulled_artifacts=Mock(), completed=1, failed=0)
+        mock_download.return_value = make_download_result(completed=1, failed=0)
         mock_upload.return_value = PulpResultsDocument(build_id="b1")
-        mock_side_upload.return_value = SideTagUploadResult([], "https://side/")
+        mock_side_upload.return_value = SideTagUploadResult(transfers=[], distribution_base_url="https://side/")
         context = PullContext(
             artifact_location="/tmp/pulp_results.json",
             config="/cfg.toml",
@@ -193,19 +190,19 @@ class TestPullService:
         )
         result = PullService().run(context, distribution_client=None, max_workers=1)
         assert not result.success
-        assert result.error_messages[0] == "--side-tag requires --transfer-dest"
+        assert result.error_messages[0] == "--side-tag requires destination --config (transfer command)"
 
     @patch("pulp_tool.services.pull_service.download_artifacts_concurrently")
     @patch("pulp_tool.services.pull_service.load_and_validate_artifacts")
     def test_run_fails_when_verify_rpm_gpg_but_no_rpms_downloaded(self, mock_load, mock_download) -> None:
-        from pulp_tool.models.artifacts import ArtifactData, PulledArtifacts
+        from pulp_tool.models.artifacts import ArtifactData
         from pulp_tool.models.pulp_results import PulpResultsDocument
 
         mock_load.return_value = ArtifactData(
             artifact_json=PulpResultsDocument(artifacts={}),
             artifacts={},
         )
-        mock_download.return_value = Mock(pulled_artifacts=PulledArtifacts(), completed=0, failed=0)
+        mock_download.return_value = make_download_result(completed=0, failed=0)
 
         context = PullContext(
             artifact_location="/tmp/pulp_results.json",
@@ -230,7 +227,7 @@ class TestPullService:
         )
         pulled = PulledArtifacts()
         pulled.add_rpm("pkg.rpm", "/tmp/pkg.rpm", {"arch": "x86_64"})
-        mock_download.return_value = Mock(pulled_artifacts=pulled, completed=1, failed=0)
+        mock_download.return_value = make_download_result(pulled_artifacts=pulled, completed=1, failed=0)
         mock_gpg.side_effect = RpmGpgVerifyError("signature NOT OK")
 
         context = PullContext(artifact_location="/tmp/pulp_results.json", verify_rpm_gpg=True)

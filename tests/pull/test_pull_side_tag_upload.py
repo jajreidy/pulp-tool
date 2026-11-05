@@ -16,7 +16,7 @@ class TestUploadRpmsToSideTagRepository:
         context = PullContext(artifact_location="http://example.com/json", side_tag="mytest")
         assert upload_rpms_to_side_tag_repository(
             Mock(), PulledArtifacts(), ArtifactData(artifact_json={}, artifacts={}), context
-        ) == SideTagUploadResult([], "")
+        ) == SideTagUploadResult(transfers=[], distribution_base_url="")
 
     def test_upload_rpms_to_side_tag_returns_transfers(self) -> None:
         mock_client = Mock()
@@ -85,7 +85,7 @@ class TestUploadRpmsToSideTagRepository:
             mock_helper_cls.return_value.ensure_side_tag_rpm_repository.return_value = ("/repo/", "https://side/")
             assert upload_rpms_to_side_tag_repository(
                 Mock(), pulled, ArtifactData(artifact_json={}, artifacts={}), context
-            ) == SideTagUploadResult([], "https://side/")
+            ) == SideTagUploadResult(transfers=[], distribution_base_url="https://side/")
 
     def test_add_content_failure_raises(self) -> None:
         mock_client = Mock()
@@ -129,4 +129,4 @@ class TestUploadRpmsToSideTagRepository:
             mock_helper_cls.return_value.ensure_side_tag_rpm_repository.return_value = ("/repo/", "https://side/")
             assert upload_rpms_to_side_tag_repository(
                 mock_client, pulled, ArtifactData(artifact_json={}, artifacts={}), context
-            ) == SideTagUploadResult([], "https://side/")
+            ) == SideTagUploadResult(transfers=[], distribution_base_url="https://side/")

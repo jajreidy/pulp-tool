@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from pydantic import ConfigDict
+
 from .base import KonfluxBaseModel
 
 if TYPE_CHECKING:
@@ -71,6 +73,15 @@ class RepositoryRefs(KonfluxBaseModel):
                 "Create the logs repository when uploading logs (do not set skip_logs_repo)."
             )
         return self.logs_prn
+
+
+class ExistingDistributionInfo(KonfluxBaseModel):
+    """Existing Pulp distribution fields needed for idempotent create recovery."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    base_path: str
+    repository: str | None = None
 
 
 class RepositoryInfo(KonfluxBaseModel):

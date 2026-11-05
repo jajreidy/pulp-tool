@@ -26,9 +26,9 @@ Copy-paste **`make` / pre-commit** flow (`make pre-commit-ci` matches GitHub PR 
 ## Key conventions (do not skip)
 
 1. **GitHub merge:** every changed line in a PR needs executing test coverage — run `make test-diff-coverage` (same as CI diff-cover), not only `make test`.
-2. **Konflux:** never change `upload` / artifact paths / Tekton assumptions without the **changing-pulp-upload** skill, [CLAUDE.md](CLAUDE.md), and the linked task YAMLs there.
+2. **Konflux:** never change `upload`, **`pull`**, **`transfer`**, or artifact paths / Tekton assumptions without the **changing-pulp-upload** skill, [CLAUDE.md](CLAUDE.md), and the linked task YAMLs there.
 3. **Documentation:** Keep **relevant** in-repo docs and core `.md` files in sync with your change in the **same PR** (do not leave stale references):
-   - **CLI** (`pulp_tool/cli/`): [cli-reference.md](cli-reference.md) — flags, behavior, examples; should match `pulp-tool <command> --help`.
+   - **CLI** (`pulp_tool/cli/`): [cli-reference.md](cli-reference.md) — commands (`upload-build`, **`transfer`**, **`pull`**, `update-build`, …), flags, behavior; should match `pulp-tool <command> --help`.
    - **Architecture** (layout, data flow, boundaries, integrations): [ARCHITECTURE.md](ARCHITECTURE.md).
    - **Konflux / Tekton contracts** (upload paths, flags, container): [CLAUDE.md](CLAUDE.md) — together with item 2 above.
    - **User-facing** install, config, overview: [README.md](../README.md); deeper CLI detail stays in `cli-reference.md`.
@@ -39,7 +39,7 @@ Copy-paste **`make` / pre-commit** flow (`make pre-commit-ci` matches GitHub PR 
    - **ADRs:** [adr/](adr/) when you record a new architectural decision (see [0000-record-architecture-decisions.md](adr/0000-record-architecture-decisions.md)).
    - **Agent skills** (`skills/`): [skills/README.md](../skills/README.md) — index and cross-tool discovery; update when adding or renaming skills.
    - **Cross-links:** If you move or rename files, update links in other `.md` and Cursor rules that pointed at the old path.
-4. **Types:** prefer hints; `mypy` covers `pulp_tool/` and `tests/` (see `pyproject.toml` overrides).
+4. **Types and models:** prefer type hints; `mypy` covers `pulp_tool/` and `tests/` (see `pyproject.toml` overrides). For **structured data with many fields** (CLI options, service contexts, JSON slices, batch plans), use **`KonfluxBaseModel`** in `pulp_tool/models/` with validators and methods — load **pydantic-data-models** skill ([`skills/pydantic-data-models/SKILL.md`](../skills/pydantic-data-models/SKILL.md)); avoid new `@dataclass` option bags or ad hoc dicts crossing layers.
 5. **Changelog / PR text:** always-on [`.cursor/rules/llm-development-guidelines.mdc`](../.cursor/rules/llm-development-guidelines.mdc); on confirmation load **drafting-pulp-tool-pr** skill ([`skills/drafting-pulp-tool-pr/`](../skills/drafting-pulp-tool-pr/)). Skill index: [`llm-development-guidelines-deep.mdc`](../.cursor/rules/llm-development-guidelines-deep.mdc). Ask before drafting PR boilerplate; update `CHANGELOG.md` when preparing the PR, not every debug iteration.
 6. **Live Konflux e2e (`--real-server`):** follow the three-phase harness in [e2e/README.md § Conventions for new live e2e tests](../e2e/README.md#conventions-for-new-live-e2e-tests)—upload mutations first, queue pulp-content HTTP checks via `defer_distribution_check()` / [`distribution_verify_queue.py`](../e2e/distribution_verify_queue.py), run pulls only after `run_distribution_verification_phase()`. Do not HTTP GET `pulp-content` immediately after an upload in the same test case.
 

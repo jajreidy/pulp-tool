@@ -38,6 +38,7 @@ class TestCLIHelp:
         assert "Pulp Tool" in result.output
         assert "upload" in result.output
         assert "pull" in result.output
+        assert "transfer" in result.output
         assert "search-by" in result.output
         assert "create-repository" in result.output
         assert "--config" in result.output
@@ -85,7 +86,16 @@ class TestCLIHelp:
         assert "--artifact-location" in result.output
         assert "--content-types" in result.output
         assert "--archs" in result.output
-        assert "--transfer-dest" in result.output
+        assert "--transfer-dest" not in result.output
+
+    def test_transfer_help(self) -> None:
+        """Test transfer command help output."""
+        runner = CliRunner()
+        result = runner.invoke(cli, ["transfer", "--help"])
+        assert result.exit_code == 0
+        assert "promote them to release Pulp" in result.output
+        assert "--side-tag" in result.output
+        assert "--source-config" in result.output
 
     def test_create_repository_help(self) -> None:
         """Test create-repository command help output."""

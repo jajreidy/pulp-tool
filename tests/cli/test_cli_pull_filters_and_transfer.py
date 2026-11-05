@@ -10,6 +10,7 @@ from click.testing import CliRunner
 
 from pulp_tool.cli import cli
 from pulp_tool.models.pulp_results import PulpResultsDocument
+from tests.support.factories import make_download_result
 
 
 class TestPullCommandFiltersAndTransfer:
@@ -30,11 +31,11 @@ class TestPullCommandFiltersAndTransfer:
         assert "Both --build-id and --namespace must be provided" in result.output
 
     def test_pull_build_id_without_config(self) -> None:
-        """Test pull with build_id+namespace but no --transfer-dest or --config."""
+        """Test pull with build_id+namespace but no --config."""
         runner = CliRunner()
         result = runner.invoke(cli, ["--build-id", "test-build", "--namespace", "test-ns", "pull"])
         assert result.exit_code == 1
-        assert "transfer-dest" in result.output.lower() or "config" in result.output.lower()
+        assert "config" in result.output.lower()
 
     def test_pull_conflicting_options(self) -> None:
         """Test pull with both artifact_location and build_id."""
@@ -77,17 +78,13 @@ class TestPullCommandFiltersAndTransfer:
             )
             mock_load.return_value = mock_artifact_data
             mock_setup.return_value = None
-            mock_result = Mock()
-            mock_result.pulled_artifacts = Mock()
-            mock_result.completed = 0
-            mock_result.failed = 0
-            mock_download.return_value = mock_result
+            mock_download.return_value = make_download_result(completed=0, failed=0)
             result = runner.invoke(cli, ["pull", "--artifact-location", artifact_path])
             assert result.exit_code == 0
         finally:
             os.unlink(artifact_path)
 
-    @patch("pulp_tool.cli.pull.DistributionClient")
+    @patch("pulp_tool.cli.artifact_pull_run.DistributionClient")
     @patch("pulp_tool.services.pull_service.load_and_validate_artifacts")
     @patch("pulp_tool.services.pull_service.setup_repositories_if_needed")
     @patch("pulp_tool.services.pull_service.download_artifacts_concurrently")
@@ -117,11 +114,7 @@ class TestPullCommandFiltersAndTransfer:
             mock_setup.return_value = None
             mock_client_instance = Mock()
             mock_dist_client.return_value = mock_client_instance
-            mock_result = Mock()
-            mock_result.pulled_artifacts = Mock()
-            mock_result.completed = 0
-            mock_result.failed = 0
-            mock_download.return_value = mock_result
+            mock_download.return_value = make_download_result(completed=0, failed=0)
             result = runner.invoke(
                 cli,
                 [
@@ -138,7 +131,7 @@ class TestPullCommandFiltersAndTransfer:
             )
             assert result.exit_code == 0
 
-    @patch("pulp_tool.cli.pull.DistributionClient")
+    @patch("pulp_tool.cli.artifact_pull_run.DistributionClient")
     @patch("pulp_tool.services.pull_service.load_and_validate_artifacts")
     @patch("pulp_tool.services.pull_service.setup_repositories_if_needed")
     @patch("pulp_tool.services.pull_service.download_artifacts_concurrently")
@@ -168,24 +161,20 @@ class TestPullCommandFiltersAndTransfer:
             mock_setup.return_value = None
             mock_client_instance = Mock()
             mock_dist_client.return_value = mock_client_instance
-            mock_result = Mock()
-            mock_result.pulled_artifacts = Mock()
-            mock_result.completed = 0
-            mock_result.failed = 0
-            mock_download.return_value = mock_result
+            mock_download.return_value = make_download_result(completed=0, failed=0)
             result = runner.invoke(
                 cli,
                 [
-                    "pull",
+                    "--config",
+                    str(config_path),
+                    "transfer",
                     "--artifact-location",
                     "https://pulp.example.com/api/pulp-content/ns/build/artifacts/pulp_results.json",
-                    "--transfer-dest",
-                    str(config_path),
                 ],
             )
             assert result.exit_code == 0
 
-    @patch("pulp_tool.cli.pull.DistributionClient")
+    @patch("pulp_tool.cli.artifact_pull_run.DistributionClient")
     @patch("pulp_tool.services.pull_service.load_and_validate_artifacts")
     @patch("pulp_tool.services.pull_service.setup_repositories_if_needed")
     @patch("pulp_tool.services.pull_service.download_artifacts_concurrently")
@@ -212,19 +201,15 @@ class TestPullCommandFiltersAndTransfer:
             mock_setup.return_value = None
             mock_client_instance = Mock()
             mock_dist_client.return_value = mock_client_instance
-            mock_result = Mock()
-            mock_result.pulled_artifacts = Mock()
-            mock_result.completed = 0
-            mock_result.failed = 0
-            mock_download.return_value = mock_result
+            mock_download.return_value = make_download_result(completed=0, failed=0)
             result = runner.invoke(
                 cli,
                 [
-                    "pull",
+                    "--config",
+                    str(config_path),
+                    "transfer",
                     "--artifact-location",
                     "https://pulp.example.com/api/pulp-content/ns/build/artifacts/pulp_results.json",
-                    "--transfer-dest",
-                    str(config_path),
                 ],
             )
             assert result.exit_code == 0
@@ -234,7 +219,7 @@ class TestPullCommandFiltersAndTransfer:
                 pulp_api_base_url="https://pulp.example.com",
             )
 
-    @patch("pulp_tool.cli.pull.DistributionClient")
+    @patch("pulp_tool.cli.artifact_pull_run.DistributionClient")
     @patch("pulp_tool.services.pull_service.load_and_validate_artifacts")
     @patch("pulp_tool.services.pull_service.setup_repositories_if_needed")
     @patch("pulp_tool.services.pull_service.download_artifacts_concurrently")
@@ -242,7 +227,7 @@ class TestPullCommandFiltersAndTransfer:
     def test_pull_with_distribution_config(
         self, mock_report, mock_download, mock_setup, mock_load, mock_dist_client
     ) -> None:
-        """Test pull with --distribution-config overrides transfer-dest for auth."""
+        """Test transfer with --distribution-config overrides destination --config for auth."""
         runner = CliRunner()
         with tempfile.TemporaryDirectory() as tmpdir:
             transfer_config = Path(tmpdir) / "transfer.toml"
@@ -263,19 +248,15 @@ class TestPullCommandFiltersAndTransfer:
             mock_setup.return_value = None
             mock_client_instance = Mock()
             mock_dist_client.return_value = mock_client_instance
-            mock_result = Mock()
-            mock_result.pulled_artifacts = Mock()
-            mock_result.completed = 0
-            mock_result.failed = 0
-            mock_download.return_value = mock_result
+            mock_download.return_value = make_download_result(completed=0, failed=0)
             result = runner.invoke(
                 cli,
                 [
-                    "pull",
+                    "--config",
+                    str(transfer_config),
+                    "transfer",
                     "--artifact-location",
                     "https://pulp.example.com/api/pulp-content/ns/build/artifacts/pulp_results.json",
-                    "--transfer-dest",
-                    str(transfer_config),
                     "--distribution-config",
                     str(dist_config),
                 ],
@@ -297,11 +278,11 @@ class TestPullCommandFiltersAndTransfer:
             result = runner.invoke(
                 cli,
                 [
-                    "pull",
+                    "--config",
+                    str(config_path),
+                    "transfer",
                     "--artifact-location",
                     "https://pulp.example.com/api/pulp-content/ns/build/artifacts/pulp_results.json",
-                    "--transfer-dest",
-                    str(config_path),
                 ],
             )
             assert result.exit_code == 1
@@ -325,11 +306,11 @@ class TestPullCommandFiltersAndTransfer:
             result = runner.invoke(
                 cli,
                 [
-                    "pull",
+                    "--config",
+                    str(config_path),
+                    "transfer",
                     "--artifact-location",
                     "https://pulp.example.com/api/pulp-content/ns/build/artifacts/pulp_results.json",
-                    "--transfer-dest",
-                    str(config_path),
                 ],
             )
         assert result.exit_code == 1
@@ -370,11 +351,7 @@ class TestPullCommandFiltersAndTransfer:
             )
             mock_load.return_value = mock_artifact_data
             mock_setup.return_value = None
-            mock_result = Mock()
-            mock_result.pulled_artifacts = Mock()
-            mock_result.completed = 0
-            mock_result.failed = 0
-            mock_download.return_value = mock_result
+            mock_download.return_value = make_download_result(completed=0, failed=0)
             result = runner.invoke(cli, ["pull", "--artifact-location", artifact_path, "--content-types", "rpm"])
             assert result.exit_code == 0
             call_args = mock_download.call_args
@@ -405,11 +382,7 @@ class TestPullCommandFiltersAndTransfer:
             )
             mock_load.return_value = mock_artifact_data
             mock_setup.return_value = None
-            mock_result = Mock()
-            mock_result.pulled_artifacts = Mock()
-            mock_result.completed = 0
-            mock_result.failed = 0
-            mock_download.return_value = mock_result
+            mock_download.return_value = make_download_result(completed=0, failed=0)
             result = runner.invoke(cli, ["pull", "--artifact-location", artifact_path, "--archs", "x86_64"])
             assert result.exit_code == 0
             call_args = mock_download.call_args
@@ -419,7 +392,7 @@ class TestPullCommandFiltersAndTransfer:
         finally:
             os.unlink(artifact_path)
 
-    @patch("pulp_tool.cli.pull.DistributionClient")
+    @patch("pulp_tool.cli.artifact_pull_run.DistributionClient")
     @patch("pulp_tool.services.pull_service.load_and_validate_artifacts")
     @patch("pulp_tool.services.pull_service.setup_repositories_if_needed")
     @patch("pulp_tool.services.pull_service.download_artifacts_concurrently")
@@ -449,11 +422,7 @@ class TestPullCommandFiltersAndTransfer:
                 artifacts={},
             )
             mock_setup.return_value = None
-            mock_result = Mock()
-            mock_result.pulled_artifacts = Mock()
-            mock_result.completed = 0
-            mock_result.failed = 0
-            mock_download.return_value = mock_result
+            mock_download.return_value = make_download_result(completed=0, failed=0)
             oci_ref = "quay.io/ns/repo@sha256:abc123"
             with patch(
                 "pulp_tool.cli.runner_helpers.resolve_results_json_path", return_value=local_json
@@ -493,13 +462,13 @@ class TestPullCommandFiltersAndTransfer:
             assert result.exit_code == 1
             assert "oras pull failed" in result.output
 
-    def test_pull_side_tag_without_transfer_dest(self) -> None:
+    def test_transfer_side_tag_requires_destination_config(self) -> None:
         runner = CliRunner()
-        result = runner.invoke(cli, ["pull", "--side-tag", "mytest", "--artifact-results", "/u,/d"])
+        result = runner.invoke(cli, ["transfer", "--side-tag", "mytest", "--artifact-results", "/u,/d"])
         assert result.exit_code == 1
-        assert "--side-tag requires --transfer-dest" in result.output
+        assert "--config is required for transfer" in result.output
 
-    def test_pull_side_tag_without_oci_storage(self) -> None:
+    def test_transfer_side_tag_without_oci_storage(self) -> None:
         runner = CliRunner()
         with tempfile.NamedTemporaryFile(mode="w", suffix=".toml", delete=False) as cfg:
             cfg.write("[cli]\nbase_url = 'https://pulp.example'\n")
@@ -507,15 +476,15 @@ class TestPullCommandFiltersAndTransfer:
         try:
             result = runner.invoke(
                 cli,
-                ["pull", "--transfer-dest", cfg_path, "--side-tag", "mytest"],
+                ["--config", cfg_path, "transfer", "--side-tag", "mytest"],
             )
             assert result.exit_code == 1
             assert "--oci-storage" in result.output
         finally:
             os.unlink(cfg_path)
 
-    @patch("pulp_tool.cli.pull.ConfigManager")
-    def test_pull_side_tag_config_load_exception(self, mock_config_manager) -> None:
+    @patch("pulp_tool.models.artifact_pull_run.ConfigManager")
+    def test_transfer_side_tag_config_load_exception(self, mock_config_manager) -> None:
         runner = CliRunner()
         mock_config_manager.side_effect = OSError("cannot read config")
         with tempfile.NamedTemporaryFile(mode="w", suffix=".toml", delete=False) as cfg:
@@ -525,9 +494,9 @@ class TestPullCommandFiltersAndTransfer:
             result = runner.invoke(
                 cli,
                 [
-                    "pull",
-                    "--transfer-dest",
+                    "--config",
                     cfg_path,
+                    "transfer",
                     "--side-tag",
                     "mytest",
                     "--artifact-results",
@@ -539,7 +508,7 @@ class TestPullCommandFiltersAndTransfer:
         finally:
             os.unlink(cfg_path)
 
-    def test_pull_side_tag_without_oci_storage_in_config(self) -> None:
+    def test_transfer_side_tag_without_oci_storage_in_config(self) -> None:
         runner = CliRunner()
         with tempfile.NamedTemporaryFile(mode="w", suffix=".toml", delete=False) as cfg:
             cfg.write("[cli]\nbase_url = 'https://pulp.example'\n")
@@ -548,9 +517,9 @@ class TestPullCommandFiltersAndTransfer:
             result = runner.invoke(
                 cli,
                 [
-                    "pull",
-                    "--transfer-dest",
+                    "--config",
                     cfg_path,
+                    "transfer",
                     "--side-tag",
                     "mytest",
                     "--artifact-results",
@@ -562,7 +531,7 @@ class TestPullCommandFiltersAndTransfer:
         finally:
             os.unlink(cfg_path)
 
-    def test_pull_side_tag_oci_storage_flag_without_config_key(self) -> None:
+    def test_transfer_side_tag_oci_storage_flag_without_config_key(self) -> None:
         """Konflux passes ociStorage as --oci-storage; config need not define cli.oci_storage."""
         runner = CliRunner()
         with tempfile.NamedTemporaryFile(mode="w", suffix=".toml", delete=False) as cfg:
@@ -578,9 +547,7 @@ class TestPullCommandFiltersAndTransfer:
                     "ns",
                     "--config",
                     cfg_path,
-                    "pull",
-                    "--transfer-dest",
-                    cfg_path,
+                    "transfer",
                     "--side-tag",
                     "mytest",
                     "--oci-storage",

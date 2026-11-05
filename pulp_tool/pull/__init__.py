@@ -12,8 +12,8 @@ Modules:
     - reporting: Pull reporting and logging utilities
 """
 
+from ..models.pull_workflow import PullDestinationSetup
 from .download import (
-    PullDestinationSetup,
     _categorize_artifacts,
     download_artifacts_concurrently,
     load_and_validate_artifacts,
