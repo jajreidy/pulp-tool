@@ -3,7 +3,7 @@
 COMPARE_BRANCH ?= origin/main
 AUDIT_VENV ?= .audit-venv
 
-.PHONY: help install install-dev test test-container test-e2e-container test-e2e-cleanup-container test-diff-coverage lint format check clean audit bandit lock lock-check pre-commit-ci release-please release-publish
+.PHONY: help install install-dev test test-container test-e2e-container test-e2e-cleanup-container test-diff-coverage lint lint-fix lint-ruff lint-ruff-check lint-ruff-format lint-pylint lint-mypy format check clean audit bandit lock lock-check pre-commit-ci release-please release-publish fix
 
 # Default target
 help:
@@ -15,8 +15,9 @@ help:
 	@echo "  make test-e2e-container - Optional local Dockerfile.e2e smoke-test (e2e Tekton runner image)"
 	@echo "  make test-e2e-cleanup-container - Optional local Dockerfile.e2e-cleanup smoke-test (e2e finally cleanup image)"
 	@echo "  make test-diff-coverage - make test + diff-cover 100% vs COMPARE_BRANCH (same gate as PR CI)"
-	@echo "  make lint         - Run all linters"
-	@echo "  make format       - Format code with Ruff"
+	@echo "  make lint         - Run all linters (check mode; Ruff does not write)"
+	@echo "  make lint-fix     - Ruff --fix + format, then pylint + mypy (also: make lint FIX=1 or make lint fix)"
+	@echo "  make format       - Format code with Ruff (shortcut for Ruff auto-fix only)"
 	@echo "  make check        - Run all checks (lint + test)"
 	@echo "  make pre-commit-ci - Run pre-commit commit + push stages (matches PR CI)"
 	@echo "  make audit        - Run pip-audit (reuses .audit-venv; dev deps from uv.lock)"
@@ -101,15 +102,36 @@ test-integration:
 # Linting (mirrors .github/workflows/python-diff-lint.yml and .pre-commit-config.yaml)
 LINT_PY_TARGETS := pulp_tool tests
 
+# Auto-fix: make lint FIX=1 | make lint fix | make lint-fix
+# GNU Make treats "make lint --fix" as an invalid make flag; use FIX=1, "make lint fix", or lint-fix.
+# Pylint and mypy have no --fix; they still run as checks after Ruff writes.
+ifeq ($(filter fix,$(MAKECMDGOALS)),fix)
+  override FIX := 1
+endif
+
+fix:
+	@:
+
 lint: lint-ruff lint-pylint lint-mypy
+
+lint-fix:
+	$(MAKE) lint FIX=1
 
 lint-ruff: lint-ruff-check lint-ruff-format
 
 lint-ruff-check:
+ifeq ($(FIX),1)
+	python3 -m ruff check --fix $(LINT_PY_TARGETS)
+else
 	python3 -m ruff check $(LINT_PY_TARGETS)
+endif
 
 lint-ruff-format:
+ifeq ($(FIX),1)
+	python3 -m ruff format $(LINT_PY_TARGETS)
+else
 	python3 -m ruff format --check $(LINT_PY_TARGETS)
+endif
 
 lint-pylint:
 	./scripts/run-pylint.sh full

@@ -101,6 +101,10 @@ make format
 # Check formatting and lint without changes
 make lint
 # or: ruff check pulp_tool/ tests/ && ruff format --check pulp_tool/ tests/
+
+# Auto-fix what Ruff can (then pylint + mypy checks)
+make lint-fix
+# or: make lint FIX=1 | make lint fix  (not "make lint --fix" — GNU Make reserves leading --)
 ```
 
 ### Linting
