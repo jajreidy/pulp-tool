@@ -125,7 +125,8 @@ dist.pull_data(filename="pkg.rpm", file_url="...", arch="x86_64", artifact_type=
 ```bash
 make install-dev          # editable install + pre-commit (+ pre-push) hooks
 make format               # ruff format + ruff check --fix
-make lint                 # ruff, pylint, mypy (same as CI python-lint job)
+make lint                 # ruff (check), pylint, mypy (same as CI python-lint job)
+make lint-fix             # ruff (auto-fix) + pylint + mypy — or: make lint FIX=1 / make lint fix
 make pre-commit-ci        # all pre-commit hooks: lint + pip-audit + diff-cover + checkton
 pre-commit run --all-files   # commit-stage hooks only; loop until green
 make test                 # full suite + coverage (85%+ project threshold)
